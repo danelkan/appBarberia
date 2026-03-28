@@ -59,15 +59,21 @@ export default function BarberosPage() {
 
 const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
   setEditing(prev => {
-    const prevAvail = prev.availability ?? DEFAULT_AVAILABILITY
-    const prevDay = prevAvail[day] ?? { enabled: false, start: '09:00', end: '19:00' }
+    const prevAvail = (prev.availability ?? DEFAULT_AVAILABILITY) as WeeklyAvailability
+    const prevDay = prevAvail[day] ?? DEFAULT_AVAILABILITY[day]
+    const updatedDay: DaySchedule = {
+      enabled: prevDay.enabled,
+      start: prevDay.start,
+      end: prevDay.end,
+      [field]: value,
+    }
     return {
       ...prev,
       availability: {
         ...prevAvail,
-        [day]: { ...prevDay, [field]: value } as DaySchedule,
-      } as WeeklyAvailability,
-    }
+        [day]: updatedDay,
+      },
+    } as Partial<Barber>
   })
 }
 
