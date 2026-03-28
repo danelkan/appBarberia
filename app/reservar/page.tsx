@@ -213,7 +213,7 @@ function DateTimeStep({ booking, onSelect, onBack }: {
   const daysInMonth = getDaysInMonth(currentMonth)
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  const calendarDays = Array.from({ length: firstDay }, () => null)
+  const calendarDays = Array.from({ length: firstDay }, (): string | null => null)
     .concat(Array.from({ length: daysInMonth }, (_, i) => {
       const d = new Date(year, month, i + 1)
       return format(d, 'yyyy-MM-dd')
