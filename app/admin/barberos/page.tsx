@@ -57,25 +57,25 @@ export default function BarberosPage() {
     fetchBarbers()
   }
 
-const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
-  setEditing(prev => {
-    const prevAvail = (prev.availability ?? DEFAULT_AVAILABILITY) as WeeklyAvailability
-    const prevDay = prevAvail[day] ?? DEFAULT_AVAILABILITY[day]
-    const updatedDay: DaySchedule = {
-      enabled: prevDay.enabled,
-      start: prevDay.start,
-      end: prevDay.end,
-      [field]: value,
-    }
-    return {
-      ...prev,
-      availability: {
-        ...prevAvail,
-        [day]: updatedDay,
-      },
-    } as Partial<Barber>
-  })
-}
+  const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
+    setEditing(prev => {
+      const prevAvail = (prev.availability ?? DEFAULT_AVAILABILITY) as WeeklyAvailability
+      const prevDay = prevAvail[day] ?? DEFAULT_AVAILABILITY[day]
+      const updatedDay: DaySchedule = {
+        enabled: prevDay.enabled,
+        start: prevDay.start,
+        end: prevDay.end,
+        [field]: value,
+      }
+      return {
+        ...prev,
+        availability: {
+          ...prevAvail,
+          [day]: updatedDay,
+        },
+      } as Partial<Barber>
+    })
+  }
 
   return (
     <div>
@@ -130,7 +130,6 @@ const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
         </div>
       )}
 
-      {/* Barber modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}
         title={editing.id ? 'Editar barbero' : 'Nuevo barbero'}>
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
