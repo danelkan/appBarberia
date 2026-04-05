@@ -2,12 +2,36 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { calcEndTime } from '@/lib/utils'
 import { sendConfirmationEmail, sendAdminNotification } from '@/lib/emails'
-
+import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export async function GET(req: NextRequest) {
+  // Rate limiting
+  const rateLimit = checkRateLimit(req, 'appointments:read', RateLimitConfigs.read)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit)!
+  }
+
+  // Authentication required for viewing appointments
+  const auth = await requireAuth(req)
+  if (!auth) {
+    return unauthorizedResponse()
+  }
+
+  // Validate query params
   const { searchParams } = new URL(req.url)
-  const from = searchParams.get('from')
-  const to = searchParams.get('to') ?? from
+  const queryParams = {
+    from: searchParams.get('from') ?? undefined,
+    to: searchParams.get('to') ?? undefined,
+  }
+  
+  const queryResult = appointmentQuerySchema.safeParse(queryParams)
+  if (!queryResult.success) {
+    return NextResponse.json({ error: queryResult.error.flatten() }, { status: 400 })
+  }
+
+  const { from, to } = queryResult.data
 
   const supabase = createSupabaseAdmin()
 
@@ -31,30 +55,53 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ appointments: data ?? [] })
+  const response = NextResponse.json({ appointments: data ?? [] })
+  
+  // Add rate limit headers
+  const headers = getRateLimitHeaders(rateLimit)
+  Object.entries(headers).forEach(([key, value]) => {
+    response.headers.set(key, value)
+  })
+
+  return response
 }
 
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const { serviceId, barberId, date, startTime, client: clientData } = body
+  // Rate limiting for booking
+  const rateLimit = checkRateLimit(req, 'appointments:booking', RateLimitConfigs.booking)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit)!
+  }
 
-    if (!serviceId || !barberId || !date || !startTime || !clientData) {
-      return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
+  try {
+    // Parse and validate body
+    const body = await req.json()
+    const result = createAppointmentSchema.safeParse(body)
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
     }
+
+    const { serviceId, barberId, date, startTime, client: clientData } = result.data
 
     const supabase = createSupabaseAdmin()
 
     // 1. Fetch service for duration
-    const { data: service } = await supabase
+    const { data: service, error: serviceError } = await supabase
       .from('services').select('*').eq('id', serviceId).single()
-    if (!service) return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
+    
+    if (serviceError || !service) {
+      return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
+    }
 
     // 2. Fetch barber
-    const { data: barber } = await supabase
+    const { data: barber, error: barberError } = await supabase
       .from('barbers').select('*').eq('id', barberId).single()
-    if (!barber) return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
+    
+    if (barberError || !barber) {
+      return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
+    }
 
     const endTime = calcEndTime(startTime, service.duration_minutes)
 
@@ -84,11 +131,12 @@ export async function POST(req: NextRequest) {
         .from('clients')
         .insert({
           first_name: clientData.first_name,
-          last_name: clientData.last_name,
+          last_name: clientData.last_name || '',
           email: clientData.email,
           phone: clientData.phone,
         })
         .select('id').single()
+      
       if (clientError || !newClient) {
         return NextResponse.json({ error: 'Error creando cliente' }, { status: 500 })
       }
@@ -125,7 +173,15 @@ export async function POST(req: NextRequest) {
       ]).catch(console.error)
     }
 
-    return NextResponse.json({ appointment, success: true })
+    const response = NextResponse.json({ appointment, success: true })
+    
+    // Add rate limit headers
+    const headers = getRateLimitHeaders(rateLimit)
+    Object.entries(headers).forEach(([key, value]) => {
+      response.headers.set(key, value)
+    })
+
+    return response
   } catch (err) {
     console.error('Error creating appointment:', err)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })

@@ -1,9 +1,10 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Calendar, Users, Scissors, UserCog, Menu, X, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 
 const NAV = [
   { href: '/admin/agenda',    label: 'Agenda',    icon: Calendar },
@@ -14,7 +15,23 @@ const NAV = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
+  const supabase = createSupabaseBrowserClient()
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await supabase.auth.signOut()
+      router.push('/login')
+      router.refresh()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   const NavLinks = () => (
     <>
@@ -47,12 +64,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <nav className="flex-1 p-3 space-y-1">
           <NavLinks />
         </nav>
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-border space-y-1">
           <Link href="/reservar" target="_blank"
             className="flex items-center gap-2 px-3 py-2 text-xs text-cream/30 hover:text-cream/60 transition-colors rounded-lg hover:bg-surface-2">
             <Scissors className="w-3.5 h-3.5" />
             Ver reservas
           </Link>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="flex items-center gap-2 px-3 py-2 w-full text-xs text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors rounded-lg disabled:opacity-50"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+          </button>
         </div>
       </aside>
 
@@ -68,6 +93,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </button>
             </div>
             <nav className="space-y-1 flex-1"><NavLinks /></nav>
+            <div className="pt-4 mt-4 border-t border-border">
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex items-center gap-2 px-3 py-2 w-full text-sm text-red-400/80 hover:text-red-400 hover:bg-red-500/10 transition-colors rounded-lg disabled:opacity-50"
+              >
+                <LogOut className="w-4 h-4" />
+                {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+              </button>
+            </div>
           </aside>
         </div>
       )}

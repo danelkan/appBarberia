@@ -1,16 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { generateTimeSlots } from '@/lib/utils'
+import { slotsQuerySchema } from '@/lib/validations'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const barberId = searchParams.get('barberId')
-  const date = searchParams.get('date')
-  const duration = Number(searchParams.get('duration') ?? '30')
-
-  if (!barberId || !date) {
-    return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 })
+  // Rate limiting - public endpoint but rate limited
+  const rateLimit = checkRateLimit(req, 'slots:read', RateLimitConfigs.read)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit)!
   }
+
+  const { searchParams } = new URL(req.url)
+  const queryParams = {
+    barberId: searchParams.get('barberId'),
+    date: searchParams.get('date'),
+    duration: searchParams.get('duration'),
+  }
+
+  // Validate query params
+  const result = slotsQuerySchema.safeParse(queryParams)
+  if (!result.success) {
+    return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
+  }
+
+  const { barberId, date, duration } = result.data
 
   const supabase = createSupabaseAdmin()
 
@@ -35,5 +49,13 @@ export async function GET(req: NextRequest) {
 
   const slots = generateTimeSlots(date, barber.availability, duration, appointments as any)
 
-  return NextResponse.json({ slots })
+  const response = NextResponse.json({ slots })
+  
+  // Add rate limit headers
+  const headers = getRateLimitHeaders(rateLimit)
+  Object.entries(headers).forEach(([key, value]) => {
+    response.headers.set(key, value)
+  })
+
+  return response
 }

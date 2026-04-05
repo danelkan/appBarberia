@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Scissors, User, Calendar, CheckCircle, ChevronLeft, Clock, DollarSign } from 'lucide-react'
+import { Scissors, User, Calendar, CheckCircle, ChevronLeft, Clock, AlertCircle, RefreshCw } from 'lucide-react'
 import { Button, Input, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, getAvailableDates } from '@/lib/utils'
 import { format, addMonths, startOfMonth, getDaysInMonth, getDay } from 'date-fns'
@@ -14,25 +14,76 @@ const STEPS = [
   { n: 4, label: 'Datos',    icon: User },
 ]
 
+// Email validation regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// Phone validation - allows various formats
+const PHONE_REGEX = /^[\d\s\-\(\)\+]{7,20}$/
+
+interface ClientFormData {
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+}
+
+interface FormErrors {
+  first_name?: string
+  last_name?: string
+  email?: string
+  phone?: string
+}
+
 export default function BookingPage() {
   const [step, setStep] = useState(1)
   const [booking, setBooking] = useState<Partial<BookingStep>>({})
   const [services, setServices] = useState<Service[]>([])
   const [barbers, setBarbers] = useState<Barber[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingError, setLoadingError] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const [appointmentId, setAppointmentId] = useState<string>()
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/services').then(r => r.json()),
-      fetch('/api/barbers').then(r => r.json()),
-    ]).then(([s, b]) => {
-      setServices(s.services ?? [])
-      setBarbers(b.barbers ?? [])
-      setLoading(false)
-    })
+      fetch('/api/services').then(r => {
+        if (!r.ok) throw new Error('Error al cargar servicios')
+        return r.json()
+      }),
+      fetch('/api/barbers').then(r => {
+        if (!r.ok) throw new Error('Error al cargar barberos')
+        return r.json()
+      }),
+    ])
+      .then(([s, b]) => {
+        setServices(s.services ?? [])
+        setBarbers(b.barbers ?? [])
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error('Error loading data:', err)
+        setLoadingError(err.message || 'Error al cargar los datos. Por favor intentá de nuevo.')
+        setLoading(false)
+      })
   }, [])
+
+  if (loadingError) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center px-4 text-center">
+        <div className="max-w-sm">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-7 h-7 text-red-400" />
+          </div>
+          <h1 className="font-serif text-2xl text-cream mb-2">Error de conexión</h1>
+          <p className="text-sm text-cream/50 mb-6">{loadingError}</p>
+          <Button onClick={() => window.location.reload()} variant="outline">
+            <RefreshCw className="w-4 h-4" />
+            Reintentar
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   if (confirmed) return <ConfirmationScreen booking={booking} appointmentId={appointmentId} />
 
@@ -120,6 +171,14 @@ export default function BookingPage() {
 function ServiceStep({ services, booking, onSelect }: {
   services: Service[]; booking: Partial<BookingStep>; onSelect: (s: Service) => void
 }) {
+  if (services.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-cream/50">No hay servicios disponibles</p>
+      </div>
+    )
+  }
+
   return (
     <div className="animate-fade-up">
       <h2 className="font-serif text-2xl text-cream mb-1">¿Qué servicio?</h2>
@@ -155,6 +214,17 @@ function ServiceStep({ services, booking, onSelect }: {
 function BarberStep({ barbers, booking, onSelect, onBack }: {
   barbers: Barber[]; booking: Partial<BookingStep>; onSelect: (b: Barber) => void; onBack: () => void
 }) {
+  if (barbers.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-cream/50">No hay barberos disponibles</p>
+        <Button onClick={onBack} variant="outline" className="mt-4">
+          Volver
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="animate-fade-up">
       <button onClick={onBack} className="flex items-center gap-1 text-xs text-cream/40 hover:text-cream mb-5 transition-colors">
@@ -170,7 +240,7 @@ function BarberStep({ barbers, booking, onSelect, onBack }: {
               booking.barber?.id === b.id ? 'border-gold bg-gold/5' : 'border-border hover:border-gold/30 hover:bg-surface'
             )}>
             <div className="w-11 h-11 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-gold font-serif text-lg flex-shrink-0">
-              {b.name[0]}
+              {b.name[0]?.toUpperCase() || '?'}
             </div>
             <div>
               <p className="font-medium text-cream text-sm">{b.name}</p>
@@ -191,6 +261,7 @@ function DateTimeStep({ booking, onSelect, onBack }: {
   const [selectedTime, setSelectedTime] = useState(booking.time ?? '')
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
+  const [slotsError, setSlotsError] = useState<string | null>(null)
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
   const availableDates = booking.barber
@@ -200,10 +271,23 @@ function DateTimeStep({ booking, onSelect, onBack }: {
   useEffect(() => {
     if (!selectedDate || !booking.barber || !booking.service) return
     setLoadingSlots(true)
+    setSlotsError(null)
     setSlots([])
+    
     fetch(`/api/appointments/slots?barberId=${booking.barber.id}&date=${selectedDate}&duration=${booking.service.duration_minutes}`)
-      .then(r => r.json())
-      .then(d => { setSlots(d.slots ?? []); setLoadingSlots(false) })
+      .then(r => {
+        if (!r.ok) throw new Error('Error al cargar horarios')
+        return r.json()
+      })
+      .then(d => { 
+        setSlots(d.slots ?? [])
+        setLoadingSlots(false)
+      })
+      .catch(err => {
+        console.error('Error loading slots:', err)
+        setSlotsError('No se pudieron cargar los horarios')
+        setLoadingSlots(false)
+      })
   }, [selectedDate, booking.barber, booking.service])
 
   // Calendar grid
@@ -275,6 +359,20 @@ function DateTimeStep({ booking, onSelect, onBack }: {
           <p className="text-xs text-cream/40 uppercase tracking-wider mb-3">Horarios disponibles</p>
           {loadingSlots ? (
             <div className="flex justify-center py-6"><Spinner /></div>
+          ) : slotsError ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-red-400 mb-2">{slotsError}</p>
+              <Button variant="ghost" size="sm" onClick={() => {
+                if (booking.barber && booking.service) {
+                  fetch(`/api/appointments/slots?barberId=${booking.barber.id}&date=${selectedDate}&duration=${booking.service.duration_minutes}`)
+                    .then(r => r.json())
+                    .then(d => { setSlots(d.slots ?? []); setSlotsError(null) })
+                    .catch(() => setSlotsError('No se pudieron cargar los horarios'))
+                }
+              }}>
+                Reintentar
+              </Button>
+            </div>
           ) : slots.length === 0 ? (
             <p className="text-sm text-cream/30 text-center py-4">No hay horarios disponibles para este día</p>
           ) : (
@@ -312,36 +410,102 @@ function DateTimeStep({ booking, onSelect, onBack }: {
 // ─── Step 4: Client data ──────────────────────────────────────────
 function ClientStep({ booking, onConfirm, onBack }: {
   booking: Partial<BookingStep>
-  onConfirm: (client: any, id: string) => void
+  onConfirm: (client: ClientFormData, id: string) => void
   onBack: () => void
 }) {
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '' })
+  const [form, setForm] = useState<ClientFormData>({ first_name: '', last_name: '', email: '', phone: '' })
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {}
+
+    if (!form.first_name.trim()) {
+      errors.first_name = 'El nombre es obligatorio'
+    } else if (form.first_name.trim().length < 2) {
+      errors.first_name = 'El nombre debe tener al menos 2 caracteres'
+    } else if (form.first_name.trim().length > 50) {
+      errors.first_name = 'El nombre es demasiado largo'
+    }
+
+    if (!form.email.trim()) {
+      errors.email = 'El email es obligatorio'
+    } else if (!EMAIL_REGEX.test(form.email.trim())) {
+      errors.email = 'Ingresá un email válido'
+    }
+
+    if (!form.phone.trim()) {
+      errors.phone = 'El teléfono es obligatorio'
+    } else if (!PHONE_REGEX.test(form.phone.trim())) {
+      errors.phone = 'Ingresá un teléfono válido'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!form.first_name || !form.email || !form.phone) {
-      setError('Completá todos los campos obligatorios')
+
+    if (!validateForm()) {
       return
     }
+
+    // Check required booking data
+    if (!booking.service?.id || !booking.barber?.id || !booking.date || !booking.time) {
+      setError('Datos de reserva incompletos. Por favor volvé al inicio.')
+      return
+    }
+
     setLoading(true)
-    const res = await fetch('/api/appointments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        serviceId: booking.service?.id,
-        barberId: booking.barber?.id,
-        date: booking.date,
-        startTime: booking.time,
-        client: form,
-      }),
-    })
-    const data = await res.json()
-    setLoading(false)
-    if (!res.ok) { setError(data.error ?? 'Error al confirmar el turno'); return }
-    onConfirm(form, data.appointment.id)
+
+    try {
+      const res = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceId: booking.service.id,
+          barberId: booking.barber.id,
+          date: booking.date,
+          startTime: booking.time,
+          client: {
+            first_name: form.first_name.trim(),
+            last_name: form.last_name.trim(),
+            email: form.email.trim().toLowerCase(),
+            phone: form.phone.trim(),
+          },
+        }),
+      })
+
+      const data = await res.json()
+      
+      if (!res.ok) {
+        setError(data.error?.message || data.error || 'Error al confirmar el turno')
+        setLoading(false)
+        return
+      }
+
+      onConfirm({
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim().toLowerCase(),
+        phone: form.phone.trim(),
+      }, data.appointment.id)
+    } catch (err) {
+      console.error('Error submitting booking:', err)
+      setError('Error de conexión. Por favor intentá de nuevo.')
+      setLoading(false)
+    }
+  }
+
+  const updateField = (field: keyof ClientFormData, value: string) => {
+    setForm(f => ({ ...f, [field]: value }))
+    // Clear error when user starts typing
+    if (formErrors[field]) {
+      setFormErrors(e => ({ ...e, [field]: undefined }))
+    }
   }
 
   return (
@@ -369,14 +533,51 @@ function ClientStep({ booking, onConfirm, onBack }: {
         ))}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Nombre *" value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Felipe" />
-          <Input label="Apellido" value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} placeholder="García" />
+          <div>
+            <Input
+              label="Nombre *"
+              value={form.first_name}
+              onChange={e => updateField('first_name', e.target.value)}
+              placeholder="Felipe"
+              error={formErrors.first_name}
+              maxLength={50}
+            />
+          </div>
+          <div>
+            <Input
+              label="Apellido"
+              value={form.last_name}
+              onChange={e => updateField('last_name', e.target.value)}
+              placeholder="García"
+              maxLength={50}
+            />
+          </div>
         </div>
-        <Input label="Email *" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="tu@email.com" />
-        <Input label="Teléfono *" type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+598 9X XXX XXX" />
-        {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">{error}</p>}
+        <Input
+          label="Email *"
+          type="email"
+          value={form.email}
+          onChange={e => updateField('email', e.target.value)}
+          placeholder="tu@email.com"
+          error={formErrors.email}
+          autoComplete="email"
+        />
+        <Input
+          label="Teléfono *"
+          type="tel"
+          value={form.phone}
+          onChange={e => updateField('phone', e.target.value)}
+          placeholder="+598 9X XXX XXX"
+          error={formErrors.phone}
+          autoComplete="tel"
+        />
+        {error && (
+          <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">
+            {error}
+          </div>
+        )}
         <Button type="submit" className="w-full" size="lg" loading={loading}>
           Confirmar turno
         </Button>
@@ -407,6 +608,11 @@ function ConfirmationScreen({ booking, appointmentId }: { booking: Partial<Booki
               <span className="text-cream capitalize">{row.value}</span>
             </div>
           ))}
+          {appointmentId && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-cream/30">Nº de reserva: {appointmentId.slice(0, 8)}</p>
+            </div>
+          )}
         </div>
         <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
           Hacer otra reserva

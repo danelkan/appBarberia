@@ -16,7 +16,7 @@ const dmSerif = DM_Serif_Display({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://felito-barber-studio.vercel.app'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://felito-barber-studio.vercel.app'),
   title: {
     default: 'Felito Barber Studio | Reservas online en Montevideo',
     template: '%s | Felito Barber Studio',

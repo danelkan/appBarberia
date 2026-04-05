@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://felito-barber-studio.vercel.app'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://felito-barber-studio.vercel.app'
 
   return [
     {
