@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --gold: #c9a84c;
+    --gold-light: #e8c96a;
+    --black: #0f0f0f;
+    --cream: #fafaf8;
+    --surface: #1a1a1a;
+    --surface-2: #242424;
+    --surface-3: #2e2e2e;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: var(--black);
+    color: var(--cream);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
+  /* Selection */
+  ::selection { background: rgba(201, 168, 76, 0.25); color: var(--cream); }
+}
+
+@layer components {
+  /* ─── Buttons ─────────────────────────────────────── */
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 
+           bg-gold text-black font-sans font-medium text-sm 
+           rounded-lg transition-all duration-200
+           hover:bg-gold-light active:scale-95 disabled:opacity-40 
+           disabled:pointer-events-none;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3
+           border border-border text-cream/70 font-sans text-sm
+           rounded-lg transition-all duration-200
+           hover:border-gold/40 hover:text-cream hover:bg-surface
+           active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           text-cream/60 font-sans text-sm rounded-lg
+           transition-all duration-200 hover:text-cream hover:bg-surface;
+  }
+
+  /* ─── Cards ───────────────────────────────────────── */
+  .card {
+    @apply bg-surface border border-border rounded-xl;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 cursor-pointer
+           hover:border-gold/30 hover:bg-surface-2;
+  }
+
+  /* ─── Form elements ───────────────────────────────── */
+  .input {
+    @apply w-full bg-surface-2 border border-border rounded-lg
+           px-4 py-2.5 text-sm text-cream placeholder-cream/30
+           outline-none transition-all duration-200
+           focus:border-gold/50 focus:ring-1 focus:ring-gold/20;
+  }
+
+  .label {
+    @apply block text-xs font-medium text-cream/50 uppercase tracking-wider mb-1.5;
+  }
+
+  /* ─── Badge ───────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 
+           text-xs font-medium rounded-full border;
+  }
+
+  /* ─── Section title ───────────────────────────────── */
+  .section-title {
+    @apply font-serif text-2xl md:text-3xl text-cream;
+  }
+
+  /* ─── Gold divider ────────────────────────────────── */
+  .gold-divider {
+    @apply w-10 h-0.5 bg-gold rounded-full;
+  }
+
+  /* ─── Loading skeleton ────────────────────────────── */
+  .skeleton {
+    @apply bg-surface-2 rounded animate-pulse;
+    background: linear-gradient(90deg, #1a1a1a 25%, #242424 50%, #1a1a1a 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+/* ─── Step wizard progress ──────────────────────────── */
+.step-line {
+  position: relative;
+}
+
+.step-line::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 100%;
+  height: 1px;
+  background: #2e2e2e;
+  transform: translateY(-50%);
+}
+
+.step-line.active::after {
+  background: #c9a84c;
+}
+
+/* ─── Calendar day grid ─────────────────────────────── */
+.calendar-day {
+  @apply flex flex-col items-center justify-center p-2 rounded-lg
+         text-sm transition-all duration-150 cursor-pointer select-none;
+}
+
+.calendar-day.available {
+  @apply hover:bg-surface-2 hover:border-gold/20 border border-transparent;
+}
+
+.calendar-day.selected {
+  @apply bg-gold text-black font-medium border border-gold;
+}
+
+.calendar-day.disabled {
+  @apply opacity-25 cursor-not-allowed;
+}
+
+.calendar-day.today {
+  @apply border border-gold/30;
+}
+
+
+@layer components {
+  .premium-backdrop {
+    @apply min-h-screen bg-[#0f0f0f] relative;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(201,168,76,0.08), transparent);
+  }
+
+  .glass-card {
+    @apply rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm;
+  }
+
+  .premium-panel {
+    @apply rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] shadow-[0_10px_60px_rgba(0,0,0,0.35)];
+  }
+
+  .glow-gold {
+    box-shadow: 0 0 0 1px rgba(201,168,76,0.08), 0 10px 30px rgba(201,168,76,0.18);
+  }
+
+  .hero-grid {
+    background-image:
+      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 54px 54px;
+    background-position: center center;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.7s ease-out both;
+}
+
+.animate-fade-up-delayed {
+  animation: fadeUp 0.9s ease-out both;
+}
