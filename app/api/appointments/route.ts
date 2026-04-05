@@ -36,14 +36,18 @@ export async function GET(req: NextRequest) {
       *,
       client:clients(id, first_name, last_name, email, phone),
       barber:barbers(id, name, photo_url),
-      service:services(id, name, price, duration_minutes)
+      service:services(id, name, price, duration_minutes),
+      branch:branches(id, name, address),
+      payment:payments(id, amount, method, receipt_number)
     `)
     .order('date')
     .order('start_time')
 
   if (from)     query = query.gte('date', from)
   if (to)       query = query.lte('date', to)
+  const branchId = searchParams.get('branch_id') ?? undefined
   if (barberId) query = query.eq('barber_id', barberId)
+  if (branchId) query = query.eq('branch_id', branchId)
 
   const { data, error } = await query
 
@@ -66,7 +70,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
     }
 
-    const { serviceId, barberId, date, startTime, client: clientData } = result.data
+    const { serviceId, barberId, branchId, date, startTime, client: clientData } = result.data
     const supabase = createSupabaseAdmin()
 
     const { data: service, error: serviceError } = await supabase
@@ -116,7 +120,7 @@ export async function POST(req: NextRequest) {
 
     const { data: appointment, error: apptError } = await supabase
       .from('appointments')
-      .insert({ client_id: clientId, barber_id: barberId, service_id: serviceId, date, start_time: startTime, end_time: endTime, status: 'pendiente' })
+      .insert({ client_id: clientId, barber_id: barberId, service_id: serviceId, branch_id: branchId ?? null, date, start_time: startTime, end_time: endTime, status: 'pendiente' })
       .select('*').single()
 
     if (apptError || !appointment) {

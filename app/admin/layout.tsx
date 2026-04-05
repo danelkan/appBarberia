@@ -3,170 +3,283 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, createContext, useContext } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Calendar, Users, Scissors, UserCog, Menu, X, LogOut, Shield, Clock } from 'lucide-react'
+import {
+  Calendar, Users, Scissors, UserCog, LogOut,
+  Shield, Clock, ChevronDown, MapPin, DollarSign,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import type { Branch } from '@/types'
 
 interface UserRole {
   id: string
   email: string
   role: 'superadmin' | 'admin' | 'barber'
-  barber: { id: string; name: string; email: string } | null
+  barber_id?: string
 }
 
-export const UserRoleContext = createContext<UserRole | null>(null)
-export function useUserRole() { return useContext(UserRoleContext) }
-
-function buildNav(role: UserRole) {
-  if (role.role === 'barber') {
-    // Barberos: solo ven su agenda y pueden editar horarios
-    return [
-      { href: '/admin/agenda', label: 'Mi Agenda', icon: Calendar },
-      { href: '/admin/horarios', label: 'Mis Horarios', icon: Clock },
-    ]
-  }
-  // Superadmin y admin ven todo
-  return [
-    { href: '/admin/agenda',   label: 'Agenda',   icon: Calendar },
-    { href: '/admin/clientes', label: 'Clientes', icon: Users },
-    { href: '/admin/servicios', label: 'Servicios', icon: Scissors },
-    { href: '/admin/barberos', label: 'Barberos', icon: UserCog },
-  ]
+interface AdminContextValue {
+  user: UserRole | null
+  activeBranch: Branch | null
+  branches: Branch[]
+  setActiveBranch: (b: Branch | null) => void
 }
+
+export const AdminContext = createContext<AdminContextValue>({
+  user: null, activeBranch: null, branches: [], setActiveBranch: () => {},
+})
+export const useAdmin = () => useContext(AdminContext)
+
+const NAV = [
+  { href: '/admin/agenda',   label: 'Agenda',    icon: Calendar  },
+  { href: '/admin/caja',     label: 'Caja',      icon: DollarSign},
+  { href: '/admin/clientes', label: 'Clientes',  icon: Users     },
+  { href: '/admin/servicios',label: 'Servicios', icon: Scissors  },
+  { href: '/admin/barberos', label: 'Barberos',  icon: UserCog   },
+  { href: '/admin/horarios', label: 'Horarios',  icon: Clock     },
+]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [loggingOut, setLoggingOut] = useState(false)
-  const [userRole, setUserRole] = useState<UserRole | null>(null)
+  const [user, setUser]               = useState<UserRole | null>(null)
+  const [branches, setBranches]       = useState<Branch[]>([])
+  const [activeBranch, setActiveBranch] = useState<Branch | null>(null)
+  const [branchOpen, setBranchOpen]   = useState(false)
+  const [loading, setLoading]         = useState(true)
   const pathname = usePathname()
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createSupabaseBrowserClient()
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then(r => r.json())
-      .then(data => {
-        if (!data.error) setUserRole(data)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { router.push('/login'); return }
+      fetch('/api/auth/me').then(r => r.json()).then(d => {
+        if (d.user) setUser(d.user)
       })
-      .catch(console.error)
+    })
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/branches').then(r => r.json()).then(d => {
+      if (d.branches) {
+        setBranches(d.branches)
+        setActiveBranch(d.branches[0] ?? null)
+      }
+      setLoading(false)
+    })
   }, [])
 
   const handleLogout = async () => {
-    setLoggingOut(true)
-    try {
-      await supabase.auth.signOut()
-      router.push('/login')
-      router.refresh()
-    } catch (error) {
-      console.error('Logout error:', error)
-    } finally {
-      setLoggingOut(false)
-    }
+    await fetch('/api/auth/logout')
+    router.push('/login')
   }
 
-  const nav = userRole ? buildNav(userRole) : []
+  const visibleNav = NAV.filter(item => {
+    if (user?.role === 'barber') return ['agenda'].some(k => item.href.includes(k))
+    return true
+  })
 
-  const NavLinks = () => (
-    <>
-      {nav.map(item => {
-        const Icon = item.icon
-        const active = pathname === item.href
-        return (
-          <Link key={item.href} href={item.href}
-            onClick={() => setMobileOpen(false)}
-            className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150',
-              active ? 'bg-gold/10 text-gold border border-gold/20' : 'text-cream/50 hover:text-cream hover:bg-surface-2'
-            )}>
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            {item.label}
-          </Link>
-        )
-      })}
-    </>
-  )
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+          <p className="text-xs uppercase tracking-widest text-cream/30">Cargando</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <UserRoleContext.Provider value={userRole}>
-      <div className="min-h-screen bg-black flex">
-        {/* Desktop sidebar */}
-        <aside className="hidden md:flex flex-col w-56 border-r border-border bg-surface shrink-0">
-          <div className="p-5 border-b border-border">
-            <h1 className="font-serif text-lg text-cream">Felito Studios</h1>
-            <div className="flex items-center gap-1.5 mt-1">
-              {userRole?.role === 'superadmin' && (
-                <Shield className="w-3 h-3 text-gold/60" />
-              )}
-              <p className="text-xs text-cream/30">
-                {userRole?.role === 'superadmin' ? 'Superadmin' :
-                 userRole?.role === 'barber' ? userRole.barber?.name ?? 'Barbero' :
-                 'Panel de gestión'}
-              </p>
+    <AdminContext.Provider value={{ user, activeBranch, branches, setActiveBranch }}>
+      <div className="min-h-screen bg-[#0a0a0a]">
+
+        {/* ── Desktop sidebar ────────────────────────────── */}
+        <aside className="hidden lg:flex fixed inset-y-0 left-0 w-60 flex-col border-r border-white/[0.06] bg-[#0f0f0f] z-40">
+          {/* Logo */}
+          <div className="px-5 py-5 border-b border-white/[0.06]">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-gold/15 border border-gold/25 flex items-center justify-center">
+                <Scissors className="w-4 h-4 text-gold" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-cream">Felito Studios</p>
+                <p className="text-[10px] uppercase tracking-widest text-cream/30">Admin</p>
+              </div>
             </div>
           </div>
-          <nav className="flex-1 p-3 space-y-1">
-            <NavLinks />
+
+          {/* Branch selector */}
+          {branches.length > 0 && (
+            <div className="px-3 py-3 border-b border-white/[0.06]">
+              <button
+                onClick={() => setBranchOpen(!branchOpen)}
+                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] transition-all"
+              >
+                <MapPin className="w-3.5 h-3.5 text-gold flex-shrink-0" />
+                <span className="flex-1 text-left text-sm text-cream truncate">
+                  {activeBranch ? activeBranch.name : 'Todas las sedes'}
+                </span>
+                <ChevronDown className={cn('w-3.5 h-3.5 text-cream/40 transition-transform', branchOpen && 'rotate-180')} />
+              </button>
+              {branchOpen && (
+                <div className="mt-1 rounded-xl border border-white/[0.08] bg-[#1a1a1a] overflow-hidden animate-fade-up">
+                  {user?.role !== 'barber' && (
+                    <button
+                      onClick={() => { setActiveBranch(null); setBranchOpen(false) }}
+                      className={cn('w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/[0.05]',
+                        activeBranch === null ? 'text-gold' : 'text-cream/60')}
+                    >
+                      Todas las sedes
+                    </button>
+                  )}
+                  {branches.map(b => (
+                    <button
+                      key={b.id}
+                      onClick={() => { setActiveBranch(b); setBranchOpen(false) }}
+                      className={cn('w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/[0.05]',
+                        activeBranch?.id === b.id ? 'text-gold' : 'text-cream/60')}
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Nav */}
+          <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
+            {visibleNav.map(item => {
+              const active = pathname.startsWith(item.href)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
+                    active
+                      ? 'bg-gold/10 text-gold border border-gold/20'
+                      : 'text-cream/50 hover:text-cream hover:bg-white/[0.04]'
+                  )}
+                >
+                  <item.icon className="w-4 h-4 flex-shrink-0" />
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
-          <div className="p-3 border-t border-border space-y-1">
-            <Link href="/reservar" target="_blank"
-              className="flex items-center gap-2 px-3 py-2 text-xs text-cream/30 hover:text-cream/60 transition-colors rounded-lg hover:bg-surface-2">
-              <Scissors className="w-3.5 h-3.5" />
-              Ver formulario de reserva
-            </Link>
+
+          {/* User + logout */}
+          <div className="px-3 py-3 border-t border-white/[0.06]">
+            {user && (
+              <div className="flex items-center gap-3 px-3 py-2 mb-2">
+                <div className="w-7 h-7 rounded-full bg-gold/15 border border-gold/20 flex items-center justify-center text-xs font-semibold text-gold">
+                  {user.email[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-cream truncate">{user.email}</p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {user.role === 'superadmin' && <Shield className="w-3 h-3 text-gold" />}
+                    <p className="text-[10px] uppercase tracking-wider text-cream/30">{user.role}</p>
+                  </div>
+                </div>
+              </div>
+            )}
             <button
               onClick={handleLogout}
-              disabled={loggingOut}
-              className="flex items-center gap-2 px-3 py-2 w-full text-xs text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors rounded-lg disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-cream/40 hover:text-red-400 hover:bg-red-500/10 transition-all"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+              <LogOut className="w-4 h-4" />
+              Salir
             </button>
           </div>
         </aside>
 
-        {/* Mobile sidebar */}
-        {mobileOpen && (
-          <div className="fixed inset-0 z-50 md:hidden">
-            <div className="absolute inset-0 bg-black/80" onClick={() => setMobileOpen(false)} />
-            <aside className="absolute left-0 top-0 bottom-0 w-64 bg-surface border-r border-border p-4 flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <h1 className="font-serif text-lg text-cream">Felito Studios</h1>
-                <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg hover:bg-surface-2 text-cream/40">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <nav className="space-y-1 flex-1"><NavLinks /></nav>
-              <div className="pt-4 mt-4 border-t border-border">
-                <button
-                  onClick={handleLogout}
-                  disabled={loggingOut}
-                  className="flex items-center gap-2 px-3 py-2 w-full text-sm text-red-400/80 hover:text-red-400 hover:bg-red-500/10 transition-colors rounded-lg disabled:opacity-50"
-                >
-                  <LogOut className="w-4 h-4" />
-                  {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
-                </button>
-              </div>
-            </aside>
+        {/* ── Mobile top bar ──────────────────────────────── */}
+        <header className="lg:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 h-14 bg-[#0f0f0f]/95 backdrop-blur-sm border-b border-white/[0.06]">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gold/15 border border-gold/20 flex items-center justify-center">
+              <Scissors className="w-3.5 h-3.5 text-gold" />
+            </div>
+            <span className="text-sm font-semibold text-cream">Felito Studios</span>
           </div>
-        )}
 
-        {/* Main */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Mobile header */}
-          <header className="md:hidden flex items-center gap-3 px-4 py-3.5 border-b border-border">
-            <button onClick={() => setMobileOpen(true)} className="p-1.5 rounded-lg hover:bg-surface text-cream/60">
-              <Menu className="w-5 h-5" />
+          <div className="flex items-center gap-2">
+            {/* Mobile branch selector */}
+            {branches.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setBranchOpen(!branchOpen)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-xs text-cream/70"
+                >
+                  <MapPin className="w-3 h-3 text-gold" />
+                  {activeBranch?.name ?? 'Todas'}
+                  <ChevronDown className={cn('w-3 h-3 transition-transform', branchOpen && 'rotate-180')} />
+                </button>
+                {branchOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-white/[0.08] bg-[#1a1a1a] shadow-xl overflow-hidden animate-fade-up z-50">
+                    {user?.role !== 'barber' && (
+                      <button
+                        onClick={() => { setActiveBranch(null); setBranchOpen(false) }}
+                        className={cn('w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-white/[0.05]',
+                          activeBranch === null ? 'text-gold' : 'text-cream/60')}
+                      >
+                        Todas las sedes
+                      </button>
+                    )}
+                    {branches.map(b => (
+                      <button
+                        key={b.id}
+                        onClick={() => { setActiveBranch(b); setBranchOpen(false) }}
+                        className={cn('w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-white/[0.05]',
+                          activeBranch?.id === b.id ? 'text-gold' : 'text-cream/60')}
+                      >
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={handleLogout}
+              className="p-1.5 rounded-lg text-cream/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
-            <span className="font-serif text-cream">
-              {nav.find(n => n.href === pathname)?.label ?? 'Admin'}
-            </span>
-          </header>
+          </div>
+        </header>
 
-          <main className="flex-1 p-4 md:p-6 overflow-auto">
-            {children}
-          </main>
-        </div>
+        {/* ── Main content ────────────────────────────────── */}
+        <main className="lg:pl-60 pt-14 lg:pt-0 pb-20 lg:pb-0 min-h-screen">
+          {children}
+        </main>
+
+        {/* ── Mobile bottom nav ───────────────────────────── */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0f0f0f]/95 backdrop-blur-sm border-t border-white/[0.06]">
+          <div className="flex items-center justify-around px-1 py-2 safe-area-pb">
+            {visibleNav.slice(0, 5).map(item => {
+              const active = pathname.startsWith(item.href)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all min-w-[52px]',
+                    active ? 'text-gold' : 'text-cream/35 hover:text-cream/70'
+                  )}
+                >
+                  <item.icon className={cn('w-5 h-5 transition-transform', active && 'scale-110')} />
+                  <span className="text-[9px] uppercase tracking-wider font-medium">{item.label}</span>
+                  {active && <span className="w-1 h-1 rounded-full bg-gold" />}
+                </Link>
+              )
+            })}
+          </div>
+        </nav>
+
       </div>
-    </UserRoleContext.Provider>
+    </AdminContext.Provider>
   )
 }

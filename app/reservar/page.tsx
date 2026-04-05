@@ -15,18 +15,20 @@ import {
   Sparkles,
   Star,
   User,
+  MapPin,
 } from 'lucide-react'
 import { format, addMonths, startOfMonth, getDaysInMonth, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Button, Input, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, getAvailableDates } from '@/lib/utils'
-import type { Barber, BookingStep, Service, TimeSlot } from '@/types'
+import type { Barber, BookingStep, Branch, Service, TimeSlot } from '@/types'
 
 const STEPS = [
-  { n: 1, label: 'Servicio', icon: Scissors },
-  { n: 2, label: 'Barbero', icon: User },
-  { n: 3, label: 'Fecha', icon: Calendar },
-  { n: 4, label: 'Datos', icon: ShieldCheck },
+  { n: 1, label: 'Sede',     icon: MapPin     },
+  { n: 2, label: 'Servicio', icon: Scissors   },
+  { n: 3, label: 'Barbero',  icon: User       },
+  { n: 4, label: 'Fecha',    icon: Calendar   },
+  { n: 5, label: 'Datos',    icon: ShieldCheck},
 ]
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -55,6 +57,7 @@ const EXPERIENCE_POINTS = [
 export default function BookingPage() {
   const [step, setStep] = useState(1)
   const [booking, setBooking] = useState<Partial<BookingStep>>({})
+  const [branches, setBranches] = useState<Branch[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [barbers, setBarbers] = useState<Barber[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,6 +67,10 @@ export default function BookingPage() {
 
   useEffect(() => {
     Promise.all([
+      fetch('/api/branches').then((r) => {
+        if (!r.ok) throw new Error('Error al cargar sedes')
+        return r.json()
+      }),
       fetch('/api/services').then((r) => {
         if (!r.ok) throw new Error('Error al cargar servicios')
         return r.json()
@@ -73,7 +80,8 @@ export default function BookingPage() {
         return r.json()
       }),
     ])
-      .then(([s, b]) => {
+      .then(([br, s, b]) => {
+        setBranches(br.branches ?? [])
         setServices(s.services ?? [])
         setBarbers(b.barbers ?? [])
         setLoading(false)
@@ -157,37 +165,50 @@ export default function BookingPage() {
               ) : (
                 <>
                   {step === 1 && (
-                    <ServiceStep
-                      services={services}
+                    <BranchStep
+                      branches={branches}
                       booking={booking}
-                      onSelect={(service) => {
-                        setBooking((b) => ({ ...b, service, barber: undefined, date: undefined, time: undefined }))
+                      onSelect={(branch) => {
+                        setBooking((b) => ({ ...b, branch, service: undefined, barber: undefined, date: undefined, time: undefined }))
                         setStep(2)
                       }}
                     />
                   )}
                   {step === 2 && (
-                    <BarberStep
-                      barbers={barbers}
+                    <ServiceStep
+                      services={services}
                       booking={booking}
-                      onSelect={(barber) => {
-                        setBooking((b) => ({ ...b, barber, date: undefined, time: undefined }))
+                      onSelect={(service) => {
+                        setBooking((b) => ({ ...b, service, barber: undefined, date: undefined, time: undefined }))
                         setStep(3)
                       }}
-                      onBack={() => setStep(1)}
                     />
                   )}
                   {step === 3 && (
-                    <DateTimeStep
+                    <BarberStep
+                      barbers={barbers.filter(bar =>
+                        !booking.branch || !bar.branches?.length ||
+                        bar.branches.some(br => br.id === booking.branch?.id)
+                      )}
                       booking={booking}
-                      onSelect={(date, time) => {
-                        setBooking((b) => ({ ...b, date, time }))
+                      onSelect={(barber) => {
+                        setBooking((b) => ({ ...b, barber, date: undefined, time: undefined }))
                         setStep(4)
                       }}
                       onBack={() => setStep(2)}
                     />
                   )}
                   {step === 4 && (
+                    <DateTimeStep
+                      booking={booking}
+                      onSelect={(date, time) => {
+                        setBooking((b) => ({ ...b, date, time }))
+                        setStep(5)
+                      }}
+                      onBack={() => setStep(3)}
+                    />
+                  )}
+                  {step === 5 && (
                     <ClientStep
                       booking={booking}
                       onConfirm={(client, id) => {
@@ -195,7 +216,7 @@ export default function BookingPage() {
                         setAppointmentId(id)
                         setConfirmed(true)
                       }}
-                      onBack={() => setStep(3)}
+                      onBack={() => setStep(4)}
                     />
                   )}
                 </>
@@ -217,6 +238,48 @@ export default function BookingPage() {
 
           <BookingSidebar booking={booking} step={step} />
         </div>
+      </div>
+    </div>
+  )
+}
+
+function BranchStep({
+  branches, booking, onSelect,
+}: {
+  branches: Branch[]
+  booking: Partial<BookingStep>
+  onSelect: (branch: Branch) => void
+}) {
+  return (
+    <div className="animate-fade-up">
+      <StepHeader
+        eyebrow="Paso 1"
+        title="Elegí tu sede"
+        description="Seleccioná el local de Felito Barber Studio donde querés reservar tu turno."
+      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        {branches.map((branch) => (
+          <SelectionCard
+            key={branch.id}
+            selected={booking.branch?.id === branch.id}
+            onClick={() => onSelect(branch)}
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] border border-gold/20 bg-gold/10 text-gold">
+                <MapPin className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-lg font-semibold text-cream">{branch.name}</h4>
+                {branch.address && (
+                  <p className="mt-1 text-sm text-cream/50">{branch.address}</p>
+                )}
+                {branch.phone && (
+                  <p className="mt-2 text-xs text-cream/35">{branch.phone}</p>
+                )}
+              </div>
+            </div>
+          </SelectionCard>
+        ))}
       </div>
     </div>
   )
@@ -271,10 +334,11 @@ function ProgressRail({ currentStep }: { currentStep: number }) {
 
 function BookingSidebar({ booking, step }: { booking: Partial<BookingStep>; step: number }) {
   const summaryRows = [
-    { label: 'Servicio', value: booking.service?.name || 'Elegí el servicio ideal' },
-    { label: 'Profesional', value: booking.barber?.name || 'Seleccioná tu barbero' },
-    { label: 'Fecha', value: booking.date ? formatDate(booking.date) : 'Definí el mejor día' },
-    { label: 'Hora', value: booking.time || 'Elegí un horario disponible' },
+    { label: 'Sede',       value: booking.branch?.name  || 'Elegí la sede'          },
+    { label: 'Servicio',   value: booking.service?.name || 'Elegí el servicio ideal' },
+    { label: 'Profesional',value: booking.barber?.name  || 'Seleccioná tu barbero'  },
+    { label: 'Fecha',      value: booking.date ? formatDate(booking.date) : 'Definí el mejor día' },
+    { label: 'Hora',       value: booking.time          || 'Elegí un horario'       },
   ]
 
   return (
@@ -826,6 +890,7 @@ function ClientStep({
         body: JSON.stringify({
           serviceId: booking.service.id,
           barberId: booking.barber.id,
+          branchId: booking.branch?.id,
           date: booking.date,
           startTime: booking.time,
           client: {

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Clock, Save, Shield } from 'lucide-react'
 import { Button, Spinner } from '@/components/ui'
 import { cn, DAY_NAMES } from '@/lib/utils'
-import { useUserRole } from '../layout'
+import { useAdmin } from "../layout"
 import type { WeeklyAvailability, DaySchedule, Barber } from '@/types'
 
 const DEFAULT_AVAIL: WeeklyAvailability = {
@@ -18,18 +18,18 @@ const DEFAULT_AVAIL: WeeklyAvailability = {
 }
 
 export default function HorariosPage() {
-  const userRole = useUserRole()
+  const { user: userRole } = useAdmin()
   const [availability, setAvailability] = useState<WeeklyAvailability>(DEFAULT_AVAIL)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    if (!userRole?.barber?.id) return
+    if (!userRole?.barber_id) return
     fetch('/api/barbers')
       .then(r => r.json())
       .then((data: { barbers: Barber[] }) => {
-        const me = data.barbers.find(b => b.id === userRole.barber!.id)
+        const me = data.barbers.find(b => b.id === userRole.barber_id)
         if (me?.availability) setAvailability(me.availability)
         setLoading(false)
       })

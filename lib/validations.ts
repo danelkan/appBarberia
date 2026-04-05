@@ -10,8 +10,9 @@ export const timeSchema = z.string().regex(/^\d{2}:\d{2}$/, 'Time must be in HH:
 // ─── Appointment Schemas ───────────────────────────────────────────
 export const createAppointmentSchema = z.object({
   serviceId: uuidSchema,
-  barberId: uuidSchema,
-  date: dateSchema,
+  barberId:  uuidSchema,
+  branchId:  uuidSchema.optional().nullable(),
+  date:      dateSchema,
   startTime: timeSchema,
   client: z.object({
     first_name: z.string().min(1, 'First name is required').max(100, 'First name too long'),
