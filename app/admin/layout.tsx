@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Calendar, Users, Scissors, UserCog, LogOut,
-  Shield, Clock, ChevronDown, MapPin, DollarSign, Menu, X,
+  Shield, Clock, ChevronDown, MapPin, DollarSign, Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
@@ -16,6 +16,7 @@ interface UserRole {
   email: string
   role: 'superadmin' | 'admin' | 'barber'
   barber_id?: string
+  branch_ids?: string[]
 }
 
 interface AdminContextValue {
@@ -33,6 +34,7 @@ export const useAdmin = () => useContext(AdminContext)
 const NAV = [
   { href: '/admin/agenda',    label: 'Agenda',    icon: Calendar   },
   { href: '/admin/caja',      label: 'Caja',      icon: DollarSign },
+  { href: '/admin/sucursales',label: 'Sucursales',icon: Building2  },
   { href: '/admin/clientes',  label: 'Clientes',  icon: Users      },
   { href: '/admin/servicios', label: 'Servicios', icon: Scissors   },
   { href: '/admin/barberos',  label: 'Barberos',  icon: UserCog    },
@@ -44,34 +46,64 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [branches, setBranches]         = useState<Branch[]>([])
   const [activeBranch, setActiveBranch] = useState<Branch | null>(null)
   const [branchOpen, setBranchOpen]     = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [loading, setLoading]           = useState(true)
   const pathname  = usePathname()
   const router    = useRouter()
   const supabase  = createSupabaseBrowserClient()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { router.push('/login'); return }
-      fetch('/api/auth/me')
-        .then(r => r.json())
-        .then(d => { if (d.user) setUser(d.user) })
-        .catch(() => {})
-    })
-  }, [])
+    let mounted = true
 
-  useEffect(() => {
-    fetch('/api/branches')
-      .then(r => r.json())
-      .then(d => {
-        if (d.branches?.length) {
-          setBranches(d.branches)
-          setActiveBranch(d.branches[0])
+    async function bootstrap() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        return
+      }
+
+      try {
+        const [userRes, branchesRes] = await Promise.all([
+          fetch('/api/auth/me'),
+          fetch('/api/branches'),
+        ])
+
+        const userData = await userRes.json()
+        const branchesData = await branchesRes.json()
+
+        if (!mounted) return
+
+        const nextUser = userData.user ?? null
+        const allBranches = branchesData.branches ?? []
+        const allowedBranches = nextUser?.role === 'barber'
+          ? allBranches.filter((branch: Branch) => nextUser.branch_ids?.includes(branch.id))
+          : allBranches
+
+        setUser(nextUser)
+        setBranches(allowedBranches)
+
+        const puntaCarretas = allowedBranches.find((branch: Branch) =>
+          branch.name.toLowerCase().includes('punta carretas')
+        )
+
+        if (nextUser?.role === 'barber') {
+          setActiveBranch(allowedBranches[0] ?? null)
+        } else {
+          setActiveBranch(puntaCarretas ?? allowedBranches[0] ?? null)
         }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      } catch {
+        if (!mounted) return
+        setBranches([])
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+
+    bootstrap()
+
+    return () => {
+      mounted = false
+    }
+  }, [router, supabase.auth])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -79,7 +111,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const visibleNav = NAV.filter(item => {
-    if (user?.role === 'barber') return item.href.includes('agenda') || item.href.includes('horarios')
+    if (user?.role === 'barber') {
+      return (
+        item.href.includes('agenda') ||
+        item.href.includes('horarios') ||
+        item.href.includes('caja')
+      )
+    }
+
+    if (user?.role === 'admin' && item.href.includes('/sucursales')) {
+      return true
+    }
+
     return true
   })
 
@@ -99,7 +142,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return (
       <Link
         href={item.href}
-        onClick={() => setMobileMenuOpen(false)}
         className={cn(
           'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
           active

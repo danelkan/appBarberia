@@ -19,6 +19,24 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
+  const { data: appointment } = await supabase
+    .from('appointments')
+    .select('id, barber_id, branch_id')
+    .eq('id', appointment_id)
+    .maybeSingle()
+
+  if (!appointment) {
+    return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
+  }
+
+  if (auth.role === 'barber') {
+    const branchAllowed = !appointment.branch_id || auth.branch_ids.includes(appointment.branch_id)
+    const ownsAppointment = appointment.barber_id === auth.barber_id
+
+    if (!branchAllowed && !ownsAppointment) {
+      return NextResponse.json({ error: 'No tenés permisos para registrar este cobro' }, { status: 403 })
+    }
+  }
 
   // Mark appointment as completed
   const { error: apptError } = await supabase
@@ -77,13 +95,24 @@ export async function GET(req: NextRequest) {
     ? (data ?? []).filter((p: any) => p.appointment?.branch_id === branch_id)
     : data ?? []
 
+  const visiblePayments = auth.role === 'barber'
+    ? filtered.filter((payment: any) => {
+        const appointmentBranchId = payment.appointment?.branch_id
+        const appointmentBarberId = payment.appointment?.barber?.id
+        return (
+          (appointmentBranchId && auth.branch_ids.includes(appointmentBranchId)) ||
+          (auth.barber_id && appointmentBarberId === auth.barber_id)
+        )
+      })
+    : filtered
+
   const totals = {
-    efectivo:      filtered.filter((p: any) => p.method === 'efectivo').reduce((s: number, p: any) => s + Number(p.amount), 0),
-    mercado_pago:  filtered.filter((p: any) => p.method === 'mercado_pago').reduce((s: number, p: any) => s + Number(p.amount), 0),
-    debito:        filtered.filter((p: any) => p.method === 'debito').reduce((s: number, p: any) => s + Number(p.amount), 0),
-    transferencia: filtered.filter((p: any) => p.method === 'transferencia').reduce((s: number, p: any) => s + Number(p.amount), 0),
-    total:         filtered.reduce((s: number, p: any) => s + Number(p.amount), 0),
+    efectivo:      visiblePayments.filter((p: any) => p.method === 'efectivo').reduce((s: number, p: any) => s + Number(p.amount), 0),
+    mercado_pago:  visiblePayments.filter((p: any) => p.method === 'mercado_pago').reduce((s: number, p: any) => s + Number(p.amount), 0),
+    debito:        visiblePayments.filter((p: any) => p.method === 'debito').reduce((s: number, p: any) => s + Number(p.amount), 0),
+    transferencia: visiblePayments.filter((p: any) => p.method === 'transferencia').reduce((s: number, p: any) => s + Number(p.amount), 0),
+    total:         visiblePayments.reduce((s: number, p: any) => s + Number(p.amount), 0),
   }
 
-  return NextResponse.json({ payments: filtered, totals })
+  return NextResponse.json({ payments: visiblePayments, totals })
 }

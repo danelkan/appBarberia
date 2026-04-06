@@ -18,6 +18,8 @@ export interface Barber {
   photo_url?: string | null
   availability: WeeklyAvailability
   created_at: string
+  branch_ids?: string[]
+  role?: 'superadmin' | 'admin' | 'barber'
   // Joined
   branches?: Branch[]
 }

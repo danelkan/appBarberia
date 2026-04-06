@@ -53,6 +53,9 @@ export const weeklyAvailabilitySchema = z.object({
 export const createBarberSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   email: z.string().email('Invalid email format').max(255),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(128),
+  role: z.enum(['admin', 'barber']).optional().default('barber'),
+  branch_ids: z.array(uuidSchema).min(1, 'Select at least one branch'),
   photo_url: z.string().url('Invalid URL').optional().nullable(),
   availability: weeklyAvailabilitySchema.optional(),
 })
@@ -60,6 +63,9 @@ export const createBarberSchema = z.object({
 export const updateBarberSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   email: z.string().email().max(255).optional(),
+  password: z.string().min(6).max(128).optional(),
+  role: z.enum(['admin', 'barber']).optional(),
+  branch_ids: z.array(uuidSchema).min(1).optional(),
   photo_url: z.string().url().optional().nullable(),
   availability: weeklyAvailabilitySchema.optional(),
 })

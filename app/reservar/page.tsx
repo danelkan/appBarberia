@@ -1,109 +1,150 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import Link from 'next/link'
+import { addMonths, format, getDay, getDaysInMonth, startOfMonth } from 'date-fns'
+import { es } from 'date-fns/locale'
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   Calendar,
-  CalendarDays,
   CheckCircle,
   ChevronLeft,
   Clock,
+  MapPin,
   RefreshCw,
   Scissors,
-  ShieldCheck,
-  Sparkles,
-  Star,
   User,
-  MapPin,
 } from 'lucide-react'
-import { format, addMonths, startOfMonth, getDaysInMonth, getDay } from 'date-fns'
-import { es } from 'date-fns/locale'
 import { Button, Input, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, getAvailableDates } from '@/lib/utils'
 import type { Barber, BookingStep, Branch, Service, TimeSlot } from '@/types'
 
-const STEPS = [
-  { n: 1, label: 'Sede',     icon: MapPin     },
-  { n: 2, label: 'Servicio', icon: Scissors   },
-  { n: 3, label: 'Barbero',  icon: User       },
-  { n: 4, label: 'Fecha',    icon: Calendar   },
-  { n: 5, label: 'Datos',    icon: ShieldCheck},
-]
+type BookingStage = 'service' | 'barber' | 'datetime' | 'client'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const PHONE_REGEX = /^[\d\s\-\(\)\+]{7,20}$/
-
-interface ClientFormData {
+interface ClientForm {
   first_name: string
   last_name: string
   email: string
   phone: string
 }
 
-interface FormErrors {
-  first_name?: string
-  last_name?: string
-  email?: string
-  phone?: string
+const INITIAL_CLIENT: ClientForm = {
+  first_name: '',
+  last_name: '',
+  email: '',
+  phone: '',
 }
 
-const EXPERIENCE_POINTS = [
-  { icon: Sparkles, title: 'Reserva en menos de 60 segundos', description: 'Flujo claro, sin fricción y pensado para convertir.' },
-  { icon: ShieldCheck, title: 'Confirmación inmediata', description: 'Tu turno queda agendado al instante y con respaldo por email.' },
-  { icon: Star, title: 'Experiencia premium', description: 'Diseño editorial, selección simple y sensación de marca top.' },
+const STEPS: { key: BookingStage; label: string }[] = [
+  { key: 'service', label: 'Servicio' },
+  { key: 'barber', label: 'Barbero' },
+  { key: 'datetime', label: 'Fecha y hora' },
+  { key: 'client', label: 'Tus datos' },
 ]
 
 export default function BookingPage() {
-  const [step, setStep] = useState(1)
+  const [branchId, setBranchId] = useState<string | null>(null)
+
+  const [stage, setStage] = useState<BookingStage>('service')
   const [booking, setBooking] = useState<Partial<BookingStep>>({})
   const [branches, setBranches] = useState<Branch[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [barbers, setBarbers] = useState<Barber[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingError, setLoadingError] = useState<string | null>(null)
+  const [loadingError, setLoadingError] = useState('')
   const [confirmed, setConfirmed] = useState(false)
-  const [appointmentId, setAppointmentId] = useState<string>()
+  const [appointmentId, setAppointmentId] = useState('')
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setBranchId(params.get('branch'))
+
     Promise.all([
-      fetch('/api/branches').then((r) => {
-        if (!r.ok) throw new Error('Error al cargar sedes')
-        return r.json()
+      fetch('/api/branches').then(res => {
+        if (!res.ok) throw new Error('No se pudieron cargar las sucursales')
+        return res.json()
       }),
-      fetch('/api/services').then((r) => {
-        if (!r.ok) throw new Error('Error al cargar servicios')
-        return r.json()
+      fetch('/api/services').then(res => {
+        if (!res.ok) throw new Error('No se pudieron cargar los servicios')
+        return res.json()
       }),
-      fetch('/api/barbers').then((r) => {
-        if (!r.ok) throw new Error('Error al cargar barberos')
-        return r.json()
+      fetch('/api/barbers').then(res => {
+        if (!res.ok) throw new Error('No se pudieron cargar los barberos')
+        return res.json()
       }),
     ])
-      .then(([br, s, b]) => {
-        setBranches(br.branches ?? [])
-        setServices(s.services ?? [])
-        setBarbers(b.barbers ?? [])
-        setLoading(false)
+      .then(([branchData, servicesData, barbersData]) => {
+        setBranches(branchData.branches ?? [])
+        setServices(servicesData.services ?? [])
+        setBarbers(barbersData.barbers ?? [])
       })
-      .catch((err) => {
-        console.error('Error loading data:', err)
-        setLoadingError(err.message || 'Error al cargar los datos. Por favor intentá de nuevo.')
+      .catch((error: Error) => {
+        setLoadingError(error.message || 'No se pudo cargar la reserva')
+      })
+      .finally(() => {
         setLoading(false)
       })
   }, [])
 
+  const selectedBranch = useMemo(
+    () => branches.find(branch => branch.id === branchId),
+    [branchId, branches]
+  )
+
+  useEffect(() => {
+    if (!selectedBranch) return
+
+    setBooking(current => ({
+      ...current,
+      branch: selectedBranch,
+    }))
+  }, [selectedBranch])
+
+  const branchBarbers = useMemo(() => {
+    if (!selectedBranch) return []
+
+    return barbers.filter(barber => {
+      const branchIds = barber.branch_ids ?? barber.branches?.map(branch => branch.id) ?? []
+      return branchIds.includes(selectedBranch.id)
+    })
+  }, [barbers, selectedBranch])
+
+  function goBack() {
+    if (stage === 'barber') {
+      setBooking(current => ({ ...current, barber: undefined, date: undefined, time: undefined }))
+      setStage('service')
+      return
+    }
+
+    if (stage === 'datetime') {
+      setBooking(current => ({ ...current, date: undefined, time: undefined }))
+      setStage('barber')
+      return
+    }
+
+    if (stage === 'client') {
+      setStage('datetime')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="admin-theme min-h-screen bg-page flex items-center justify-center">
+        <Spinner />
+      </div>
+    )
+  }
+
   if (loadingError) {
     return (
-      <div className="min-h-screen premium-backdrop flex items-center justify-center px-4">
-        <div className="premium-panel max-w-md p-8 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
-            <AlertCircle className="h-7 w-7 text-red-400" />
-          </div>
-          <p className="text-xs uppercase tracking-[0.35em] text-red-300/70">Conexión</p>
-          <h1 className="mt-3 font-serif text-3xl text-cream">No pudimos cargar la agenda</h1>
-          <p className="mt-3 text-sm leading-6 text-cream/55">{loadingError}</p>
-          <Button onClick={() => window.location.reload()} variant="outline" className="mt-6 w-full">
+      <div className="admin-theme min-h-screen bg-page flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-3xl border border-border bg-white p-8 text-center shadow-modal">
+          <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
+          <h1 className="mt-4 font-serif text-2xl text-cream">No pudimos abrir la reserva</h1>
+          <p className="mt-2 text-sm text-cream/50">{loadingError}</p>
+          <Button className="mt-6 w-full" onClick={() => window.location.reload()}>
             <RefreshCw className="h-4 w-4" />
             Reintentar
           </Button>
@@ -112,311 +153,150 @@ export default function BookingPage() {
     )
   }
 
-  if (confirmed) {
-    return <ConfirmationScreen booking={booking} appointmentId={appointmentId} />
+  if (!selectedBranch) {
+    return (
+      <div className="admin-theme min-h-screen bg-page flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-3xl border border-border bg-white p-8 text-center shadow-modal">
+          <MapPin className="mx-auto h-8 w-8 text-gold" />
+          <h1 className="mt-4 font-serif text-2xl text-cream">Elegí una sucursal</h1>
+          <p className="mt-2 text-sm text-cream/50">Primero seleccioná dónde querés reservar.</p>
+          <Link href="/" className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-black">
+            Volver a sucursales
+          </Link>
+        </div>
+      </div>
+    )
   }
 
+  if (confirmed) {
+    return (
+      <ConfirmationScreen
+        booking={booking}
+        appointmentId={appointmentId}
+      />
+    )
+  }
+
+  const currentStep = STEPS.findIndex(step => step.key === stage) + 1
+
   return (
-    <div className="min-h-screen premium-backdrop">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-[radial-gradient(circle_at_top,rgba(201,168,76,0.22),transparent_48%)]" />
-      <div className="relative mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
-        <header className="glass-card mb-6 flex flex-col gap-6 overflow-hidden px-5 py-5 sm:px-7 lg:mb-8 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-gold/20 bg-gold/10 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-gold/90">
-              <Sparkles className="h-3.5 w-3.5" />
-              La nueva forma de reservar
+    <main className="admin-theme min-h-screen bg-page">
+      <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 rounded-3xl border border-border bg-white px-5 py-5 shadow-card sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-cream/50 hover:text-cream">
+                <ArrowLeft className="h-4 w-4" />
+                Cambiar sucursal
+              </Link>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <h1 className="font-serif text-3xl text-cream">{selectedBranch.name}</h1>
+                <span className="inline-flex items-center gap-1 rounded-full border border-gold/25 bg-gold/10 px-2.5 py-1 text-xs font-semibold text-gold-dark">
+                  <MapPin className="h-3.5 w-3.5" />
+                  Reserva online
+                </span>
+              </div>
+              {selectedBranch.address && <p className="mt-2 text-sm text-cream/50">{selectedBranch.address}</p>}
             </div>
-            <h1 className="mt-4 max-w-2xl font-serif text-4xl leading-none text-cream sm:text-5xl">
-              La experiencia de citas para barbería que se siente de clase mundial.
-            </h1>
-            <p className="mt-4 max-w-xl text-sm leading-6 text-cream/65 sm:text-base">
-              Elegí servicio, profesional y horario en un flujo elegante, rápido y clarísimo. Todo pensado para que reservar sea tan bueno como el corte.
-            </p>
+
+            <div className="rounded-2xl border border-border bg-surface-2 px-4 py-3 text-right">
+              <p className="text-xs uppercase tracking-[0.24em] text-cream/35">Paso actual</p>
+              <p className="mt-1 text-lg font-semibold text-cream">{currentStep} de 4</p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 text-left sm:min-w-[340px]">
-            <MetricCard value="1 min" label="Tiempo promedio" />
-            <MetricCard value="24/7" label="Reservas online" />
-            <MetricCard value="Premium" label="Feeling del producto" />
+          <div className="grid gap-2 sm:grid-cols-4">
+            {STEPS.map((step, index) => {
+              const active = step.key === stage
+              const complete = index < currentStep - 1
+
+              return (
+                <div
+                  key={step.key}
+                  className={cn(
+                    'rounded-2xl border px-4 py-3 text-sm font-medium transition-all',
+                    active
+                      ? 'border-gold/30 bg-gold/10 text-gold-dark'
+                      : complete
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-border bg-surface-2 text-cream/45'
+                  )}
+                >
+                  {step.label}
+                </div>
+              )
+            })}
           </div>
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_380px] lg:items-start">
-          <section className="space-y-6">
-            <ProgressRail currentStep={step} />
+        <section className="mt-5 rounded-3xl border border-border bg-white p-5 shadow-card sm:p-6">
+          {stage === 'service' && (
+            <ServiceStep
+              services={services}
+              selectedServiceId={booking.service?.id}
+              onSelect={service => {
+                setBooking(current => ({
+                  ...current,
+                  service,
+                  barber: undefined,
+                  date: undefined,
+                  time: undefined,
+                }))
+                setStage('barber')
+              }}
+            />
+          )}
 
-            <div className="premium-panel overflow-hidden p-5 sm:p-7">
-              <div className="mb-6 flex flex-col gap-4 border-b border-white/8 pb-6 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-gold/80">Reserva inteligente</p>
-                  <h2 className="mt-2 font-serif text-3xl text-cream">Armá tu cita ideal</h2>
-                </div>
-                <div className="flex flex-wrap gap-2 text-xs text-cream/60">
-                  <span className="rounded-full border border-white/10 px-3 py-1">Sin llamadas</span>
-                  <span className="rounded-full border border-white/10 px-3 py-1">Confirmación inmediata</span>
-                  <span className="rounded-full border border-white/10 px-3 py-1">Diseño mobile-first</span>
-                </div>
-              </div>
+          {stage === 'barber' && (
+            <BarberStep
+              barbers={branchBarbers}
+              selectedBarberId={booking.barber?.id}
+              onBack={goBack}
+              onSelect={barber => {
+                setBooking(current => ({
+                  ...current,
+                  barber,
+                  date: undefined,
+                  time: undefined,
+                }))
+                setStage('datetime')
+              }}
+            />
+          )}
 
-              {loading ? (
-                <div className="flex min-h-[320px] items-center justify-center">
-                  <Spinner className="h-7 w-7" />
-                </div>
-              ) : (
-                <>
-                  {step === 1 && (
-                    <BranchStep
-                      branches={branches}
-                      booking={booking}
-                      onSelect={(branch) => {
-                        setBooking((b) => ({ ...b, branch, service: undefined, barber: undefined, date: undefined, time: undefined }))
-                        setStep(2)
-                      }}
-                    />
-                  )}
-                  {step === 2 && (
-                    <ServiceStep
-                      services={services}
-                      booking={booking}
-                      onSelect={(service) => {
-                        setBooking((b) => ({ ...b, service, barber: undefined, date: undefined, time: undefined }))
-                        setStep(3)
-                      }}
-                    />
-                  )}
-                  {step === 3 && (
-                    <BarberStep
-                      barbers={barbers.filter(bar =>
-                        !booking.branch || !bar.branches?.length ||
-                        bar.branches.some(br => br.id === booking.branch?.id)
-                      )}
-                      booking={booking}
-                      onSelect={(barber) => {
-                        setBooking((b) => ({ ...b, barber, date: undefined, time: undefined }))
-                        setStep(4)
-                      }}
-                      onBack={() => setStep(2)}
-                    />
-                  )}
-                  {step === 4 && (
-                    <DateTimeStep
-                      booking={booking}
-                      onSelect={(date, time) => {
-                        setBooking((b) => ({ ...b, date, time }))
-                        setStep(5)
-                      }}
-                      onBack={() => setStep(3)}
-                    />
-                  )}
-                  {step === 5 && (
-                    <ClientStep
-                      booking={booking}
-                      onConfirm={(client, id) => {
-                        setBooking((b) => ({ ...b, client }))
-                        setAppointmentId(id)
-                        setConfirmed(true)
-                      }}
-                      onBack={() => setStep(4)}
-                    />
-                  )}
-                </>
-              )}
-            </div>
+          {stage === 'datetime' && booking.barber && booking.service && (
+            <DateTimeStep
+              booking={booking}
+              onBack={goBack}
+              onSelect={(date, time) => {
+                setBooking(current => ({ ...current, date, time }))
+                setStage('client')
+              }}
+            />
+          )}
 
-            <div className="grid gap-4 md:grid-cols-3">
-              {EXPERIENCE_POINTS.map((point) => (
-                <div key={point.title} className="glass-card p-5">
-                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl border border-gold/20 bg-gold/10 text-gold">
-                    <point.icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="text-sm font-semibold text-cream">{point.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-cream/55">{point.description}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <BookingSidebar booking={booking} step={step} />
-        </div>
+          {stage === 'client' && booking.barber && booking.service && booking.date && booking.time && (
+            <ClientStep
+              booking={booking}
+              onBack={goBack}
+              onConfirm={(client, id) => {
+                setBooking(current => ({ ...current, client }))
+                setAppointmentId(id)
+                setConfirmed(true)
+              }}
+            />
+          )}
+        </section>
       </div>
-    </div>
+    </main>
   )
 }
 
-function BranchStep({
-  branches, booking, onSelect,
-}: {
-  branches: Branch[]
-  booking: Partial<BookingStep>
-  onSelect: (branch: Branch) => void
-}) {
-  return (
-    <div className="animate-fade-up">
-      <StepHeader
-        eyebrow="Paso 1"
-        title="Elegí tu sede"
-        description="Seleccioná el local de Felito Barber Studio donde querés reservar tu turno."
-      />
-      <div className="grid gap-4 sm:grid-cols-2">
-        {branches.map((branch) => (
-          <SelectionCard
-            key={branch.id}
-            selected={booking.branch?.id === branch.id}
-            onClick={() => onSelect(branch)}
-          >
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] border border-gold/20 bg-gold/10 text-gold">
-                <MapPin className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <h4 className="text-lg font-semibold text-cream">{branch.name}</h4>
-                {branch.address && (
-                  <p className="mt-1 text-sm text-cream/50">{branch.address}</p>
-                )}
-                {branch.phone && (
-                  <p className="mt-2 text-xs text-cream/35">{branch.phone}</p>
-                )}
-              </div>
-            </div>
-          </SelectionCard>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ProgressRail({ currentStep }: { currentStep: number }) {
-  return (
-    <div className="glass-card px-4 py-4 sm:px-5">
-      <div className="grid gap-3 sm:grid-cols-4">
-        {STEPS.map((item) => {
-          const done = currentStep > item.n
-          const active = currentStep === item.n
-          return (
-            <div
-              key={item.n}
-              className={cn(
-                'rounded-2xl border p-3 transition-all duration-300',
-                active
-                  ? 'border-gold/40 bg-gold/10 glow-gold'
-                  : done
-                    ? 'border-emerald-400/25 bg-emerald-400/10'
-                    : 'border-white/8 bg-white/[0.02]'
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    'flex h-10 w-10 items-center justify-center rounded-2xl border text-sm transition-all',
-                    active
-                      ? 'border-gold bg-gold text-black'
-                      : done
-                        ? 'border-emerald-400/30 bg-emerald-400/15 text-emerald-300'
-                        : 'border-white/10 bg-white/5 text-cream/45'
-                  )}
-                >
-                  {done ? <CheckCircle className="h-4 w-4" /> : <item.icon className="h-4 w-4" />}
-                </div>
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.28em] text-cream/35">Paso {item.n}</p>
-                  <p className={cn('text-sm font-medium', active ? 'text-cream' : done ? 'text-emerald-200' : 'text-cream/55')}>
-                    {item.label}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function BookingSidebar({ booking, step }: { booking: Partial<BookingStep>; step: number }) {
-  const summaryRows = [
-    { label: 'Sede',       value: booking.branch?.name  || 'Elegí la sede'          },
-    { label: 'Servicio',   value: booking.service?.name || 'Elegí el servicio ideal' },
-    { label: 'Profesional',value: booking.barber?.name  || 'Seleccioná tu barbero'  },
-    { label: 'Fecha',      value: booking.date ? formatDate(booking.date) : 'Definí el mejor día' },
-    { label: 'Hora',       value: booking.time          || 'Elegí un horario'       },
-  ]
-
-  return (
-    <aside className="space-y-5 lg:sticky lg:top-6">
-      <div className="premium-panel overflow-hidden p-5 sm:p-6">
-        <p className="text-xs uppercase tracking-[0.35em] text-gold/80">Tu cita</p>
-        <h3 className="mt-2 font-serif text-3xl text-cream">Resumen en vivo</h3>
-        <p className="mt-2 text-sm leading-6 text-cream/55">
-          Cada selección actualiza tu reserva en tiempo real para que siempre sepas exactamente qué estás confirmando.
-        </p>
-
-        <div className="mt-6 space-y-3">
-          {summaryRows.map((row, index) => (
-            <div key={row.label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.28em] text-cream/30">{row.label}</p>
-                  <p className="mt-2 text-sm leading-6 text-cream">{row.value}</p>
-                </div>
-                <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-cream/45">
-                  0{index + 1}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 rounded-[24px] border border-gold/20 bg-gold/10 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.28em] text-gold/80">Precio estimado</p>
-              <p className="mt-2 text-2xl font-semibold text-cream">
-                {booking.service ? formatPrice(booking.service.price) : '--'}
-              </p>
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gold/20 bg-black/20 text-gold">
-              <Scissors className="h-5 w-5" />
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-sm">
-          <span className="text-cream/55">Estado del flujo</span>
-          <span className="font-medium text-cream">Paso {step} de 4</span>
-        </div>
-      </div>
-
-      <div className="glass-card p-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-gold">
-            <ShieldCheck className="h-4 w-4" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-cream">Reserva segura y profesional</p>
-            <p className="text-xs text-cream/45">Datos mínimos, confirmación clara y proceso sin ruido.</p>
-          </div>
-        </div>
-      </div>
-    </aside>
-  )
-}
-
-function MetricCard({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-      <p className="text-2xl font-semibold text-cream">{value}</p>
-      <p className="mt-1 text-xs uppercase tracking-[0.22em] text-cream/35">{label}</p>
-    </div>
-  )
-}
-
-function StepHeader({
-  eyebrow,
+function StepIntro({
   title,
   description,
   onBack,
 }: {
-  eyebrow: string
   title: string
   description: string
   onBack?: () => void
@@ -426,110 +306,62 @@ function StepHeader({
       {onBack && (
         <button
           onClick={onBack}
-          className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-cream/55 transition hover:border-white/15 hover:text-cream"
+          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-cream/50 hover:text-cream"
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
+          <ChevronLeft className="h-4 w-4" />
           Volver
         </button>
       )}
-      <p className="text-xs uppercase tracking-[0.35em] text-gold/80">{eyebrow}</p>
-      <h3 className="mt-3 font-serif text-4xl text-cream">{title}</h3>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-cream/55">{description}</p>
+      <h2 className="font-serif text-3xl text-cream">{title}</h2>
+      <p className="mt-2 text-sm text-cream/50">{description}</p>
     </div>
-  )
-}
-
-function SelectionCard({
-  children,
-  selected,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode
-  selected?: boolean
-  onClick?: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'group w-full rounded-[28px] border p-5 text-left transition-all duration-300',
-        selected
-          ? 'border-gold/40 bg-gold/10 glow-gold'
-          : 'border-white/8 bg-white/[0.025] hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[0.05]',
-        disabled && 'cursor-not-allowed opacity-50'
-      )}
-    >
-      {children}
-    </button>
   )
 }
 
 function ServiceStep({
   services,
-  booking,
+  selectedServiceId,
   onSelect,
 }: {
   services: Service[]
-  booking: Partial<BookingStep>
+  selectedServiceId?: string
   onSelect: (service: Service) => void
 }) {
-  if (services.length === 0) {
-    return (
-      <div className="py-16 text-center">
-        <p className="text-sm text-cream/50">No hay servicios disponibles en este momento.</p>
-      </div>
-    )
-  }
-
   return (
     <div className="animate-fade-up">
-      <StepHeader
-        eyebrow="Paso 1"
-        title="Empecemos por el servicio"
-        description="Elegí la experiencia que querés reservar. Mostramos duración y precio para que decidas rápido y sin sorpresas."
+      <StepIntro
+        title="Elegí el servicio"
+        description="Solo lo necesario para seguir rápido."
       />
 
-      <div className="grid gap-4">
-        {services.map((service) => (
-          <SelectionCard
+      <div className="grid gap-3">
+        {services.map(service => (
+          <button
             key={service.id}
-            selected={booking.service?.id === service.id}
             onClick={() => onSelect(service)}
+            className={cn(
+              'rounded-2xl border p-4 text-left transition-all hover:shadow-card-hover',
+              selectedServiceId === service.id
+                ? 'border-gold/30 bg-gold/10'
+                : 'border-border bg-surface-2 hover:bg-white'
+            )}
           >
             <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="rounded-full border border-gold/20 bg-gold/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.25em] text-gold/85">
-                    Alta demanda
-                  </span>
-                  <span className="text-xs text-cream/35">Optimizado para reservar más rápido</span>
-                </div>
-                <h4 className="text-lg font-semibold text-cream">{service.name}</h4>
-                <div className="mt-3 flex flex-wrap gap-3 text-sm text-cream/55">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1">
+              <div>
+                <h3 className="text-base font-semibold text-cream">{service.name}</h3>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1 text-xs font-medium text-cream/55">
                     <Clock className="h-3.5 w-3.5 text-gold" />
                     {service.duration_minutes} min
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1">
-                    <ShieldCheck className="h-3.5 w-3.5 text-gold" />
-                    Confirmación inmediata
-                  </span>
                 </div>
               </div>
-
               <div className="text-right">
-                <p className="text-[11px] uppercase tracking-[0.25em] text-cream/35">Desde</p>
-                <p className="mt-2 text-2xl font-semibold text-cream">{formatPrice(service.price)}</p>
-                <div className="mt-4 inline-flex items-center gap-2 text-sm text-gold">
-                  Elegir
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
+                <p className="text-lg font-bold text-cream">{formatPrice(service.price)}</p>
+                <p className="mt-2 text-sm font-semibold text-gold-dark">Continuar</p>
               </div>
             </div>
-          </SelectionCard>
+          </button>
         ))}
       </div>
     </div>
@@ -538,63 +370,53 @@ function ServiceStep({
 
 function BarberStep({
   barbers,
-  booking,
+  selectedBarberId,
   onSelect,
   onBack,
 }: {
   barbers: Barber[]
-  booking: Partial<BookingStep>
+  selectedBarberId?: string
   onSelect: (barber: Barber) => void
   onBack: () => void
 }) {
-  if (barbers.length === 0) {
-    return (
-      <div className="py-16 text-center">
-        <p className="text-sm text-cream/50">No hay barberos disponibles.</p>
-        <Button onClick={onBack} variant="outline" className="mt-5">
-          Volver
-        </Button>
-      </div>
-    )
-  }
-
   return (
     <div className="animate-fade-up">
-      <StepHeader
-        eyebrow="Paso 2"
-        title="Elegí al profesional"
-        description="Cada perfil se presenta con una lectura simple para que decidas con confianza. La experiencia de selección también tiene que sentirse premium."
+      <StepIntro
+        title="Elegí barbero"
+        description="Mostramos solo el equipo de esta sucursal."
         onBack={onBack}
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {barbers.map((barber, index) => (
-          <SelectionCard
-            key={barber.id}
-            selected={booking.barber?.id === barber.id}
-            onClick={() => onSelect(barber)}
-          >
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-[20px] border border-gold/20 bg-gold/10 font-serif text-xl text-gold">
-                {barber.name[0]?.toUpperCase() || '?'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="truncate text-lg font-semibold text-cream">{barber.name}</h4>
-                  <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-cream/40">
-                    Pro {index + 1}
-                  </span>
+      {barbers.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-surface-2 p-5 text-sm text-cream/55">
+          No hay barberos asignados a esta sucursal todavía.
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {barbers.map(barber => (
+            <button
+              key={barber.id}
+              onClick={() => onSelect(barber)}
+              className={cn(
+                'rounded-2xl border p-4 text-left transition-all hover:shadow-card-hover',
+                selectedBarberId === barber.id
+                  ? 'border-gold/30 bg-gold/10'
+                  : 'border-border bg-surface-2 hover:bg-white'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gold/20 bg-gold/10 font-semibold text-gold">
+                  {barber.name[0]?.toUpperCase() ?? '?'}
                 </div>
-                <p className="mt-2 text-sm text-cream/55">Especialista en experiencia, precisión y atención consistente.</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-cream/60">Perfil activo</span>
-                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-cream/60">Agenda online</span>
+                <div>
+                  <h3 className="text-base font-semibold text-cream">{barber.name}</h3>
+                  <p className="text-sm text-cream/45">Ver horarios disponibles</p>
                 </div>
               </div>
-            </div>
-          </SelectionCard>
-        ))}
-      </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -612,7 +434,7 @@ function DateTimeStep({
   const [selectedTime, setSelectedTime] = useState(booking.time ?? '')
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
-  const [slotsError, setSlotsError] = useState<string | null>(null)
+  const [slotsError, setSlotsError] = useState('')
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
   const availableDates = useMemo(
@@ -622,22 +444,23 @@ function DateTimeStep({
 
   useEffect(() => {
     if (!selectedDate || !booking.barber || !booking.service) return
+
     setLoadingSlots(true)
-    setSlotsError(null)
+    setSlotsError('')
     setSlots([])
 
     fetch(`/api/appointments/slots?barberId=${booking.barber.id}&date=${selectedDate}&duration=${booking.service.duration_minutes}`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Error al cargar horarios')
-        return r.json()
+      .then(res => {
+        if (!res.ok) throw new Error('No se pudieron cargar los horarios')
+        return res.json()
       })
-      .then((d) => {
-        setSlots(d.slots ?? [])
-        setLoadingSlots(false)
+      .then(data => {
+        setSlots(data.slots ?? [])
       })
-      .catch((err) => {
-        console.error('Error loading slots:', err)
-        setSlotsError('No se pudieron cargar los horarios')
+      .catch(() => {
+        setSlotsError('No se pudieron cargar los horarios.')
+      })
+      .finally(() => {
         setLoadingSlots(false)
       })
   }, [selectedDate, booking.barber, booking.service])
@@ -649,66 +472,43 @@ function DateTimeStep({
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const calendarDays = Array.from({ length: firstDay }, (): string | null => null).concat(
-    Array.from({ length: daysInMonth }, (_, i) => {
-      const date = new Date(year, month, i + 1)
+    Array.from({ length: daysInMonth }, (_, index) => {
+      const date = new Date(year, month, index + 1)
       return format(date, 'yyyy-MM-dd')
     })
   )
 
-  const retrySlots = () => {
-    if (!booking.barber || !booking.service || !selectedDate) return
-    setLoadingSlots(true)
-    fetch(`/api/appointments/slots?barberId=${booking.barber.id}&date=${selectedDate}&duration=${booking.service.duration_minutes}`)
-      .then((r) => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then((d) => {
-        setSlots(d.slots ?? [])
-        setSlotsError(null)
-        setLoadingSlots(false)
-      })
-      .catch(() => {
-        setSlotsError('No se pudieron cargar los horarios')
-        setLoadingSlots(false)
-      })
-  }
-
   return (
     <div className="animate-fade-up">
-      <StepHeader
-        eyebrow="Paso 3"
-        title="Definí el mejor momento"
-        description="Visualizá disponibilidad real, elegí fecha y cerrá el horario perfecto en un calendario simple, rápido y muy claro."
+      <StepIntro
+        title="Elegí fecha y hora"
+        description="Disponibilidad real, sin pasos extra."
         onBack={onBack}
       />
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-[30px] border border-white/8 bg-white/[0.025] p-4 sm:p-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-3xl border border-border bg-surface-2 p-4">
           <div className="mb-4 flex items-center justify-between">
             <button
-              onClick={() => setCurrentMonth((m) => addMonths(m, -1))}
-              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-cream/55 transition hover:text-cream"
+              onClick={() => setCurrentMonth(month => addMonths(month, -1))}
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-white text-cream/50"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <div className="text-center">
-              <p className="text-[11px] uppercase tracking-[0.3em] text-gold/75">Calendario</p>
-              <p className="mt-2 text-lg font-medium capitalize text-cream">{format(currentMonth, 'MMMM yyyy', { locale: es })}</p>
-            </div>
+            <p className="text-base font-semibold capitalize text-cream">
+              {format(currentMonth, 'MMMM yyyy', { locale: es })}
+            </p>
             <button
-              onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
-              className="flex h-11 w-11 rotate-180 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-cream/55 transition hover:text-cream"
+              onClick={() => setCurrentMonth(month => addMonths(month, 1))}
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-white text-cream/50 rotate-180"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="mb-3 grid grid-cols-7 gap-2">
-            {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'].map((day) => (
-              <div key={day} className="text-center text-[11px] uppercase tracking-[0.2em] text-cream/30">
-                {day}
-              </div>
+          <div className="mb-2 grid grid-cols-7 gap-2 text-center text-xs font-semibold uppercase tracking-wide text-cream/35">
+            {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'].map(day => (
+              <div key={day}>{day}</div>
             ))}
           </div>
 
@@ -721,7 +521,6 @@ function DateTimeStep({
               const isPast = date < today
               const isAvailable = availableDates.has(date)
               const isSelected = date === selectedDate
-              const isToday = date === today
 
               return (
                 <button
@@ -732,13 +531,12 @@ function DateTimeStep({
                     setSelectedTime('')
                   }}
                   className={cn(
-                    'aspect-square rounded-2xl border text-sm transition-all duration-200',
+                    'aspect-square rounded-2xl border text-sm font-medium transition-all',
                     isSelected
-                      ? 'border-gold bg-gold text-black shadow-[0_12px_28px_rgba(201,168,76,0.28)]'
+                      ? 'border-gold bg-gold text-black'
                       : isPast || !isAvailable
-                        ? 'cursor-not-allowed border-transparent bg-white/[0.02] text-cream/18'
-                        : 'border-white/8 bg-white/[0.025] text-cream hover:border-gold/35 hover:bg-white/[0.05]',
-                    isToday && !isSelected && 'border-gold/25'
+                        ? 'cursor-not-allowed border-transparent bg-white text-cream/20'
+                        : 'border-border bg-white text-cream hover:border-gold/30'
                   )}
                 >
                   {Number.parseInt(date.split('-')[2], 10)}
@@ -748,62 +546,55 @@ function DateTimeStep({
           </div>
         </div>
 
-        <div className="rounded-[30px] border border-white/8 bg-white/[0.025] p-5">
+        <div className="rounded-3xl border border-border bg-surface-2 p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gold/20 bg-gold/10 text-gold">
-              <CalendarDays className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-gold/20 bg-gold/10 text-gold">
+              <Calendar className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-[0.3em] text-gold/75">Disponibilidad</p>
-              <p className="mt-1 text-lg font-medium text-cream">
+              <p className="text-sm font-semibold text-cream">
                 {selectedDate ? formatDate(selectedDate) : 'Elegí un día'}
               </p>
+              <p className="text-xs text-cream/45">Horarios disponibles</p>
             </div>
           </div>
 
-          <div className="mt-5">
-            {selectedDate ? (
-              <>
-                {loadingSlots ? (
-                  <div className="flex min-h-[220px] items-center justify-center">
-                    <Spinner className="h-6 w-6" />
-                  </div>
-                ) : slotsError ? (
-                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
-                    <p className="text-sm text-red-300">{slotsError}</p>
-                    <Button variant="ghost" className="mt-3 px-0 text-red-200 hover:bg-transparent" onClick={retrySlots}>
-                      Reintentar
-                    </Button>
-                  </div>
-                ) : slots.length === 0 ? (
-                  <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                    <p className="text-sm text-cream/50">No quedan horarios disponibles para este día.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {slots.map((slot) => (
-                      <button
-                        key={slot.time}
-                        disabled={!slot.available}
-                        onClick={() => setSelectedTime(slot.time)}
-                        className={cn(
-                          'rounded-2xl border px-4 py-3 text-sm transition-all duration-200',
-                          selectedTime === slot.time
-                            ? 'border-gold bg-gold text-black'
-                            : slot.available
-                              ? 'border-white/8 bg-white/[0.03] text-cream hover:border-gold/35 hover:bg-white/[0.05]'
-                              : 'cursor-not-allowed border-transparent bg-white/[0.02] text-cream/18 line-through'
-                        )}
-                      >
-                        {slot.time}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
+          <div className="mt-4">
+            {!selectedDate ? (
+              <div className="rounded-2xl border border-dashed border-border bg-white px-4 py-5 text-sm text-cream/45">
+                Tocá una fecha para ver los horarios.
+              </div>
+            ) : loadingSlots ? (
+              <div className="flex min-h-[180px] items-center justify-center">
+                <Spinner />
+              </div>
+            ) : slotsError ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-600">
+                {slotsError}
+              </div>
+            ) : slots.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-white px-4 py-5 text-sm text-cream/45">
+                No quedan horarios para ese día.
+              </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-5 text-sm text-cream/45">
-                Elegí una fecha para mostrar los horarios disponibles.
+              <div className="grid grid-cols-2 gap-2">
+                {slots.map(slot => (
+                  <button
+                    key={slot.time}
+                    disabled={!slot.available}
+                    onClick={() => setSelectedTime(slot.time)}
+                    className={cn(
+                      'rounded-2xl border px-3 py-3 text-sm font-semibold transition-all',
+                      selectedTime === slot.time
+                        ? 'border-gold bg-gold text-black'
+                        : slot.available
+                          ? 'border-border bg-white text-cream hover:border-gold/30'
+                          : 'cursor-not-allowed border-transparent bg-white text-cream/20 line-through'
+                    )}
+                  >
+                    {slot.time}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -812,8 +603,8 @@ function DateTimeStep({
 
       {selectedDate && selectedTime && (
         <div className="mt-6 flex justify-end">
-          <Button className="w-full sm:w-auto" size="lg" onClick={() => onSelect(selectedDate, selectedTime)}>
-            Continuar con mis datos
+          <Button className="w-full sm:w-auto" onClick={() => onSelect(selectedDate, selectedTime)}>
+            Continuar
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
@@ -828,131 +619,69 @@ function ClientStep({
   onBack,
 }: {
   booking: Partial<BookingStep>
-  onConfirm: (client: ClientFormData, id: string) => void
+  onConfirm: (client: ClientForm, id: string) => void
   onBack: () => void
 }) {
-  const [form, setForm] = useState<ClientFormData>({ first_name: '', last_name: '', email: '', phone: '' })
-  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [form, setForm] = useState<ClientForm>(INITIAL_CLIENT)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const validateForm = (): boolean => {
-    const errors: FormErrors = {}
-
-    if (!form.first_name.trim()) {
-      errors.first_name = 'El nombre es obligatorio'
-    } else if (form.first_name.trim().length < 2) {
-      errors.first_name = 'El nombre debe tener al menos 2 caracteres'
-    } else if (form.first_name.trim().length > 50) {
-      errors.first_name = 'El nombre es demasiado largo'
-    }
-
-    if (!form.email.trim()) {
-      errors.email = 'El email es obligatorio'
-    } else if (!EMAIL_REGEX.test(form.email.trim())) {
-      errors.email = 'Ingresá un email válido'
-    }
-
-    if (!form.phone.trim()) {
-      errors.phone = 'El teléfono es obligatorio'
-    } else if (!PHONE_REGEX.test(form.phone.trim())) {
-      errors.phone = 'Ingresá un teléfono válido'
-    }
-
-    setFormErrors(errors)
-    return Object.keys(errors).length === 0
-  }
-
-  const updateField = (field: keyof ClientFormData, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }))
-    if (formErrors[field]) {
-      setFormErrors((current) => ({ ...current, [field]: undefined }))
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-
-    if (!validateForm()) return
-
-    if (!booking.service?.id || !booking.barber?.id || !booking.date || !booking.time) {
-      setError('Datos de reserva incompletos. Por favor volvé al inicio.')
-      return
-    }
-
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
     setLoading(true)
+    setError('')
 
     try {
       const res = await fetch('/api/appointments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceId: booking.service.id,
-          barberId: booking.barber.id,
+          serviceId: booking.service?.id,
+          barberId: booking.barber?.id,
           branchId: booking.branch?.id,
           date: booking.date,
           startTime: booking.time,
-          client: {
-            first_name: form.first_name.trim(),
-            last_name: form.last_name.trim(),
-            email: form.email.trim().toLowerCase(),
-            phone: form.phone.trim(),
-          },
+          client: form,
         }),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error?.message || data.error || 'Error al confirmar el turno')
+        setError(data.error?.message || data.error || 'No se pudo confirmar el turno')
         setLoading(false)
         return
       }
 
-      onConfirm(
-        {
-          first_name: form.first_name.trim(),
-          last_name: form.last_name.trim(),
-          email: form.email.trim().toLowerCase(),
-          phone: form.phone.trim(),
-        },
-        data.appointment.id
-      )
-    } catch (err) {
-      console.error('Error submitting booking:', err)
-      setError('Error de conexión. Por favor intentá de nuevo.')
+      onConfirm(form, data.appointment.id)
+    } catch {
+      setError('No se pudo confirmar el turno.')
       setLoading(false)
     }
   }
 
   return (
     <div className="animate-fade-up">
-      <StepHeader
-        eyebrow="Paso 4"
+      <StepIntro
         title="Confirmá tus datos"
-        description="Pedimos solo lo esencial para dejar la cita confirmada, enviarte el detalle y que puedas gestionarla después sin esfuerzo."
+        description="Pedimos solo lo justo para dejar el turno confirmado."
         onBack={onBack}
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
               label="Nombre *"
               value={form.first_name}
-              onChange={(e) => updateField('first_name', e.target.value)}
+              onChange={event => setForm(current => ({ ...current, first_name: event.target.value }))}
               placeholder="Felipe"
-              error={formErrors.first_name}
-              maxLength={50}
             />
             <Input
               label="Apellido"
               value={form.last_name}
-              onChange={(e) => updateField('last_name', e.target.value)}
+              onChange={event => setForm(current => ({ ...current, last_name: event.target.value }))}
               placeholder="García"
-              error={formErrors.last_name}
-              maxLength={50}
             />
           </div>
 
@@ -960,55 +689,61 @@ function ClientStep({
             label="Email *"
             type="email"
             value={form.email}
-            onChange={(e) => updateField('email', e.target.value)}
+            onChange={event => setForm(current => ({ ...current, email: event.target.value }))}
             placeholder="tu@email.com"
-            error={formErrors.email}
-            autoComplete="email"
           />
 
           <Input
             label="Teléfono *"
             type="tel"
             value={form.phone}
-            onChange={(e) => updateField('phone', e.target.value)}
+            onChange={event => setForm(current => ({ ...current, phone: event.target.value }))}
             placeholder="+598 9X XXX XXX"
-            error={formErrors.phone}
-            autoComplete="tel"
           />
 
           {error && (
-            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
               {error}
             </div>
           )}
 
-          <div className="rounded-[28px] border border-gold/20 bg-gold/10 p-4 text-sm text-cream/70">
-            Confirmaremos el turno con los datos ingresados y te enviaremos el detalle completo para que puedas verlo o cancelarlo cuando quieras.
-          </div>
-
-          <Button type="submit" className="w-full" size="lg" loading={loading}>
-            Confirmar turno ahora
+          <Button type="submit" className="w-full" loading={loading}>
+            Confirmar turno
           </Button>
         </form>
 
-        <div className="rounded-[30px] border border-white/8 bg-white/[0.025] p-5">
-          <p className="text-xs uppercase tracking-[0.35em] text-gold/80">Checklist final</p>
-          <div className="mt-5 space-y-3">
-            {[
-              { label: 'Servicio', value: booking.service?.name },
-              { label: 'Duración', value: booking.service ? `${booking.service.duration_minutes} min` : '' },
-              { label: 'Profesional', value: booking.barber?.name },
-              { label: 'Fecha', value: booking.date ? formatDate(booking.date) : '' },
-              { label: 'Hora', value: booking.time },
-            ].map((row) => (
-              <div key={row.label} className="rounded-2xl border border-white/8 bg-black/20 p-4">
-                <p className="text-[11px] uppercase tracking-[0.25em] text-cream/30">{row.label}</p>
-                <p className="mt-2 text-sm text-cream">{row.value}</p>
-              </div>
-            ))}
+        <div className="rounded-3xl border border-border bg-surface-2 p-4">
+          <p className="text-xs uppercase tracking-[0.24em] text-cream/35">Resumen</p>
+          <div className="mt-4 space-y-3 text-sm">
+            <SummaryRow icon={<MapPin className="h-4 w-4" />} label="Sucursal" value={booking.branch?.name} />
+            <SummaryRow icon={<Scissors className="h-4 w-4" />} label="Servicio" value={booking.service?.name} />
+            <SummaryRow icon={<User className="h-4 w-4" />} label="Barbero" value={booking.barber?.name} />
+            <SummaryRow icon={<Calendar className="h-4 w-4" />} label="Fecha" value={booking.date ? formatDate(booking.date) : ''} />
+            <SummaryRow icon={<Clock className="h-4 w-4" />} label="Hora" value={booking.time} />
+            <SummaryRow icon={<Scissors className="h-4 w-4" />} label="Precio" value={booking.service ? formatPrice(booking.service.price) : ''} />
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function SummaryRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode
+  label: string
+  value?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-white px-4 py-3">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-cream/35">
+        {icon}
+        {label}
+      </div>
+      <p className="mt-2 text-sm font-semibold text-cream">{value || 'Pendiente'}</p>
     </div>
   )
 }
@@ -1018,55 +753,44 @@ function ConfirmationScreen({
   appointmentId,
 }: {
   booking: Partial<BookingStep>
-  appointmentId?: string
+  appointmentId: string
 }) {
   return (
-    <div className="min-h-screen premium-backdrop px-4 py-10">
-      <div className="mx-auto max-w-3xl">
-        <div className="premium-panel overflow-hidden p-8 text-center sm:p-10">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-gold/20 bg-gold/10">
-            <CheckCircle className="h-9 w-9 text-gold" />
-          </div>
+    <main className="admin-theme min-h-screen bg-page px-4 py-10">
+      <div className="mx-auto max-w-2xl rounded-3xl border border-border bg-white p-8 text-center shadow-modal">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50">
+          <CheckCircle className="h-8 w-8 text-emerald-600" />
+        </div>
 
-          <p className="mt-6 text-xs uppercase tracking-[0.35em] text-gold/80">Reserva lista</p>
-          <h1 className="mt-3 font-serif text-4xl text-cream sm:text-5xl">Tu turno quedó confirmado</h1>
-          <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-cream/55">
-            La experiencia termina tan bien como empieza: resumen claro, número de reserva visible y acceso inmediato para gestionar tu cita.
-          </p>
+        <h1 className="mt-5 font-serif text-4xl text-cream">Turno confirmado</h1>
+        <p className="mt-2 text-sm text-cream/50">Ya quedó registrado y listo para gestionarlo después.</p>
 
-          <div className="mx-auto mt-8 grid max-w-2xl gap-3 text-left sm:grid-cols-2">
-            {[
-              { label: 'Servicio', value: booking.service?.name },
-              { label: 'Barbero', value: booking.barber?.name },
-              { label: 'Fecha', value: booking.date ? formatDate(booking.date) : '' },
-              { label: 'Hora', value: booking.time },
-            ].map((row) => (
-              <div key={row.label} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-cream/30">{row.label}</p>
-                <p className="mt-2 text-sm text-cream">{row.value}</p>
-              </div>
-            ))}
-          </div>
+        <div className="mt-8 grid gap-3 text-left sm:grid-cols-2">
+          <SummaryRow icon={<MapPin className="h-4 w-4" />} label="Sucursal" value={booking.branch?.name} />
+          <SummaryRow icon={<Scissors className="h-4 w-4" />} label="Servicio" value={booking.service?.name} />
+          <SummaryRow icon={<User className="h-4 w-4" />} label="Barbero" value={booking.barber?.name} />
+          <SummaryRow icon={<Calendar className="h-4 w-4" />} label="Fecha" value={booking.date ? formatDate(booking.date) : ''} />
+        </div>
 
-          {appointmentId && (
-            <div className="mx-auto mt-6 max-w-md rounded-full border border-gold/20 bg-gold/10 px-4 py-3 text-sm text-gold">
-              Número de reserva: {appointmentId.slice(0, 8)}
-            </div>
-          )}
+        <div className="mt-6 inline-flex rounded-full border border-gold/20 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold-dark">
+          Reserva #{appointmentId.slice(0, 8)}
+        </div>
 
-          <div className="mx-auto mt-8 grid max-w-md gap-3">
-            <a
-              href="/mis-turnos"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gold/30 bg-gold/10 px-5 py-3 text-sm font-medium text-gold transition hover:bg-gold/15"
-            >
-              Ver o cancelar mi turno
-            </a>
-            <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
-              Hacer otra reserva
-            </Button>
-          </div>
+        <div className="mt-8 grid gap-3 sm:grid-cols-2">
+          <Link
+            href="/mis-turnos"
+            className="inline-flex items-center justify-center rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm font-semibold text-cream"
+          >
+            Ver mis turnos
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-black"
+          >
+            Hacer otra reserva
+          </Link>
         </div>
       </div>
-    </div>
+    </main>
   )
 }

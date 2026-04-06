@@ -1,10 +1,11 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, UserCog } from 'lucide-react'
-import { Button, Input, Spinner, EmptyState, Modal, PageHeader } from '@/components/ui'
+
+import { useEffect, useState } from 'react'
+import { Building2, KeyRound, Pencil, Plus, Trash2, UserCog } from 'lucide-react'
+import { Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
 import { cn, DAY_NAMES } from '@/lib/utils'
-import type { Barber, WeeklyAvailability, DaySchedule } from '@/types'
+import type { Barber, Branch, DaySchedule, WeeklyAvailability } from '@/types'
 
 const DEFAULT_AVAILABILITY: WeeklyAvailability = {
   monday:    { enabled: true,  start: '09:00', end: '19:00' },
@@ -16,76 +17,142 @@ const DEFAULT_AVAILABILITY: WeeklyAvailability = {
   sunday:    { enabled: false, start: '09:00', end: '13:00' },
 }
 
-const EMPTY_BARBER = { name: '', email: '', availability: DEFAULT_AVAILABILITY }
+const EMPTY_BARBER = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'barber' as const,
+  branch_ids: [] as string[],
+  availability: DEFAULT_AVAILABILITY,
+}
+
+interface BarberFormState extends Partial<Barber> {
+  password?: string
+  role?: 'admin' | 'barber'
+  branch_ids: string[]
+}
 
 export default function BarberosPage() {
-  const [barbers, setBarbers]   = useState<Barber[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [barbers, setBarbers] = useState<Barber[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing]   = useState<Partial<Barber>>(EMPTY_BARBER)
-  const [saving, setSaving]     = useState(false)
+  const [editing, setEditing] = useState<BarberFormState>(EMPTY_BARBER)
+  const [saving, setSaving] = useState(false)
 
-  const fetchBarbers = async () => {
+  async function fetchData() {
     try {
-      const res  = await fetch('/api/barbers')
-      const data = await res.json()
-      setBarbers(data.barbers ?? [])
+      const [barbersRes, branchesRes] = await Promise.all([
+        fetch('/api/barbers'),
+        fetch('/api/branches?all=1'),
+      ])
+
+      const barbersData = await barbersRes.json()
+      const branchesData = await branchesRes.json()
+
+      setBarbers(barbersData.barbers ?? [])
+      setBranches(branchesData.branches ?? [])
     } catch {
       setBarbers([])
+      setBranches([])
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchBarbers() }, [])
+  useEffect(() => {
+    fetchData()
+  }, [])
 
-  const openNew  = () => { setEditing(EMPTY_BARBER); setModalOpen(true) }
-  const openEdit = (b: Barber) => { setEditing({ ...b }); setModalOpen(true) }
+  function openNew() {
+    setEditing(EMPTY_BARBER)
+    setModalOpen(true)
+  }
 
-  const save = async () => {
-    if (!editing.name || !editing.email) return
+  function openEdit(barber: Barber) {
+    setEditing({
+      ...barber,
+      password: '',
+      role: barber.role === 'admin' || barber.role === 'superadmin' ? 'admin' : 'barber',
+      branch_ids: barber.branch_ids ?? barber.branches?.map(branch => branch.id) ?? [],
+    })
+    setModalOpen(true)
+  }
+
+  async function save() {
+    if (!editing.name || !editing.email || editing.branch_ids.length === 0) return
+    if (!editing.id && !editing.password) return
+
     setSaving(true)
+
+    const payload = {
+      name: editing.name,
+      email: editing.email,
+      password: editing.password,
+      role: editing.role,
+      branch_ids: editing.branch_ids,
+      availability: editing.availability,
+    }
+
     const method = editing.id ? 'PUT' : 'POST'
-    const url    = editing.id ? `/api/barbers/${editing.id}` : '/api/barbers'
-    await fetch(url, {
+    const url = editing.id ? `/api/barbers/${editing.id}` : '/api/barbers'
+
+    const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editing),
+      body: JSON.stringify(payload),
     })
+
     setSaving(false)
+
+    if (!res.ok) return
+
     setModalOpen(false)
-    fetchBarbers()
+    fetchData()
   }
 
-  const remove = async (id: string) => {
-    if (!confirm('¿Eliminar este barbero? Se eliminarán sus turnos también.')) return
+  async function remove(id: string) {
+    if (!confirm('¿Eliminar este barbero y su acceso?')) return
     await fetch(`/api/barbers/${id}`, { method: 'DELETE' })
-    fetchBarbers()
+    fetchData()
   }
 
-  const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
+  function updateDay(day: string, field: keyof DaySchedule, value: string | boolean) {
     setEditing(prev => {
-      const prevAvail = (prev.availability ?? DEFAULT_AVAILABILITY) as WeeklyAvailability
-      const prevDay   = prevAvail[day] ?? DEFAULT_AVAILABILITY[day]
+      const previousAvailability = (prev.availability ?? DEFAULT_AVAILABILITY) as WeeklyAvailability
+      const previousDay = previousAvailability[day] ?? DEFAULT_AVAILABILITY[day]
+
       return {
         ...prev,
         availability: {
-          ...prevAvail,
-          [day]: { ...prevDay, [field]: value },
+          ...previousAvailability,
+          [day]: {
+            ...previousDay,
+            [field]: value,
+          },
         },
-      } as Partial<Barber>
+      }
     })
+  }
+
+  function toggleBranch(branchId: string) {
+    setEditing(current => ({
+      ...current,
+      branch_ids: current.branch_ids.includes(branchId)
+        ? current.branch_ids.filter(id => id !== branchId)
+        : [...current.branch_ids, branchId],
+    }))
   }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
-
       <PageHeader
         title="Barberos"
-        subtitle={`${barbers.length} en el equipo`}
+        subtitle="Usuarios, roles, sedes y disponibilidad del equipo"
         action={
           <Button onClick={openNew} size="sm">
-            <Plus className="w-4 h-4" /> Agregar barbero
+            <Plus className="w-4 h-4" />
+            Nuevo barbero
           </Button>
         }
       />
@@ -96,38 +163,66 @@ export default function BarberosPage() {
         <EmptyState
           icon={<UserCog className="w-6 h-6" />}
           title="Sin barberos"
-          description="Agregá los barberos del equipo"
-          action={<Button size="sm" onClick={openNew}><Plus className="w-4 h-4" /> Agregar barbero</Button>}
+          description="Creá el primer usuario del equipo para empezar a asignar turnos y caja."
+          action={<Button size="sm" onClick={openNew}><Plus className="w-4 h-4" /> Nuevo barbero</Button>}
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {barbers.map(b => {
-            const activeDays = Object.entries(b.availability ?? {})
-              .filter(([, v]) => v.enabled)
-              .map(([k]) => DAY_NAMES[k])
+          {barbers.map(barber => {
+            const activeDays = Object.entries(barber.availability ?? {})
+              .filter(([, value]) => value.enabled)
+              .map(([key]) => DAY_NAMES[key])
 
             return (
-              <div key={b.id} className="card p-5 hover:shadow-card-hover transition-all">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-full bg-gold/10 border border-gold/25 flex items-center justify-center text-gold font-bold text-base flex-shrink-0">
-                      {b.name[0]}
+              <div key={barber.id} className="card p-5 hover:shadow-card-hover transition-all">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-full bg-gold/10 border border-gold/25 flex items-center justify-center text-gold font-bold text-base flex-shrink-0">
+                        {barber.name[0]}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-cream text-sm">{barber.name}</h3>
+                        <p className="text-xs text-cream/45 truncate font-medium">{barber.email}</p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-cream text-sm">{b.name}</h3>
-                      <p className="text-xs text-cream/45 truncate font-medium">{b.email}</p>
+
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {(barber.branches ?? []).map(branch => (
+                        <span
+                          key={branch.id}
+                          className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full bg-surface-2 text-cream/55 border border-border font-semibold"
+                        >
+                          <Building2 className="w-3 h-3" />
+                          {branch.name}
+                        </span>
+                      ))}
                     </div>
+
+                    {activeDays.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-1">
+                        {activeDays.map(day => (
+                          <span
+                            key={day}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-gold/8 text-gold-dark border border-gold/20 capitalize font-semibold"
+                          >
+                            {day}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
                   <div className="flex gap-1 ml-2">
                     <button
-                      onClick={() => openEdit(b)}
+                      onClick={() => openEdit(barber)}
                       className="p-1.5 rounded-lg hover:bg-surface-2 text-cream/35 hover:text-cream transition-colors"
                       title="Editar"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => remove(b.id)}
+                      onClick={() => remove(barber.id)}
                       className="p-1.5 rounded-lg hover:bg-red-50 text-cream/35 hover:text-red-500 transition-colors"
                       title="Eliminar"
                     >
@@ -135,19 +230,6 @@ export default function BarberosPage() {
                     </button>
                   </div>
                 </div>
-
-                {activeDays.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-3 border-t border-border">
-                    {activeDays.map(d => (
-                      <span
-                        key={d}
-                        className="text-[10px] px-2 py-0.5 rounded-full bg-gold/8 text-gold-dark border border-gold/20 capitalize font-semibold"
-                      >
-                        {d}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
             )
           })}
@@ -158,33 +240,87 @@ export default function BarberosPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing.id ? 'Editar barbero' : 'Nuevo barbero'}
+        size="lg"
       >
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-5 max-h-[78vh] overflow-y-auto pr-1">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Input
               label="Nombre *"
               value={editing.name ?? ''}
-              onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
-              placeholder="Felipe"
+              onChange={event => setEditing(current => ({ ...current, name: event.target.value }))}
+              placeholder="Felito"
             />
             <Input
               label="Email *"
               type="email"
               value={editing.email ?? ''}
-              onChange={e => setEditing(p => ({ ...p, email: e.target.value }))}
-              placeholder="felipe@..."
+              onChange={event => setEditing(current => ({ ...current, email: event.target.value }))}
+              placeholder="felito@barberia.com"
             />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label={editing.id ? 'Nueva contraseña' : 'Contraseña *'}
+              type="password"
+              value={editing.password ?? ''}
+              onChange={event => setEditing(current => ({ ...current, password: event.target.value }))}
+              placeholder={editing.id ? 'Dejar vacío para mantenerla' : 'Mínimo 6 caracteres'}
+            />
+
+            <div>
+              <label className="label">Rol de acceso</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['barber', 'admin'] as const).map(role => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => setEditing(current => ({ ...current, role }))}
+                    className={cn(
+                      'rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all',
+                      editing.role === role
+                        ? 'border-gold/30 bg-gold/10 text-gold-dark'
+                        : 'border-border bg-surface-2 text-cream/55 hover:bg-surface-3'
+                    )}
+                  >
+                    {role === 'admin' ? 'Admin' : 'Barbero'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Sucursales asignadas *</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {branches.map(branch => (
+                <button
+                  key={branch.id}
+                  type="button"
+                  onClick={() => toggleBranch(branch.id)}
+                  className={cn(
+                    'rounded-xl border px-4 py-3 text-left transition-all',
+                    editing.branch_ids.includes(branch.id)
+                      ? 'border-gold/30 bg-gold/10'
+                      : 'border-border bg-surface-2 hover:bg-surface-3'
+                  )}
+                >
+                  <p className="text-sm font-semibold text-cream">{branch.name}</p>
+                  {branch.address && <p className="mt-1 text-xs text-cream/45">{branch.address}</p>}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
             <p className="label">Disponibilidad semanal</p>
             <div className="space-y-1.5">
-              {Object.entries(editing.availability ?? DEFAULT_AVAILABILITY).map(([day, sched]) => (
+              {Object.entries(editing.availability ?? DEFAULT_AVAILABILITY).map(([day, schedule]) => (
                 <div
                   key={day}
                   className={cn(
                     'flex items-center gap-3 p-3 rounded-xl border transition-all',
-                    sched.enabled
+                    schedule.enabled
                       ? 'border-border bg-surface-2'
                       : 'border-border/50 bg-surface-2 opacity-50'
                   )}
@@ -192,25 +328,26 @@ export default function BarberosPage() {
                   <label className="flex items-center gap-2 cursor-pointer flex-shrink-0">
                     <input
                       type="checkbox"
-                      checked={sched.enabled}
-                      onChange={e => updateDay(day, 'enabled', e.target.checked)}
+                      checked={schedule.enabled}
+                      onChange={event => updateDay(day, 'enabled', event.target.checked)}
                       className="accent-gold w-3.5 h-3.5"
                     />
                     <span className="text-xs font-semibold text-cream/70 capitalize w-20">{DAY_NAMES[day]}</span>
                   </label>
-                  {sched.enabled && (
+
+                  {schedule.enabled && (
                     <div className="flex items-center gap-2 flex-1">
                       <input
                         type="time"
-                        value={sched.start}
-                        onChange={e => updateDay(day, 'start', e.target.value)}
+                        value={schedule.start}
+                        onChange={event => updateDay(day, 'start', event.target.value)}
                         className="input py-1 px-2 text-xs flex-1"
                       />
                       <span className="text-cream/30 text-xs font-bold">–</span>
                       <input
                         type="time"
-                        value={sched.end}
-                        onChange={e => updateDay(day, 'end', e.target.value)}
+                        value={schedule.end}
+                        onChange={event => updateDay(day, 'end', event.target.value)}
                         className="input py-1 px-2 text-xs flex-1"
                       />
                     </div>
@@ -220,12 +357,29 @@ export default function BarberosPage() {
             </div>
           </div>
 
+          <div className="rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm text-cream/55">
+            <div className="flex items-start gap-2">
+              <KeyRound className="w-4 h-4 mt-0.5 text-gold flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-cream">Alta completa</p>
+                <p className="mt-1">
+                  Al guardar, se crea el barbero, su usuario de acceso y la relación con las sucursales elegidas.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-2 pt-2 sticky bottom-0 bg-white pb-1">
             <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
               Cancelar
             </Button>
-            <Button className="flex-1" loading={saving} onClick={save} disabled={!editing.name || !editing.email}>
-              {editing.id ? 'Guardar' : 'Agregar barbero'}
+            <Button
+              className="flex-1"
+              loading={saving}
+              onClick={save}
+              disabled={!editing.name || !editing.email || editing.branch_ids.length === 0 || (!editing.id && !editing.password)}
+            >
+              {editing.id ? 'Guardar cambios' : 'Crear barbero'}
             </Button>
           </div>
         </div>

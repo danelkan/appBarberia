@@ -65,7 +65,7 @@ export default function AgendaPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentDate, view, user, activeBranch])
+  }, [activeBranch, currentDate, isBarber, user, view])
 
   useEffect(() => { if (user !== null) fetchAppointments() }, [fetchAppointments, user])
 

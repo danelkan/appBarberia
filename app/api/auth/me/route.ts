@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { resolveUserRole } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest) {
   let response = NextResponse.next({ request: req })
@@ -32,29 +33,11 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createSupabaseAdmin()
-
-  // Look up role from user_roles table
-  const { data: userRole } = await admin
-    .from('user_roles')
-    .select('role, barber_id')
-    .eq('user_id', session.user.id)
-    .single()
-
-  // Fallback: if no user_role found, check if email matches a barber
-  let role: string = userRole?.role ?? 'barber'
-  let barber_id: string | undefined = userRole?.barber_id ?? undefined
-
-  if (!userRole) {
-    const { data: barber } = await admin
-      .from('barbers')
-      .select('id')
-      .eq('email', session.user.email ?? '')
-      .single()
-    if (barber) {
-      role = 'barber'
-      barber_id = barber.id
-    }
-  }
+  const { role, barber_id, branch_ids } = await resolveUserRole(
+    admin,
+    session.user.id,
+    session.user.email ?? undefined
+  )
 
   return NextResponse.json({
     user: {
@@ -62,6 +45,7 @@ export async function GET(req: NextRequest) {
       email: session.user.email,
       role,
       barber_id,
+      branch_ids,
     }
   })
 }
