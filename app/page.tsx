@@ -30,7 +30,7 @@ export default function RootPage() {
   return (
     <main className="admin-theme min-h-screen bg-page">
       <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between border-b border-border pb-5">
+        <div className="flex items-center border-b border-border pb-5">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gold/20 bg-gold/10 text-gold">
               <Scissors className="h-5 w-5" />
@@ -40,13 +40,6 @@ export default function RootPage() {
               <p className="text-xs text-cream/45">Elegí sucursal y reservá</p>
             </div>
           </div>
-
-          <Link
-            href="/login"
-            className="rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-cream/60 transition-all hover:bg-surface-2 hover:text-cream"
-          >
-            Admin
-          </Link>
         </div>
 
         <div className="flex flex-1 items-center justify-center py-10 sm:py-14">

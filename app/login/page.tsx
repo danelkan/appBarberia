@@ -66,7 +66,7 @@ export default function LoginPage() {
             <Scissors className="w-6 h-6 text-gold" />
           </div>
           <h1 className="font-serif text-2xl text-cream">Felito Studios</h1>
-          <p className="text-sm text-cream/50 mt-1">Panel de administración</p>
+          <p className="text-sm text-cream/50 mt-1">Acceso para barberos y administración</p>
         </div>
 
         {/* Card */}
