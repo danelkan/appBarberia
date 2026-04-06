@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientId).single()
 
     if (fullClient) {
-      sendBookingEmails(fullClient, barber, service, appointment).catch(console.error)
+      await sendBookingEmails(fullClient, barber, service, appointment)
     }
 
     const response = NextResponse.json({ appointment, success: true })

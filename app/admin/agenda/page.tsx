@@ -246,7 +246,7 @@ export default function AgendaPage() {
               )}
             </div>
 
-            {selected.status === 'pendiente' && !selected.payment && (
+            {selected.status !== 'cancelada' && !selected.payment && (
               <div className="flex flex-col sm:flex-row gap-2 pt-1">
                 <Button variant="gold" className="flex-1" onClick={() => { setSelected(null); openPayment(selected) }}>
                   <DollarSign className="w-4 h-4" /> Cobrar turno

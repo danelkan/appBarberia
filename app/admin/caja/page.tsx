@@ -174,13 +174,13 @@ export default function CajaPage() {
     try {
       const today = format(new Date(), 'yyyy-MM-dd')
       const from30  = format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
-      let url = `/api/appointments?from=${from30}&to=${today}&status=pendiente`
+      let url = `/api/appointments?from=${from30}&to=${today}`
       if (activeBranch) url += `&branch_id=${activeBranch.id}`
       const res  = await fetch(url)
       const data = await res.json()
-      // Filter to only pending, unpaid appointments
+      // Include any appointment still missing a payment, even if its status got out of sync.
       const pending = (data.appointments ?? []).filter(
-        (a: any) => a.status === 'pendiente' && !a.payment
+        (a: any) => a.status !== 'cancelada' && !a.payment
       )
       setPendingAppts(pending)
     } catch {

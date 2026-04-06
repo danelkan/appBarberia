@@ -6,7 +6,7 @@ import { sanitize, sanitizeEmail, sanitizePhone, sanitizeTime } from './sanitize
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY)
 }
-const FROM = 'Felito Studios <onboarding@resend.dev>'
+const FROM = process.env.RESEND_FROM_EMAIL ?? 'Felito Studios <onboarding@resend.dev>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'admin@felitostudios.com'
 
