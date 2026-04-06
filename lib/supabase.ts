@@ -13,8 +13,17 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // All real auth calls happen in the browser (event handlers / useEffect) where env vars are set.
 const ssrStub = {
   auth: {
-    signInWithPassword: async () => ({ data: null, error: null }),
-    signOut: async () => ({ error: null }),
+    signInWithPassword: async () => ({
+      data: { user: null, session: null },
+      error: {
+        message: 'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      },
+    }),
+    signOut: async () => ({
+      error: {
+        message: 'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      },
+    }),
     getSession: async () => ({ data: { session: null }, error: null }),
     getUser: async () => ({ data: { user: null }, error: null }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),

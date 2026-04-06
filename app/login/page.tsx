@@ -19,16 +19,34 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) {
-      setError('Email o contraseña incorrectos. Verificá tus datos.')
+      if (error) {
+        const isConfigError = error.message?.includes('NEXT_PUBLIC_SUPABASE')
+        setError(
+          isConfigError
+            ? 'Falta configurar Supabase en el deploy. Revisá las variables públicas en Vercel.'
+            : 'Email o contraseña incorrectos. Verificá tus datos.'
+        )
+        setLoading(false)
+        return
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        setError('Se inició sesión, pero no se pudo guardar la sesión en el navegador. Probá de nuevo.')
+        setLoading(false)
+        return
+      }
+
+      router.refresh()
+      router.replace('/admin')
+    } catch {
+      setError('No se pudo iniciar sesión. Probá de nuevo en unos segundos.')
       setLoading(false)
-      return
     }
-
-    router.refresh()
-    router.push('/admin')
   }
 
   return (
