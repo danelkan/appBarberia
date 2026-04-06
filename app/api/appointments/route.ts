@@ -25,8 +25,10 @@ export async function GET(req: NextRequest) {
   }
 
   const { from, to } = queryResult.data
-  // Optional barber filter — used when a barber logs in and only needs their own appointments
+  // Optional filters
   const barberId = searchParams.get('barber_id') ?? undefined
+  const branchId = searchParams.get('branch_id') ?? undefined
+  const status   = searchParams.get('status')    ?? undefined
 
   const supabase = createSupabaseAdmin()
 
@@ -40,14 +42,14 @@ export async function GET(req: NextRequest) {
       branch:branches(id, name, address),
       payment:payments(id, amount, method, receipt_number)
     `)
-    .order('date')
-    .order('start_time')
+    .order('date', { ascending: false })
+    .order('start_time', { ascending: false })
 
   if (from)     query = query.gte('date', from)
   if (to)       query = query.lte('date', to)
-  const branchId = searchParams.get('branch_id') ?? undefined
   if (barberId) query = query.eq('barber_id', barberId)
   if (branchId) query = query.eq('branch_id', branchId)
+  if (status)   query = query.eq('status', status)
 
   const { data, error } = await query
 

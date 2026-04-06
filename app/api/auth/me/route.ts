@@ -33,21 +33,35 @@ export async function GET(req: NextRequest) {
 
   const admin = createSupabaseAdmin()
 
-  // Check if this user's email matches a barber
-  const { data: barber } = await admin
-    .from('barbers')
-    .select('id, name, email')
-    .eq('email', session.user.email ?? '')
+  // Look up role from user_roles table
+  const { data: userRole } = await admin
+    .from('user_roles')
+    .select('role, barber_id')
+    .eq('user_id', session.user.id)
     .single()
 
-  // Superadmin UUID — the one and only owner account
-  const SUPERADMIN_ID = process.env.SUPERADMIN_UUID ?? '2dc05b66-c123-4f89-b942-7b9ecde09b48'
-  const isSuperAdmin = session.user.id === SUPERADMIN_ID
+  // Fallback: if no user_role found, check if email matches a barber
+  let role: string = userRole?.role ?? 'barber'
+  let barber_id: string | undefined = userRole?.barber_id ?? undefined
+
+  if (!userRole) {
+    const { data: barber } = await admin
+      .from('barbers')
+      .select('id')
+      .eq('email', session.user.email ?? '')
+      .single()
+    if (barber) {
+      role = 'barber'
+      barber_id = barber.id
+    }
+  }
 
   return NextResponse.json({
-    id: session.user.id,
-    email: session.user.email,
-    role: isSuperAdmin ? 'superadmin' : barber ? 'barber' : 'admin',
-    barber: barber ?? null,
+    user: {
+      id: session.user.id,
+      email: session.user.email,
+      role,
+      barber_id,
+    }
   })
 }

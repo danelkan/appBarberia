@@ -8,19 +8,25 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        black: '#0f0f0f',
+        // Hardcoded — not theme-switched
+        black: '#0f0f0f',        // True black (gold button text, etc.)
+        page: '#F7F8FA',         // Admin light page background
         gold: {
-          DEFAULT: '#c9a84c',
-          light: '#e8c96a',
-          dark: '#a07830',
+          DEFAULT: '#C9A84C',
+          light: '#E8C96A',
+          dark: '#A07830',
+          subtle: '#FEF3C7',
         },
-        cream: '#fafaf8',
+
+        // Theme-aware via CSS variables — switches between light (admin) and dark (public)
+        // Supports opacity modifiers (e.g., text-cream/40) via the <alpha-value> syntax
+        cream: 'rgb(var(--tw-cream) / <alpha-value>)',
         surface: {
-          DEFAULT: '#1a1a1a',
-          2: '#242424',
-          3: '#2e2e2e',
+          DEFAULT: 'rgb(var(--tw-surface) / <alpha-value>)',
+          2: 'rgb(var(--tw-surface-2) / <alpha-value>)',
+          3: 'rgb(var(--tw-surface-3) / <alpha-value>)',
         },
-        border: '#2e2e2e',
+        border: 'rgb(var(--tw-border) / <alpha-value>)',
       },
       fontFamily: {
         serif: ['var(--font-serif)', 'Georgia', 'serif'],
@@ -34,7 +40,7 @@ module.exports = {
       },
       keyframes: {
         fadeUp: {
-          from: { opacity: '0', transform: 'translateY(12px)' },
+          from: { opacity: '0', transform: 'translateY(10px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
         fadeIn: {
@@ -47,8 +53,12 @@ module.exports = {
         },
       },
       backgroundImage: {
-        'gold-shimmer': 'linear-gradient(90deg, transparent 0%, rgba(201,168,76,0.15) 50%, transparent 100%)',
-        'noise': "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E\")",
+        'gold-shimmer': 'linear-gradient(90deg, transparent 0%, rgba(201,168,76,0.12) 50%, transparent 100%)',
+      },
+      boxShadow: {
+        card: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        'card-hover': '0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05)',
+        modal: '0 24px 64px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.08)',
       },
     },
   },

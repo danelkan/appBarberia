@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { Scissors, Eye, EyeOff } from 'lucide-react'
+import { Scissors, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -22,74 +22,101 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      setError('Email o contraseña incorrectos')
+      setError('Email o contraseña incorrectos. Verificá tus datos.')
       setLoading(false)
       return
     }
 
-    router.push('/admin')
     router.refresh()
+    router.push('/admin')
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+    <div className="admin-theme min-h-screen bg-page flex items-center justify-center px-4">
+
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-gold/5 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-gold/5 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-sm">
+
+        {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center mx-auto mb-4">
-            <Scissors className="w-5 h-5 text-gold" />
+          <div className="inline-flex w-14 h-14 rounded-2xl bg-white shadow-card border border-border items-center justify-center mb-4">
+            <Scissors className="w-6 h-6 text-gold" />
           </div>
           <h1 className="font-serif text-2xl text-cream">Felito Studios</h1>
-          <p className="text-sm text-cream/40 mt-1">Panel de gestión</p>
+          <p className="text-sm text-cream/50 mt-1">Panel de administración</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="label">Email</label>
-            <input
-              type="email"
-              className="input"
-              placeholder="tu@email.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-            />
-          </div>
+        {/* Card */}
+        <div className="bg-white rounded-2xl border border-border shadow-modal p-8">
+          <form onSubmit={handleLogin} className="space-y-5">
 
-          <div>
-            <label className="label">Contraseña</label>
-            <div className="relative">
+            <div>
+              <label className="label">Email</label>
               <input
-                type={showPassword ? 'text' : 'password'}
-                className="input pr-10"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
+                type="email"
+                className="input"
+                placeholder="tu@email.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 required
+                autoComplete="email"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-cream/30 hover:text-cream/60 transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
             </div>
-          </div>
 
-          {error && (
-            <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">
-              {error}
-            </p>
-          )}
+            <div>
+              <label className="label">Contraseña</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  className="input pr-11"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-cream/30 hover:text-cream/60 transition-colors p-0.5"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-gold w-full"
-          >
-            {loading ? 'Ingresando...' : 'Ingresar'}
-          </button>
-        </form>
+            {error && (
+              <div className="flex items-start gap-2.5 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3.5 py-3">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || !email || !password}
+              className="btn-gold w-full mt-1"
+            >
+              {loading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                  Ingresando...
+                </>
+              ) : 'Ingresar'}
+            </button>
+
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-cream/30 mt-6">
+          Felito Barber Studio · Montevideo, Uruguay
+        </p>
+
       </div>
     </div>
   )

@@ -1,10 +1,10 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
-import { Clock, Save, Shield } from 'lucide-react'
+import { Clock, Save, Shield, CheckCircle } from 'lucide-react'
 import { Button, Spinner } from '@/components/ui'
 import { cn, DAY_NAMES } from '@/lib/utils'
-import { useAdmin } from "../layout"
+import { useAdmin } from '../layout'
 import type { WeeklyAvailability, DaySchedule, Barber } from '@/types'
 
 const DEFAULT_AVAIL: WeeklyAvailability = {
@@ -18,11 +18,11 @@ const DEFAULT_AVAIL: WeeklyAvailability = {
 }
 
 export default function HorariosPage() {
-  const { user: userRole } = useAdmin()
+  const { user: userRole }  = useAdmin()
   const [availability, setAvailability] = useState<WeeklyAvailability>(DEFAULT_AVAIL)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [saved, setSaved]     = useState(false)
 
   useEffect(() => {
     if (!userRole?.barber_id) return
@@ -31,9 +31,9 @@ export default function HorariosPage() {
       .then((data: { barbers: Barber[] }) => {
         const me = data.barbers.find(b => b.id === userRole.barber_id)
         if (me?.availability) setAvailability(me.availability)
-        setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [userRole])
 
   const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
@@ -58,25 +58,38 @@ export default function HorariosPage() {
     }
   }
 
-  if (!userRole) return <div className="flex justify-center py-20"><Spinner /></div>
+  if (!userRole) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 flex justify-center py-20">
+        <Spinner />
+      </div>
+    )
+  }
 
-  // Superadmin no debería llegar acá — tiene todo en /admin/barberos
   if (userRole.role !== 'barber') {
     return (
-      <div className="max-w-md mx-auto text-center py-20">
-        <Shield className="w-10 h-10 text-gold mx-auto mb-4" />
-        <h2 className="font-serif text-xl text-cream mb-2">Acceso completo disponible</h2>
-        <p className="text-cream/40 text-sm">Como superadmin, gestionás los horarios de todos los barberos desde la sección Barberos.</p>
+      <div className="p-4 sm:p-6 lg:p-8 max-w-lg mx-auto">
+        <div className="card p-8 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mx-auto mb-4">
+            <Shield className="w-6 h-6 text-gold" />
+          </div>
+          <h2 className="font-serif text-xl text-cream mb-2">Acceso completo disponible</h2>
+          <p className="text-cream/45 text-sm font-medium">
+            Como administrador, gestionás los horarios de todos los barberos desde la sección{' '}
+            <span className="text-gold-dark font-semibold">Barberos</span>.
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-lg">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-lg mx-auto">
+
+      <div className="flex items-start justify-between gap-3 mb-6">
         <div>
           <h1 className="font-serif text-2xl text-cream">Mis Horarios</h1>
-          <p className="text-sm text-cream/40 mt-0.5">
+          <p className="text-sm text-cream/45 mt-0.5">
             Configurá los días y horarios en que estás disponible
           </p>
         </div>
@@ -94,20 +107,20 @@ export default function HorariosPage() {
             <div
               key={day}
               className={cn(
-                'flex items-center gap-3 p-3.5 rounded-xl border transition-all',
+                'flex items-center gap-3 p-4 rounded-xl border transition-all',
                 sched.enabled
-                  ? 'border-border bg-surface'
-                  : 'border-border/30 bg-surface/40 opacity-60'
+                  ? 'border-border bg-white shadow-card'
+                  : 'border-border bg-surface-2 opacity-55'
               )}
             >
-              <label className="flex items-center gap-3 cursor-pointer min-w-0 flex-shrink-0">
+              <label className="flex items-center gap-3 cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={sched.enabled}
                   onChange={e => updateDay(day, 'enabled', e.target.checked)}
                   className="accent-gold w-4 h-4"
                 />
-                <span className="text-sm text-cream capitalize w-24">{DAY_NAMES[day]}</span>
+                <span className="text-sm font-semibold text-cream/75 capitalize w-24">{DAY_NAMES[day]}</span>
               </label>
 
               {sched.enabled ? (
@@ -118,7 +131,7 @@ export default function HorariosPage() {
                     onChange={e => updateDay(day, 'start', e.target.value)}
                     className="input py-1.5 px-2.5 text-sm flex-1"
                   />
-                  <span className="text-cream/20 text-xs flex-shrink-0">–</span>
+                  <span className="text-cream/30 text-xs font-bold flex-shrink-0">–</span>
                   <input
                     type="time"
                     value={sched.end}
@@ -127,7 +140,7 @@ export default function HorariosPage() {
                   />
                 </div>
               ) : (
-                <span className="text-xs text-cream/30 flex-1">No disponible</span>
+                <span className="text-xs text-cream/35 flex-1 font-medium">No disponible</span>
               )}
             </div>
           ))}
@@ -135,7 +148,8 @@ export default function HorariosPage() {
       )}
 
       {saved && (
-        <div className="mt-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm text-center">
+        <div className="mt-4 flex items-center gap-2.5 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold animate-fade-up">
+          <CheckCircle className="w-4 h-4 flex-shrink-0" />
           Horarios actualizados correctamente
         </div>
       )}

@@ -3,14 +3,28 @@
 @tailwind utilities;
 
 @layer base {
+  /* ─── Dark theme (default — public pages: /reservar, /mis-turnos, etc.) ─── */
   :root {
-    --gold: #c9a84c;
-    --gold-light: #e8c96a;
+    --gold: #C9A84C;
+    --gold-light: #E8C96A;
+    --gold-dark: #A07830;
     --black: #0f0f0f;
-    --cream: #fafaf8;
-    --surface: #1a1a1a;
-    --surface-2: #242424;
-    --surface-3: #2e2e2e;
+
+    /* Tailwind CSS variable colors — dark variant */
+    --tw-cream:     250 250 248;  /* #fafaf8  — light text on dark bg */
+    --tw-surface:    26  26  26;  /* #1a1a1a  — dark card */
+    --tw-surface-2:  36  36  36;  /* #242424  — alt dark bg */
+    --tw-surface-3:  46  46  46;  /* #2e2e2e  — borders, dividers */
+    --tw-border:     46  46  46;  /* #2e2e2e  — border color */
+  }
+
+  /* ─── Light theme (admin panel) ─────────────────────────────────────────── */
+  .admin-theme {
+    --tw-cream:     17  24  39;   /* #111827  — dark text on light bg */
+    --tw-surface:  255 255 255;   /* #FFFFFF  — white cards */
+    --tw-surface-2: 243 244 246;  /* #F3F4F6  — light gray bg */
+    --tw-surface-3: 233 236 240;  /* #E9ECF0  — subtle dividers */
+    --tw-border:   229 231 235;   /* #E5E7EB  — light border */
   }
 
   * {
@@ -20,45 +34,57 @@
   html {
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    background-color: var(--black);
-    color: var(--cream);
+    background-color: #0f0f0f;
+    color: #fafaf8;
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: var(--surface); }
-  ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+  /* Admin body background override */
+  .admin-theme {
+    background-color: #F7F8FA;
+    color: #111827;
+  }
+
+  /* Custom scrollbar — dark default */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #1a1a1a; }
+  ::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 4px; }
   ::-webkit-scrollbar-thumb:hover { background: var(--gold); }
 
+  /* Admin scrollbar */
+  .admin-theme ::-webkit-scrollbar-track { background: #F3F4F6; }
+  .admin-theme ::-webkit-scrollbar-thumb { background: #D1D5DB; }
+
   /* Selection */
-  ::selection { background: rgba(201, 168, 76, 0.25); color: var(--cream); }
+  ::selection { background: rgba(201, 168, 76, 0.2); }
 }
 
 @layer components {
   /* ─── Buttons ─────────────────────────────────────── */
   .btn-gold {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 
-           bg-gold text-black font-sans font-medium text-sm 
-           rounded-lg transition-all duration-200
-           hover:bg-gold-light active:scale-95 disabled:opacity-40 
-           disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           bg-gold text-black font-sans font-semibold text-sm
+           rounded-lg transition-all duration-200 shadow-sm
+           hover:bg-gold-dark active:scale-[0.98]
+           disabled:opacity-40 disabled:pointer-events-none;
   }
 
   .btn-outline {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
            border border-border text-cream/70 font-sans text-sm
-           rounded-lg transition-all duration-200
-           hover:border-gold/40 hover:text-cream hover:bg-surface
-           active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
+           rounded-lg transition-all duration-200 bg-surface
+           hover:border-gold/50 hover:text-cream hover:bg-surface-2
+           active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
   }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2
            text-cream/60 font-sans text-sm rounded-lg
-           transition-all duration-200 hover:text-cream hover:bg-surface;
+           transition-all duration-200
+           hover:text-cream hover:bg-surface-2;
   }
 
   /* ─── Cards ───────────────────────────────────────── */
@@ -66,26 +92,40 @@
     @apply bg-surface border border-border rounded-xl;
   }
 
+  /* Admin cards get a shadow */
+  .admin-theme .card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+
   .card-hover {
     @apply card transition-all duration-200 cursor-pointer
-           hover:border-gold/30 hover:bg-surface-2;
+           hover:border-gold/40;
+  }
+
+  .admin-theme .card-hover:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
   }
 
   /* ─── Form elements ───────────────────────────────── */
   .input {
-    @apply w-full bg-surface-2 border border-border rounded-lg
+    @apply w-full bg-surface border border-border rounded-lg
            px-4 py-2.5 text-sm text-cream placeholder-cream/30
            outline-none transition-all duration-200
-           focus:border-gold/50 focus:ring-1 focus:ring-gold/20;
+           focus:border-gold/60 focus:ring-2 focus:ring-gold/10;
+  }
+
+  /* Admin inputs are white */
+  .admin-theme .input {
+    background-color: #FFFFFF;
   }
 
   .label {
-    @apply block text-xs font-medium text-cream/50 uppercase tracking-wider mb-1.5;
+    @apply block text-xs font-semibold text-cream/50 uppercase tracking-wider mb-1.5;
   }
 
   /* ─── Badge ───────────────────────────────────────── */
   .badge {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 
+    @apply inline-flex items-center gap-1 px-2 py-0.5
            text-xs font-medium rounded-full border;
   }
 
@@ -96,16 +136,50 @@
 
   /* ─── Gold divider ────────────────────────────────── */
   .gold-divider {
-    @apply w-10 h-0.5 bg-gold rounded-full;
+    @apply w-8 h-0.5 bg-gold rounded-full;
   }
 
   /* ─── Loading skeleton ────────────────────────────── */
   .skeleton {
-    @apply bg-surface-2 rounded animate-pulse;
-    background: linear-gradient(90deg, #1a1a1a 25%, #242424 50%, #1a1a1a 75%);
+    @apply rounded;
+    background: linear-gradient(90deg, #242424 25%, #2e2e2e 50%, #242424 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
   }
+
+  /* Admin skeleton — light variant */
+  .admin-theme .skeleton {
+    background: linear-gradient(90deg, #F3F4F6 25%, #E9ECF0 50%, #F3F4F6 75%);
+    background-size: 200% 100%;
+  }
+}
+
+/* ─── Animations ─────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.45s ease-out both;
+}
+
+.animate-fade-up-delayed {
+  animation: fadeUp 0.65s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease both;
 }
 
 /* ─── Step wizard progress ──────────────────────────── */
@@ -124,8 +198,12 @@
   transform: translateY(-50%);
 }
 
+.admin-theme .step-line::after {
+  background: #E5E7EB;
+}
+
 .step-line.active::after {
-  background: #c9a84c;
+  background: var(--gold);
 }
 
 /* ─── Calendar day grid ─────────────────────────────── */
@@ -135,65 +213,27 @@
 }
 
 .calendar-day.available {
-  @apply hover:bg-surface-2 hover:border-gold/20 border border-transparent;
+  @apply hover:bg-surface-2 border border-transparent hover:border-border;
 }
 
 .calendar-day.selected {
-  @apply bg-gold text-black font-medium border border-gold;
+  @apply bg-gold text-black font-semibold border border-gold;
 }
 
 .calendar-day.disabled {
-  @apply opacity-25 cursor-not-allowed;
+  @apply opacity-30 cursor-not-allowed;
 }
 
 .calendar-day.today {
-  @apply border border-gold/30;
+  @apply border border-gold/40 font-semibold;
 }
 
-
-@layer components {
-  .premium-backdrop {
-    @apply min-h-screen bg-[#0f0f0f] relative;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(201,168,76,0.08), transparent);
-  }
-
-  .glass-card {
-    @apply rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm;
-  }
-
-  .premium-panel {
-    @apply rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] shadow-[0_10px_60px_rgba(0,0,0,0.35)];
-  }
-
-  .glow-gold {
-    box-shadow: 0 0 0 1px rgba(201,168,76,0.08), 0 10px 30px rgba(201,168,76,0.18);
-  }
-
-  .hero-grid {
-    background-image:
-      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-    background-size: 54px 54px;
-    background-position: center center;
-  }
+/* ─── Safe area ─────────────────────────────────────── */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-up {
-  animation: fadeUp 0.7s ease-out both;
-}
-
-.animate-fade-up-delayed {
-  animation: fadeUp 0.9s ease-out both;
+/* ─── Print styles ──────────────────────────────────── */
+@media print {
+  .print\:hidden { display: none !important; }
 }

@@ -16,7 +16,7 @@ export default function Error({
   }, [error])
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center px-4">
+    <div className="admin-theme min-h-screen bg-page flex items-center justify-center px-4">
       <div className="text-center max-w-sm">
         <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-6">
           <AlertTriangle className="w-7 h-7 text-red-400" />

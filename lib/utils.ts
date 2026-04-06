@@ -20,12 +20,16 @@ export const ISO_DAY_MAP: Record<number, string> = {
 }
 
 export function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : date
+  const d = typeof date === 'string'
+    ? new Date(date.includes('T') ? date : date + 'T00:00:00')
+    : date
   return format(d, "EEEE d 'de' MMMM", { locale: es })
 }
 
 export function formatDateShort(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : date
+  const d = typeof date === 'string'
+    ? new Date(date.includes('T') ? date : date + 'T00:00:00')
+    : date
   return format(d, 'dd/MM/yyyy')
 }
 
@@ -90,9 +94,9 @@ export function calcEndTime(startTime: string, durationMinutes: number): string 
 
 // ─── Status labels & colors ───────────────────────────────────────
 export const STATUS_CONFIG = {
-  pendiente:  { label: 'Pendiente',  color: 'text-gold bg-gold/10 border-gold/20' },
-  completada: { label: 'Completada', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
-  cancelada:  { label: 'Cancelada',  color: 'text-red-400 bg-red-400/10 border-red-400/20' },
+  pendiente:  { label: 'Pendiente',  color: 'text-amber-700 bg-amber-50 border-amber-200' },
+  completada: { label: 'Completada', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+  cancelada:  { label: 'Cancelada',  color: 'text-red-600 bg-red-50 border-red-200' },
 }
 
 // ─── Get next N available dates for a barber ─────────────────────
