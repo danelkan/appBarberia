@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { calcEndTime } from '@/lib/utils'
-import { sendConfirmationEmail, sendAdminNotification } from '@/lib/emails'
+import { sendBookingEmails } from '@/lib/emails'
 import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
@@ -132,10 +132,7 @@ export async function POST(req: NextRequest) {
     const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientId).single()
 
     if (fullClient) {
-      Promise.all([
-        sendConfirmationEmail(fullClient, barber, service, appointment),
-        sendAdminNotification(fullClient, barber, service, appointment),
-      ]).catch(console.error)
+      sendBookingEmails(fullClient, barber, service, appointment).catch(console.error)
     }
 
     const response = NextResponse.json({ appointment, success: true })

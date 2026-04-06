@@ -54,6 +54,26 @@ export async function sendConfirmationEmail(
   })
 }
 
+export async function sendBookingEmails(
+  client: Client,
+  barber: Barber,
+  service: Service,
+  appointment: Appointment
+) {
+  const results = await Promise.allSettled([
+    sendConfirmationEmail(client, barber, service, appointment),
+    sendAdminNotification(client, barber, service, appointment),
+  ])
+
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.error(index === 0 ? 'Client confirmation email failed' : 'Admin notification email failed', result.reason)
+    }
+  })
+
+  return results
+}
+
 // ─── New appointment notification to admin ────────────────────────
 export async function sendAdminNotification(
   client: Client,

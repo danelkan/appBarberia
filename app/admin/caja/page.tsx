@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   DollarSign, TrendingUp, MapPin, Receipt, Calendar,
@@ -13,7 +13,7 @@ import { useAdmin } from '../layout'
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ICONS, type PaymentMethod } from '@/types'
 import Link from 'next/link'
 
-type Period = 'today' | 'week' | 'month' | 'custom'
+type Period = 'today' | 'week' | 'month' | 'year' | 'custom'
 
 interface PaymentRow {
   id: string
@@ -37,6 +37,13 @@ interface Totals {
   debito: number
   transferencia: number
   total: number
+}
+
+interface QuickSummary {
+  today: number
+  week: number
+  month: number
+  year: number
 }
 
 interface PendingAppt {
@@ -66,7 +73,7 @@ const METHOD_ACTIVE: Record<PaymentMethod, string> = {
 }
 
 const PERIOD_LABELS: Record<Period, string> = {
-  today: 'Hoy', week: 'Esta semana', month: 'Este mes', custom: 'Personalizado',
+  today: 'Hoy', week: 'Semana', month: 'Mes', year: 'Año', custom: 'Personalizado',
 }
 
 export default function CajaPage() {
@@ -76,6 +83,7 @@ export default function CajaPage() {
   const [customTo, setCustomTo]     = useState(format(new Date(), 'yyyy-MM-dd'))
   const [payments, setPayments]     = useState<PaymentRow[]>([])
   const [totals, setTotals]         = useState<Totals | null>(null)
+  const [quickSummary, setQuickSummary] = useState<QuickSummary | null>(null)
   const [loading, setLoading]       = useState(true)
 
   // New payment modal
@@ -98,25 +106,59 @@ export default function CajaPage() {
       return [format(ws, "yyyy-MM-dd'T'00:00:00"), format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd'T'23:59:59")]
     }
     if (period === 'month')  return [format(startOfMonth(now), "yyyy-MM-dd'T'00:00:00"), format(endOfMonth(now), "yyyy-MM-dd'T'23:59:59")]
+    if (period === 'year')   return [format(startOfYear(now), "yyyy-MM-dd'T'00:00:00"), format(endOfYear(now), "yyyy-MM-dd'T'23:59:59")]
     return [customFrom + 'T00:00:00', customTo + 'T23:59:59']
   }, [period, customFrom, customTo])
+
+  const buildPaymentsUrl = useCallback((from: string, to: string) => {
+    let url = `/api/payments?date_from=${from}&date_to=${to}`
+    if (activeBranch) url += `&branch_id=${activeBranch.id}`
+    return url
+  }, [activeBranch])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [from, to] = getDateRange()
-    let url = `/api/payments?date_from=${from}&date_to=${to}`
-    if (activeBranch) url += `&branch_id=${activeBranch.id}`
+
+    const now = new Date()
+    const todayRange: [string, string] = [format(startOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"), format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss")]
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 })
+    const weekRange: [string, string] = [format(weekStart, "yyyy-MM-dd'T'00:00:00"), format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd'T'23:59:59")]
+    const monthRange: [string, string] = [format(startOfMonth(now), "yyyy-MM-dd'T'00:00:00"), format(endOfMonth(now), "yyyy-MM-dd'T'23:59:59")]
+    const yearRange: [string, string] = [format(startOfYear(now), "yyyy-MM-dd'T'00:00:00"), format(endOfYear(now), "yyyy-MM-dd'T'23:59:59")]
+
     try {
-      const res  = await fetch(url)
-      const data = await res.json()
-      setPayments(data.payments ?? [])
-      setTotals(data.totals ?? null)
+      const [mainRes, todayRes, weekRes, monthRes, yearRes] = await Promise.all([
+        fetch(buildPaymentsUrl(from, to)),
+        fetch(buildPaymentsUrl(...todayRange)),
+        fetch(buildPaymentsUrl(...weekRange)),
+        fetch(buildPaymentsUrl(...monthRange)),
+        fetch(buildPaymentsUrl(...yearRange)),
+      ])
+
+      const [mainData, todayData, weekData, monthData, yearData] = await Promise.all([
+        mainRes.json(),
+        todayRes.json(),
+        weekRes.json(),
+        monthRes.json(),
+        yearRes.json(),
+      ])
+
+      setPayments(mainData.payments ?? [])
+      setTotals(mainData.totals ?? null)
+      setQuickSummary({
+        today: todayData.totals?.total ?? 0,
+        week: weekData.totals?.total ?? 0,
+        month: monthData.totals?.total ?? 0,
+        year: yearData.totals?.total ?? 0,
+      })
     } catch {
       setPayments([])
+      setQuickSummary(null)
     } finally {
       setLoading(false)
     }
-  }, [getDateRange, activeBranch])
+  }, [buildPaymentsUrl, getDateRange])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -269,6 +311,22 @@ export default function CajaPage() {
         <div className="flex justify-center py-20"><Spinner /></div>
       ) : (
         <>
+          {quickSummary && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              {([
+                { key: 'today', label: 'Acumulado de hoy' },
+                { key: 'week', label: 'Esta semana' },
+                { key: 'month', label: 'Este mes' },
+                { key: 'year', label: 'Este año' },
+              ] as const).map(item => (
+                <div key={item.key} className="rounded-2xl border border-border bg-white p-4 shadow-card">
+                  <p className="text-xs uppercase tracking-wider text-cream/35 font-semibold">{item.label}</p>
+                  <p className="text-xl font-bold text-cream mt-2">{formatPrice(quickSummary[item.key])}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Totals grid */}
           {totals && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">

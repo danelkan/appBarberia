@@ -35,7 +35,7 @@ export function formatDateShort(date: string | Date): string {
 
 export function formatPrice(price: number): string {
   return new Intl.NumberFormat('es-UY', {
-    style: 'currency', currency: 'USD', minimumFractionDigits: 0,
+    style: 'currency', currency: 'UYU', minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(price)
 }
 
