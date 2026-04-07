@@ -1,9 +1,9 @@
 'use client'
-import { cn } from '@/lib/utils'
-import { Loader2, X } from 'lucide-react'
-import { forwardRef, useEffect } from 'react'
 
-// ─── Button ───────────────────────────────────────────────────────
+import { forwardRef, useEffect } from 'react'
+import { Loader2, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'gold' | 'outline' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
@@ -12,18 +12,19 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = 'gold', size = 'md', loading, children, className, disabled, ...props }, ref) => {
-    const base = 'inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none rounded-lg'
+    const base = 'inline-flex items-center justify-center gap-2 rounded-2xl font-semibold transition active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50'
     const variants = {
-      gold:    'bg-gold text-black hover:bg-gold-dark shadow-sm',
-      outline: 'border border-border bg-white text-cream/70 hover:border-gold/50 hover:text-cream hover:bg-surface-2',
-      ghost:   'text-cream/60 hover:text-cream hover:bg-surface-2',
-      danger:  'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100',
+      gold: 'bg-slate-950 text-white shadow-sm hover:bg-slate-800',
+      outline: 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950',
+      ghost: 'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+      danger: 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
     }
     const sizes = {
-      sm: 'px-3.5 py-1.5 text-xs',
-      md: 'px-5 py-2.5 text-sm',
-      lg: 'px-6 py-3 text-sm',
+      sm: 'px-3.5 py-2 text-xs',
+      md: 'px-4 py-2.5 text-sm',
+      lg: 'px-5 py-3 text-sm',
     }
+
     return (
       <button
         ref={ref}
@@ -31,7 +32,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(base, variants[variant], sizes[size], className)}
         {...props}
       >
-        {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
         {children}
       </button>
     )
@@ -39,86 +40,84 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = 'Button'
 
-// ─── Badge ────────────────────────────────────────────────────────
-interface BadgeProps { children: React.ReactNode; className?: string }
-export function Badge({ children, className }: BadgeProps) {
+export function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={cn('badge', className)}>{children}</span>
+    <span className={cn('inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600', className)}>
+      {children}
+    </span>
   )
 }
 
-// ─── Input ────────────────────────────────────────────────────────
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
   error?: string
 }
+
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, className, ...props }, ref) => (
     <div className="w-full">
-      {label && <label className="label">{label}</label>}
+      {label && <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</label>}
       <input
         ref={ref}
         className={cn(
-          'input',
-          error && 'border-red-400 focus:border-red-500 focus:ring-red-100',
+          'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-200/70',
+          error && 'border-red-300 focus:border-red-400 focus:ring-red-100',
           className
         )}
         {...props}
       />
-      {error && <p className="mt-1.5 text-xs text-red-500 font-medium">{error}</p>}
+      {error && <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>}
     </div>
   )
 )
 Input.displayName = 'Input'
 
-// ─── Spinner ──────────────────────────────────────────────────────
 export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cn('w-5 h-5 animate-spin text-gold', className)} />
+  return <Loader2 className={cn('h-5 w-5 animate-spin text-slate-700', className)} />
 }
 
-// ─── Modal ────────────────────────────────────────────────────────
-interface ModalProps {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  size = 'md',
+}: {
   open: boolean
   onClose: () => void
   title?: string
   children: React.ReactNode
   size?: 'sm' | 'md' | 'lg'
-}
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+}) {
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+
     if (open) {
       document.addEventListener('keydown', handleKey)
       document.body.style.overflow = 'hidden'
     }
+
     return () => {
       document.removeEventListener('keydown', handleKey)
       document.body.style.overflow = ''
     }
-  }, [open, onClose])
+  }, [onClose, open])
 
   if (!open) return null
 
-  const maxW = { sm: 'sm:max-w-sm', md: 'sm:max-w-md', lg: 'sm:max-w-lg' }[size]
+  const maxW = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-2xl' }[size]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div
-        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className={cn(
-        'relative w-full bg-white border border-border rounded-t-2xl sm:rounded-2xl shadow-modal p-6 animate-fade-up',
-        maxW
-      )}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
+      <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={onClose} />
+      <div className={cn('relative w-full rounded-t-[28px] border border-slate-200 bg-white p-6 shadow-2xl sm:rounded-[28px]', maxW)}>
         {title && (
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-semibold text-base text-cream">{title}</h3>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-surface-2 text-cream/40 hover:text-cream transition-colors"
-            >
-              <X className="w-4 h-4" />
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <h3 className="text-lg font-semibold text-slate-950">{title}</h3>
+            <button onClick={onClose} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
+              <X className="h-4 w-4" />
             </button>
           </div>
         )}
@@ -128,38 +127,46 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   )
 }
 
-// ─── Empty state ──────────────────────────────────────────────────
-export function EmptyState({ icon, title, description, action }: {
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
   icon: React.ReactNode
   title: string
   description?: string
   action?: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-border flex items-center justify-center text-cream/25 mb-4">
+    <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
         {icon}
       </div>
-      <p className="text-sm font-semibold text-cream/50">{title}</p>
-      {description && <p className="text-xs text-cream/35 mt-1 max-w-xs">{description}</p>}
-      {action && <div className="mt-4">{action}</div>}
+      <p className="mt-4 text-base font-semibold text-slate-950">{title}</p>
+      {description && <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">{description}</p>}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   )
 }
 
-// ─── Page header ─────────────────────────────────────────────────
-export function PageHeader({ title, subtitle, action }: {
+export function PageHeader({
+  title,
+  subtitle,
+  action,
+}: {
   title: React.ReactNode
   subtitle?: string
   action?: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+    <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="font-serif text-2xl text-cream">{title}</h1>
-        {subtitle && <p className="text-sm text-cream/45 mt-0.5">{subtitle}</p>}
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Admin</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{title}</h1>
+        {subtitle && <p className="mt-2 max-w-2xl text-sm text-slate-500">{subtitle}</p>}
       </div>
-      {action && <div className="flex-shrink-0">{action}</div>}
+      {action && <div>{action}</div>}
     </div>
   )
 }

@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import type { Permission } from '@/types'
-
-export type AppRole = 'superadmin' | 'admin' | 'barber'
+import {
+  ROLE_DEFAULT_PERMISSIONS,
+  type AppRole,
+  type Permission,
+} from '@/types'
 
 interface SessionUser {
   id: string
   email?: string
+  user_metadata?: {
+    full_name?: string
+    name?: string
+  }
 }
 
 interface AuthContext {
@@ -20,16 +26,38 @@ export interface AuthRoleContext extends AuthContext {
   role: AppRole
   barber_id?: string
   branch_ids: string[]
+  company_id?: string
   permissions: Permission[]
+  active: boolean
 }
 
-/**
- * Returns true when the authenticated user has the given permission.
- * Superadmins and admins implicitly have every permission.
- */
+function unique(values: Array<string | undefined | null>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))))
+}
+
+export function getRolePermissions(role: AppRole, explicitPermissions?: Permission[]) {
+  if (role === 'superadmin') {
+    return [...ROLE_DEFAULT_PERMISSIONS.superadmin]
+  }
+
+  if (explicitPermissions && explicitPermissions.length > 0) {
+    return explicitPermissions
+  }
+
+  return ROLE_DEFAULT_PERMISSIONS[role] ?? []
+}
+
 export function hasPermission(ctx: AuthRoleContext, permission: Permission): boolean {
-  if (ctx.role === 'superadmin' || ctx.role === 'admin') return true
-  return ctx.permissions.includes(permission)
+  if (ctx.role === 'superadmin') return true
+  return getRolePermissions(ctx.role, ctx.permissions).includes(permission)
+}
+
+export function forbiddenResponse(message = 'Forbidden') {
+  return NextResponse.json({ error: message }, { status: 403 })
+}
+
+export function unauthorizedResponse(message = 'Unauthorized') {
+  return NextResponse.json({ error: message }, { status: 401 })
 }
 
 function createSupabaseServerAuthClient(req: NextRequest) {
@@ -44,7 +72,9 @@ function createSupabaseServerAuthClient(req: NextRequest) {
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
-      get(name: string) { return req.cookies.get(name)?.value },
+      get(name: string) {
+        return req.cookies.get(name)?.value
+      },
       set(name: string, value: string, options: CookieOptions) {
         req.cookies.set({ name, value, ...options })
         response = NextResponse.next({ request: req })
@@ -63,7 +93,9 @@ function createSupabaseServerAuthClient(req: NextRequest) {
 
 async function getAuthSession(req: NextRequest): Promise<AuthContext | null> {
   const { supabase, response } = createSupabaseServerAuthClient(req)
-  const { data: { session } } = await supabase.auth.getSession()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
   if (!session) {
     return null
@@ -82,25 +114,26 @@ async function getBranchIdsForBarber(admin: SupabaseClient, barberId?: string) {
 
   if (error) return []
 
-  return (data ?? [])
-    .map((row: { branch_id?: string | null }) => row.branch_id)
-    .filter((branchId): branchId is string => Boolean(branchId))
+  return unique((data ?? []).map((row: { branch_id?: string | null }) => row.branch_id))
 }
 
 export async function resolveUserRole(
   admin: SupabaseClient,
   userId: string,
   email?: string
-): Promise<{ role: AppRole; barber_id?: string; branch_ids: string[]; permissions: Permission[] }> {
+): Promise<Omit<AuthRoleContext, 'session' | 'response'>> {
   const normalizedEmail = email?.toLowerCase()
   let role: AppRole = 'barber'
   let barber_id: string | undefined
   let permissions: Permission[] = []
+  let active = true
+  let company_id: string | undefined
+  let assignedBranchIds: string[] = []
 
   try {
     const { data: userRole } = await admin
       .from('user_roles')
-      .select('role, barber_id, permissions')
+      .select('*')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -115,8 +148,20 @@ export async function resolveUserRole(
     if (Array.isArray(userRole?.permissions)) {
       permissions = userRole.permissions as Permission[]
     }
+
+    if (typeof userRole?.active === 'boolean') {
+      active = userRole.active
+    }
+
+    if (typeof userRole?.company_id === 'string') {
+      company_id = userRole.company_id
+    }
+
+    if (Array.isArray(userRole?.branch_ids)) {
+      assignedBranchIds = unique(userRole.branch_ids as string[])
+    }
   } catch {
-    // Graceful fallback when the project does not have user_roles configured yet.
+    // Fallback for projects without the optional columns/table wiring.
   }
 
   if (!barber_id && normalizedEmail) {
@@ -137,9 +182,17 @@ export async function resolveUserRole(
     role = role === 'superadmin' ? role : 'admin'
   }
 
-  const branch_ids = await getBranchIdsForBarber(admin, barber_id)
+  const barberBranchIds = await getBranchIdsForBarber(admin, barber_id)
+  const branch_ids = unique([...assignedBranchIds, ...barberBranchIds])
 
-  return { role, barber_id, branch_ids, permissions }
+  return {
+    role,
+    barber_id,
+    branch_ids,
+    company_id,
+    permissions: getRolePermissions(role, permissions),
+    active,
+  }
 }
 
 export async function requireAdminAuth(req: NextRequest): Promise<AuthRoleContext | null> {
@@ -149,6 +202,7 @@ export async function requireAdminAuth(req: NextRequest): Promise<AuthRoleContex
   const admin = createSupabaseAdmin()
   const resolved = await resolveUserRole(admin, auth.session.user.id, auth.session.user.email)
 
+  if (!resolved.active) return null
   if (resolved.role !== 'admin' && resolved.role !== 'superadmin') return null
 
   return { ...auth, ...resolved }
@@ -161,9 +215,23 @@ export async function requireAuth(req: NextRequest): Promise<AuthRoleContext | n
   const admin = createSupabaseAdmin()
   const resolved = await resolveUserRole(admin, auth.session.user.id, auth.session.user.email)
 
+  if (!resolved.active) return null
+
   return { ...auth, ...resolved }
 }
 
-export function unauthorizedResponse(message = 'Unauthorized') {
-  return NextResponse.json({ error: message }, { status: 401 })
+export function requirePermission(
+  ctx: AuthRoleContext | null,
+  permission: Permission,
+  message = 'No tenés permisos para realizar esta acción'
+) {
+  if (!ctx) {
+    return unauthorizedResponse()
+  }
+
+  if (!hasPermission(ctx, permission)) {
+    return forbiddenResponse(message)
+  }
+
+  return null
 }

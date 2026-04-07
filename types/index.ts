@@ -163,11 +163,16 @@ export interface Appointment {
 export interface UserWithRole {
   id: string
   email: string
+  name?: string | null
   role: AppRole
   barber_id?: string | null
+  company_id?: string | null
+  branch_ids: string[]
   permissions: Permission[]
   active: boolean
   created_at?: string
+  company?: Pick<Company, 'id' | 'name'> | null
+  branches?: Pick<Branch, 'id' | 'name'>[]
   // Joined barber info
   barber?: Pick<Barber, 'id' | 'name' | 'email'> | null
 }

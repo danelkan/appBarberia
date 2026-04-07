@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { updateBarberSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -16,6 +16,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (!auth) {
     return unauthorizedResponse()
   }
+  const denied = requirePermission(auth, 'manage_barbers')
+  if (denied) return denied
 
   const { id } = params
 
@@ -143,6 +145,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   if (!auth) {
     return unauthorizedResponse()
   }
+  const denied = requirePermission(auth, 'manage_barbers')
+  if (denied) return denied
 
   const { id } = params
 

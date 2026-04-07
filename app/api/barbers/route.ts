@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { createBarberSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -87,6 +87,8 @@ export async function POST(req: NextRequest) {
   if (!auth) {
     return unauthorizedResponse()
   }
+  const denied = requirePermission(auth, 'manage_barbers')
+  if (denied) return denied
 
   // Parse and validate body
   const body = await req.json()

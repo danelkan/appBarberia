@@ -1,244 +1,316 @@
 'use client'
+
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  Shield, UserCog, Pencil, Trash2, Plus, Power,
-  KeyRound, Check,
+  Check,
+  Pencil,
+  Plus,
+  Power,
+  Shield,
+  Trash2,
+  UserSquare2,
 } from 'lucide-react'
 import { Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useAdmin } from '../layout'
-import { useRouter } from 'next/navigation'
 import {
-  PERMISSION_LABELS, PERMISSION_GROUPS,
-  type UserWithRole, type AppRole, type Permission,
+  PERMISSION_GROUPS,
+  PERMISSION_LABELS,
+  type AppRole,
+  type Branch,
+  type Company,
+  type Permission,
+  type UserWithRole,
 } from '@/types'
 
-const ROLE_COLORS: Record<AppRole, string> = {
-  superadmin: 'text-amber-700 bg-amber-50 border-amber-200',
-  admin:      'text-blue-700 bg-blue-50 border-blue-200',
-  barber:     'text-slate-600 bg-slate-100 border-slate-200',
-}
-const ROLE_LABELS: Record<AppRole, string> = {
-  superadmin: 'Superadmin',
-  admin:      'Admin',
-  barber:     'Barbero',
-}
-
-interface EditState {
-  user_id: string
+interface UserFormState {
+  user_id?: string
+  name: string
+  email: string
+  password: string
   role: AppRole
+  company_id: string
+  branch_ids: string[]
   permissions: Permission[]
   active: boolean
 }
 
+const EMPTY_FORM: UserFormState = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'barber',
+  company_id: '',
+  branch_ids: [],
+  permissions: [],
+  active: true,
+}
+
+const ROLE_LABELS: Record<AppRole, string> = {
+  superadmin: 'Superadmin',
+  admin: 'Admin',
+  barber: 'Barbero',
+}
+
 export default function UsuariosPage() {
   const { user: me } = useAdmin()
-  const router = useRouter()
-  const [users, setUsers]     = useState<UserWithRole[]>([])
+  const [users, setUsers] = useState<UserWithRole[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
   const [loading, setLoading] = useState(true)
-  const [editModal, setEditModal] = useState(false)
-  const [editing, setEditing] = useState<EditState | null>(null)
-  const [saving, setSaving]   = useState(false)
-  const [newModal, setNewModal] = useState(false)
-  const [newEmail, setNewEmail] = useState('')
-  const [newPass, setNewPass]   = useState('')
-  const [newRole, setNewRole]   = useState<AppRole>('barber')
-  const [creating, setCreating] = useState(false)
-  const [formError, setFormError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(true)
+  const [form, setForm] = useState<UserFormState>(EMPTY_FORM)
+  const [error, setError] = useState('')
 
-  // Only superadmin can access this page
   useEffect(() => {
-    if (me && me.role !== 'superadmin') router.push('/admin/agenda')
-  }, [me, router])
+    void loadData()
+  }, [])
 
-  const fetchUsers = useCallback(async () => {
+  async function loadData() {
+    setLoading(true)
     try {
-      const res  = await fetch('/api/users')
-      const data = await res.json()
-      setUsers(data.users ?? [])
-    } catch {
-      setUsers([])
+      const [usersRes, companiesRes, branchesRes] = await Promise.all([
+        fetch('/api/users', { cache: 'no-store' }),
+        fetch('/api/companies', { cache: 'no-store' }),
+        fetch('/api/branches?all=1', { cache: 'no-store' }),
+      ])
+
+      const [usersData, companiesData, branchesData] = await Promise.all([
+        usersRes.json(),
+        companiesRes.json(),
+        branchesRes.json(),
+      ])
+
+      setUsers(usersData.users ?? [])
+      setCompanies(companiesData.companies ?? [])
+      setBranches(branchesData.branches ?? [])
     } finally {
       setLoading(false)
     }
-  }, [])
-
-  useEffect(() => { fetchUsers() }, [fetchUsers])
-
-  function openEdit(u: UserWithRole) {
-    setEditing({ user_id: u.id, role: u.role, permissions: u.permissions ?? [], active: u.active })
-    setFormError('')
-    setEditModal(true)
   }
 
-  function togglePerm(perm: Permission) {
-    if (!editing) return
-    setEditing(e => {
-      if (!e) return e
-      const has = e.permissions.includes(perm)
-      return { ...e, permissions: has ? e.permissions.filter(p => p !== perm) : [...e.permissions, perm] }
+  function openCreate() {
+    setIsCreating(true)
+    setError('')
+    setForm(EMPTY_FORM)
+    setModalOpen(true)
+  }
+
+  function openEdit(user: UserWithRole) {
+    setIsCreating(false)
+    setError('')
+    setForm({
+      user_id: user.id,
+      name: user.name ?? '',
+      email: user.email,
+      password: '',
+      role: user.role,
+      company_id: user.company_id ?? '',
+      branch_ids: user.branch_ids ?? [],
+      permissions: user.permissions ?? [],
+      active: user.active,
     })
+    setModalOpen(true)
   }
 
-  async function saveEdit() {
-    if (!editing) return
+  function togglePermission(permission: Permission) {
+    setForm(current => ({
+      ...current,
+      permissions: current.permissions.includes(permission)
+        ? current.permissions.filter(item => item !== permission)
+        : [...current.permissions, permission],
+    }))
+  }
+
+  function toggleBranch(branchId: string) {
+    setForm(current => ({
+      ...current,
+      branch_ids: current.branch_ids.includes(branchId)
+        ? current.branch_ids.filter(item => item !== branchId)
+        : [...current.branch_ids, branchId],
+    }))
+  }
+
+  async function saveUser() {
     setSaving(true)
-    setFormError('')
-    const res = await fetch('/api/users', {
-      method: 'PATCH',
+    setError('')
+
+    const response = await fetch('/api/users', {
+      method: isCreating ? 'POST' : 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editing),
+      body: JSON.stringify(isCreating ? form : { ...form, user_id: form.user_id }),
     })
-    const data = await res.json()
+
+    const data = await response.json()
     setSaving(false)
-    if (!res.ok) { setFormError(data.error ?? 'Error al guardar'); return }
-    setEditModal(false)
-    fetchUsers()
+
+    if (!response.ok) {
+      setError(data.error ?? 'No se pudo guardar el usuario')
+      return
+    }
+
+    setModalOpen(false)
+    await loadData()
   }
 
-  async function toggleActive(u: UserWithRole) {
+  async function toggleActive(user: UserWithRole) {
     await fetch('/api/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: u.id, active: !u.active }),
+      body: JSON.stringify({ user_id: user.id, active: !user.active }),
     })
-    fetchUsers()
+
+    await loadData()
   }
 
-  async function deleteUser(u: UserWithRole) {
-    if (!confirm(`¿Eliminar el usuario ${u.email}? Esta acción no se puede deshacer.`)) return
-    await fetch(`/api/users?user_id=${u.id}`, { method: 'DELETE' })
-    fetchUsers()
+  async function removeUser(user: UserWithRole) {
+    if (!confirm(`¿Eliminar el usuario ${user.email}?`)) return
+
+    await fetch(`/api/users?user_id=${user.id}`, { method: 'DELETE' })
+    await loadData()
   }
 
-  async function createUser() {
-    if (!newEmail.trim() || !newPass.trim()) { setFormError('Email y contraseña son requeridos'); return }
-    setCreating(true)
-    setFormError('')
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: newEmail.trim(), password: newPass, role: newRole, permissions: [] }),
-    })
-    const data = await res.json()
-    setCreating(false)
-    if (!res.ok) { setFormError(data.error ?? 'Error al crear'); return }
-    setNewModal(false)
-    setNewEmail(''); setNewPass(''); setNewRole('barber')
-    fetchUsers()
-  }
+  const filteredBranches = form.company_id
+    ? branches.filter(branch => branch.company_id === form.company_id)
+    : branches
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
-        title="Usuarios"
-        subtitle="Gestioná accesos, roles y permisos del sistema"
+        title="Usuarios y permisos"
+        subtitle="Gestioná acceso operativo real por rol, empresa, sucursales y permisos granulares."
         action={
-          me?.role === 'superadmin' ? (
-            <Button size="sm" onClick={() => { setFormError(''); setNewModal(true) }}>
-              <Plus className="w-4 h-4" /> Nuevo usuario
-            </Button>
-          ) : undefined
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Nuevo usuario
+          </Button>
         }
       />
 
       {loading ? (
-        <div className="flex justify-center py-20"><Spinner /></div>
+        <div className="flex justify-center py-20">
+          <Spinner />
+        </div>
       ) : users.length === 0 ? (
         <EmptyState
-          icon={<UserCog className="w-6 h-6" />}
-          title="Sin usuarios"
-          description="No hay usuarios registrados en el sistema."
+          icon={<UserSquare2 className="h-6 w-6" />}
+          title="Todavía no hay usuarios"
+          description="Creá el primer usuario operativo para empezar a usar el backoffice con roles y permisos."
+          action={<Button onClick={openCreate}>Crear usuario</Button>}
         />
       ) : (
-        <div className="space-y-2">
-          {users.map(u => {
-            const isMe = u.id === me?.id
-            return (
-              <div key={u.id} className={cn('card p-4 shadow-card hover:shadow-card-hover transition-all', !u.active && 'opacity-50')}>
-                <div className="flex items-center gap-4">
-                  {/* Avatar */}
-                  <div className="w-10 h-10 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-gold font-bold text-sm flex-shrink-0">
-                    {u.email[0]?.toUpperCase()}
-                  </div>
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="grid grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] gap-4 border-b border-slate-200 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+            <p>Usuario</p>
+            <p>Rol</p>
+            <p>Empresa</p>
+            <p>Sucursales</p>
+            <p className="text-right">Acciones</p>
+          </div>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold text-cream">{u.email}</p>
-                      {isMe && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold/10 text-gold-dark border border-gold/20 font-semibold">Vos</span>
-                      )}
-                      <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold', ROLE_COLORS[u.role])}>
-                        {u.role === 'superadmin' && <Shield className="w-2.5 h-2.5 inline mr-0.5" />}
-                        {ROLE_LABELS[u.role]}
+          <div className="divide-y divide-slate-200">
+            {users.map(user => (
+              <div key={user.id} className={cn('grid grid-cols-[1.4fr_0.8fr_1fr_1fr_0.8fr] gap-4 px-6 py-5', !user.active && 'bg-slate-50')}>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-950">{user.name ?? 'Sin nombre'}</p>
+                  <p className="truncate text-sm text-slate-500">{user.email}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {user.permissions.slice(0, 3).map(permission => (
+                      <span key={permission} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                        {PERMISSION_LABELS[permission]}
                       </span>
-                      {!u.active && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 font-semibold">Inactivo</span>
-                      )}
-                    </div>
-                    {u.barber && (
-                      <p className="text-xs text-cream/45 mt-0.5 font-medium">Barbero: {u.barber.name}</p>
-                    )}
-                    {u.permissions.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {u.permissions.slice(0, 4).map(p => (
-                          <span key={p} className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-cream/40 rounded border border-border font-medium">
-                            {PERMISSION_LABELS[p]}
-                          </span>
-                        ))}
-                        {u.permissions.length > 4 && (
-                          <span className="text-[10px] text-cream/35 font-medium">+{u.permissions.length - 4} más</span>
-                        )}
-                      </div>
-                    )}
+                    ))}
                   </div>
+                </div>
 
-                  {/* Actions */}
-                  {!isMe && me?.role === 'superadmin' && (
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-start">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {user.role === 'superadmin' && <Shield className="mr-1 inline h-3 w-3" />}
+                    {ROLE_LABELS[user.role]}
+                  </span>
+                </div>
+
+                <div className="text-sm text-slate-600">
+                  {user.company?.name ?? 'Sin empresa'}
+                </div>
+
+                <div className="text-sm text-slate-600">
+                  {(user.branches ?? []).length > 0
+                    ? (user.branches ?? []).map(branch => branch.name).join(', ')
+                    : 'Sin sucursales'}
+                </div>
+
+                <div className="flex items-start justify-end gap-2">
+                  {user.id !== me?.id && (
+                    <>
                       <button
-                        onClick={() => openEdit(u)}
-                        className="p-1.5 rounded-lg hover:bg-surface-2 text-cream/35 hover:text-cream transition-colors"
-                        title="Editar permisos"
+                        onClick={() => openEdit(user)}
+                        className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
                       >
-                        <Pencil className="w-3.5 h-3.5" />
+                        <Pencil className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => toggleActive(u)}
-                        className={cn(
-                          'p-1.5 rounded-lg transition-colors',
-                          u.active
-                            ? 'text-cream/35 hover:bg-amber-50 hover:text-amber-600'
-                            : 'text-cream/35 hover:bg-emerald-50 hover:text-emerald-600'
-                        )}
-                        title={u.active ? 'Desactivar' : 'Activar'}
+                        onClick={() => toggleActive(user)}
+                        className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
                       >
-                        <Power className="w-3.5 h-3.5" />
+                        <Power className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => deleteUser(u)}
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-cream/35 hover:text-red-500 transition-colors"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                      {me?.role === 'superadmin' && (
+                        <button
+                          onClick={() => removeUser(user)}
+                          className="rounded-xl border border-red-200 p-2 text-red-600 transition hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ── Edit permissions modal ──────────────────── */}
-      <Modal open={editModal} onClose={() => setEditModal(false)} title="Editar acceso" size="lg">
-        {editing && (
-          <div className="space-y-5">
-            {/* Role */}
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={isCreating ? 'Nuevo usuario' : 'Editar usuario'}
+        size="lg"
+      >
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Nombre"
+              value={form.name}
+              onChange={event => setForm(current => ({ ...current, name: event.target.value }))}
+              placeholder="Nombre y apellido"
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={form.email}
+              onChange={event => setForm(current => ({ ...current, email: event.target.value }))}
+              placeholder="usuario@felito.com"
+              disabled={!isCreating}
+            />
+          </div>
+
+          {isCreating && (
+            <Input
+              label="Contraseña"
+              type="password"
+              value={form.password}
+              onChange={event => setForm(current => ({ ...current, password: event.target.value }))}
+              placeholder="Mínimo 6 caracteres"
+            />
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="label">Rol</label>
               <div className="grid grid-cols-3 gap-2">
@@ -246,142 +318,128 @@ export default function UsuariosPage() {
                   <button
                     key={role}
                     type="button"
-                    onClick={() => setEditing(e => e ? { ...e, role } : e)}
+                    onClick={() => setForm(current => ({ ...current, role }))}
                     className={cn(
-                      'rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all',
-                      editing.role === role
-                        ? 'border-gold/30 bg-gold/10 text-gold-dark'
-                        : 'border-border bg-surface-2 text-cream/55 hover:bg-surface-3'
+                      'rounded-2xl border px-3 py-3 text-sm font-semibold transition',
+                      form.role === role
+                        ? 'border-slate-950 bg-slate-950 text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                     )}
                   >
-                    {role === 'superadmin' && <Shield className="w-3.5 h-3.5 inline mr-1.5" />}
                     {ROLE_LABELS[role]}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Permissions */}
             <div>
-              <label className="label">Permisos adicionales</label>
-              <p className="text-xs text-cream/40 mb-3">Los admins y superadmins ya tienen permisos completos por defecto.</p>
-              <div className="space-y-3">
-                {PERMISSION_GROUPS.map(group => (
-                  <div key={group.label}>
-                    <p className="text-[10px] uppercase tracking-wider text-cream/30 font-semibold mb-1.5">{group.label}</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {group.permissions.map(perm => {
-                        const has = editing.permissions.includes(perm)
-                        return (
-                          <button
-                            key={perm}
-                            type="button"
-                            onClick={() => togglePerm(perm)}
-                            className={cn(
-                              'flex items-center gap-2 px-3 py-2 rounded-xl border text-left text-xs font-medium transition-all',
-                              has
-                                ? 'border-gold/30 bg-gold/8 text-gold-dark'
-                                : 'border-border bg-surface-2 text-cream/55 hover:bg-surface-3'
-                            )}
-                          >
-                            <div className={cn(
-                              'w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all',
-                              has ? 'bg-gold border-gold' : 'border-border'
-                            )}>
-                              {has && <Check className="w-2.5 h-2.5 text-black" />}
-                            </div>
-                            {PERMISSION_LABELS[perm]}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+              <label className="label">Empresa</label>
+              <select
+                value={form.company_id}
+                onChange={event => setForm(current => ({ ...current, company_id: event.target.value, branch_ids: [] }))}
+                className="input"
+              >
+                <option value="">Sin empresa</option>
+                {companies.map(company => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
                 ))}
-              </div>
-            </div>
-
-            {/* Active toggle */}
-            <label className="flex items-center gap-2.5 rounded-xl border border-border bg-surface-2 px-3 py-3 text-sm text-cream/70 cursor-pointer hover:bg-surface-3 transition-colors">
-              <input
-                type="checkbox"
-                checked={editing.active}
-                onChange={e => setEditing(ed => ed ? { ...ed, active: e.target.checked } : ed)}
-                className="accent-gold"
-              />
-              Usuario activo
-            </label>
-
-            {formError && (
-              <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 font-medium">{formError}</p>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setEditModal(false)}>Cancelar</Button>
-              <Button className="flex-1" loading={saving} onClick={saveEdit}>Guardar cambios</Button>
+              </select>
             </div>
           </div>
-        )}
-      </Modal>
-
-      {/* ── New user modal ────────────────────────────── */}
-      <Modal open={newModal} onClose={() => setNewModal(false)} title="Nuevo usuario">
-        <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm text-cream/55">
-            <div className="flex items-start gap-2">
-              <KeyRound className="w-4 h-4 mt-0.5 text-gold flex-shrink-0" />
-              <p>Para crear un barbero con acceso completo, usá la sección <strong className="text-cream">Barberos</strong>. Acá podés crear usuarios standalone sin barbero asociado.</p>
-            </div>
-          </div>
-
-          <Input
-            label="Email *"
-            type="email"
-            value={newEmail}
-            onChange={e => setNewEmail(e.target.value)}
-            placeholder="usuario@ejemplo.com"
-          />
-          <Input
-            label="Contraseña *"
-            type="password"
-            value={newPass}
-            onChange={e => setNewPass(e.target.value)}
-            placeholder="Mínimo 6 caracteres"
-          />
 
           <div>
-            <label className="label">Rol</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['barber', 'admin', 'superadmin'] as AppRole[]).map(role => (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => setNewRole(role)}
-                  className={cn(
-                    'rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all',
-                    newRole === role
-                      ? 'border-gold/30 bg-gold/10 text-gold-dark'
-                      : 'border-border bg-surface-2 text-cream/55 hover:bg-surface-3'
-                  )}
-                >
-                  {ROLE_LABELS[role]}
-                </button>
+            <label className="label">Sucursales</label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {filteredBranches.map(branch => {
+                const selected = form.branch_ids.includes(branch.id)
+                return (
+                  <button
+                    key={branch.id}
+                    type="button"
+                    onClick={() => toggleBranch(branch.id)}
+                    className={cn(
+                      'flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition',
+                      selected
+                        ? 'border-slate-950 bg-slate-950 text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    )}
+                  >
+                    <span className={cn(
+                      'flex h-5 w-5 items-center justify-center rounded-md border',
+                      selected ? 'border-white/30 bg-white/10' : 'border-slate-300 bg-slate-50'
+                    )}>
+                      {selected && <Check className="h-3 w-3" />}
+                    </span>
+                    {branch.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Permisos</label>
+            <div className="space-y-4">
+              {PERMISSION_GROUPS.map(group => (
+                <div key={group.label} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-950">{group.label}</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {group.permissions.map(permission => {
+                      const selected = form.permissions.includes(permission)
+                      return (
+                        <button
+                          key={permission}
+                          type="button"
+                          onClick={() => togglePermission(permission)}
+                          className={cn(
+                            'flex items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm transition',
+                            selected
+                              ? 'border-slate-950 bg-slate-950 text-white'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          )}
+                        >
+                          <span className={cn(
+                            'flex h-5 w-5 items-center justify-center rounded-md border',
+                            selected ? 'border-white/30 bg-white/10' : 'border-slate-300 bg-slate-50'
+                          )}>
+                            {selected && <Check className="h-3 w-3" />}
+                          </span>
+                          {PERMISSION_LABELS[permission]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
 
-          {formError && (
-            <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 font-medium">{formError}</p>
+          {!isCreating && (
+            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={event => setForm(current => ({ ...current, active: event.target.checked }))}
+                className="accent-slate-950"
+              />
+              Usuario activo
+            </label>
           )}
 
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setNewModal(false)}>Cancelar</Button>
-            <Button
-              className="flex-1"
-              loading={creating}
-              onClick={createUser}
-              disabled={!newEmail.trim() || !newPass.trim()}
-            >
-              Crear usuario
+          {error && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={saveUser} loading={saving}>
+              {isCreating ? 'Crear usuario' : 'Guardar cambios'}
             </Button>
           </div>
         </div>

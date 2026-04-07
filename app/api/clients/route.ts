@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { clientQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
   if (!auth) {
     return unauthorizedResponse()
   }
+  const denied = requirePermission(auth, 'view_clients')
+  if (denied) return denied
 
   const { searchParams } = new URL(req.url)
   const queryParams = {

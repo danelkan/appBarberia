@@ -1,101 +1,82 @@
-'use client'
-
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ChevronRight, MapPin, RefreshCw, Scissors } from 'lucide-react'
-import type { Branch } from '@/types'
+import { ArrowRight, CornerDownLeft, MapPin, Scissors } from 'lucide-react'
+import { createSupabaseAdmin } from '@/lib/supabase'
 
-export default function RootPage() {
-  const [branches, setBranches] = useState<Branch[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+export const revalidate = 300
 
-  useEffect(() => {
-    fetch('/api/branches')
-      .then(res => {
-        if (!res.ok) throw new Error('No se pudieron cargar las sucursales')
-        return res.json()
-      })
-      .then(data => {
-        setBranches(data.branches ?? [])
-      })
-      .catch(() => {
-        setError('No se pudieron cargar las sucursales.')
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [])
+export default async function HomePage() {
+  const supabase = createSupabaseAdmin()
+  const { data: branches } = await supabase
+    .from('branches')
+    .select('id, name, address')
+    .eq('active', true)
+    .order('name')
 
   return (
-    <main className="admin-theme min-h-screen bg-page">
-      <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex items-center border-b border-border pb-5">
+    <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-5xl flex-col">
+        <header className="flex items-center justify-between rounded-[32px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gold/20 bg-gold/10 text-gold">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
               <Scissors className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-cream">Felito Barber Studio</p>
-              <p className="text-xs text-cream/45">Elegí sucursal y reservá</p>
+              <p className="text-sm font-semibold text-slate-950">Felito Barber Studio</p>
+              <p className="text-xs text-slate-500">Reserva online</p>
             </div>
           </div>
-        </div>
 
-        <div className="flex flex-1 items-center justify-center py-10 sm:py-14">
-          <div className="w-full">
+          <Link href="/login" className="text-sm font-medium text-slate-500 transition hover:text-slate-950">
+            Ingreso staff
+          </Link>
+        </header>
+
+        <section className="flex flex-1 items-center justify-center py-10">
+          <div className="w-full max-w-4xl">
             <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-semibold uppercase tracking-[0.28em] text-gold-dark">Reserva online</p>
-              <h1 className="mt-3 font-serif text-4xl text-cream sm:text-5xl">
-                Elegí tu sucursal
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Elegí sucursal</p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
+                Reservá en la sede que te quede mejor.
               </h1>
-              <p className="mt-3 text-base text-cream/50">
-                Entrás, elegís sede y seguís. Sin vueltas.
+              <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-slate-500">
+                Entrás, elegís sucursal y seguís con la reserva. Sin landing, sin vueltas y con una experiencia rápida en mobile y desktop.
               </p>
             </div>
 
-            <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
-              {loading ? (
-                <>
-                  <div className="card skeleton h-40" />
-                  <div className="card skeleton h-40" />
-                </>
-              ) : error ? (
-                <button
-                  onClick={() => window.location.reload()}
-                  className="col-span-full rounded-3xl border border-border bg-white p-8 text-center shadow-card"
+            <div className="mt-10 grid gap-4 sm:grid-cols-2">
+              {(branches ?? []).map(branch => (
+                <Link
+                  key={branch.id}
+                  href={`/reservar?branch=${branch.id}`}
+                  className="group rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-xl"
                 >
-                  <RefreshCw className="mx-auto h-6 w-6 text-gold" />
-                  <p className="mt-4 text-base font-semibold text-cream">{error}</p>
-                  <p className="mt-1 text-sm text-cream/45">Tocá para reintentar.</p>
-                </button>
-              ) : (
-                branches.map(branch => (
-                  <Link
-                    key={branch.id}
-                    href={`/reservar?branch=${branch.id}`}
-                    className="group rounded-3xl border border-border bg-white p-6 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-card-hover"
-                  >
-                    <div className="flex h-full flex-col">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gold/20 bg-gold/10 text-gold">
-                          <MapPin className="h-5 w-5" />
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-cream/25 transition-transform group-hover:translate-x-1 group-hover:text-gold" />
-                      </div>
-
-                      <div className="mt-8">
-                        <h2 className="text-2xl font-semibold text-cream">{branch.name}</h2>
-                        {branch.address && <p className="mt-3 text-sm text-cream/50">{branch.address}</p>}
-                        <p className="mt-6 text-sm font-semibold text-gold-dark">Reservar en esta sucursal</p>
-                      </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                      <MapPin className="h-5 w-5" />
                     </div>
-                  </Link>
-                ))
-              )}
+                    <ArrowRight className="h-5 w-5 text-slate-300 transition group-hover:translate-x-1 group-hover:text-slate-900" />
+                  </div>
+
+                  <div className="mt-10">
+                    <h2 className="text-2xl font-semibold text-slate-950">{branch.name}</h2>
+                    <p className="mt-2 min-h-12 text-sm leading-6 text-slate-500">{branch.address}</p>
+                    <p className="mt-6 text-sm font-semibold text-slate-950">Continuar con esta sucursal</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            <div className="mt-8 flex justify-center">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-500 shadow-sm transition hover:text-slate-950"
+              >
+                <CornerDownLeft className="h-4 w-4" />
+                Volver atrás
+              </Link>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </main>
   )

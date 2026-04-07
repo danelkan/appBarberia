@@ -1,40 +1,46 @@
 'use client'
+
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
-import { Building2, MapPin, Phone, Plus, Pencil } from 'lucide-react'
+import { Building2, MapPin, Pencil, Phone, Plus } from 'lucide-react'
 import { Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
-import type { Branch } from '@/types'
+import type { Branch, Company } from '@/types'
 
-const EMPTY_BRANCH = {
+const EMPTY_BRANCH: Partial<Branch> = {
   name: '',
   address: '',
   phone: '',
   active: true,
+  company_id: '',
 }
 
 export default function SucursalesPage() {
   const [branches, setBranches] = useState<Branch[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Partial<Branch>>(EMPTY_BRANCH)
 
-  async function fetchBranches() {
+  useEffect(() => {
+    void loadData()
+  }, [])
+
+  async function loadData() {
+    setLoading(true)
     try {
-      const res = await fetch('/api/branches?all=1')
-      const data = await res.json()
-      setBranches(data.branches ?? [])
-    } catch {
-      setBranches([])
+      const [branchesRes, companiesRes] = await Promise.all([
+        fetch('/api/branches?all=1', { cache: 'no-store' }),
+        fetch('/api/companies', { cache: 'no-store' }),
+      ])
+      const [branchesData, companiesData] = await Promise.all([branchesRes.json(), companiesRes.json()])
+      setBranches(branchesData.branches ?? [])
+      setCompanies(companiesData.companies ?? [])
     } finally {
       setLoading(false)
     }
   }
-
-  useEffect(() => {
-    fetchBranches()
-  }, [])
 
   function openNew() {
     setEditing(EMPTY_BRANCH)
@@ -50,30 +56,27 @@ export default function SucursalesPage() {
     if (!editing.name?.trim()) return
 
     setSaving(true)
-
-    const isEditing = Boolean(editing.id)
-    const res = await fetch(isEditing ? `/api/branches/${editing.id}` : '/api/branches', {
-      method: isEditing ? 'PUT' : 'POST',
+    const response = await fetch(editing.id ? `/api/branches/${editing.id}` : '/api/branches', {
+      method: editing.id ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editing),
     })
-
     setSaving(false)
 
-    if (!res.ok) return
+    if (!response.ok) return
 
     setModalOpen(false)
-    fetchBranches()
+    await loadData()
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
         title="Sucursales"
-        subtitle="Gestioná qué sedes están visibles y disponibles para reservas"
+        subtitle="Definí qué sedes están activas, a qué empresa pertenecen y cómo se muestran en la reserva pública."
         action={
-          <Button size="sm" onClick={openNew}>
-            <Plus className="w-4 h-4" />
+          <Button onClick={openNew}>
+            <Plus className="h-4 w-4" />
             Nueva sucursal
           </Button>
         }
@@ -85,67 +88,77 @@ export default function SucursalesPage() {
         </div>
       ) : branches.length === 0 ? (
         <EmptyState
-          icon={<Building2 className="w-6 h-6" />}
-          title="No hay sucursales"
-          description="Creá la primera sede para empezar a recibir reservas."
-          action={
-            <Button size="sm" onClick={openNew}>
-              <Plus className="w-4 h-4" />
-              Nueva sucursal
-            </Button>
-          }
+          icon={<Building2 className="h-6 w-6" />}
+          title="No hay sucursales cargadas"
+          description="Creá la primera sucursal para habilitar reservas y organización interna."
+          action={<Button onClick={openNew}>Crear sucursal</Button>}
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           {branches.map(branch => (
-            <div key={branch.id} className="card p-5 hover:shadow-card-hover transition-all">
+            <div key={branch.id} className="card p-6">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-semibold text-cream">{branch.name}</h3>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${branch.active ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-slate-600 bg-slate-100 border-slate-200'}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-semibold text-slate-950">{branch.name}</h3>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${branch.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                       {branch.active ? 'Activa' : 'Oculta'}
                     </span>
                   </div>
-                  {branch.address && (
-                    <p className="mt-3 flex items-center gap-2 text-sm text-cream/50">
-                      <MapPin className="w-4 h-4 flex-shrink-0" />
-                      {branch.address}
-                    </p>
-                  )}
-                  {branch.phone && (
-                    <p className="mt-2 flex items-center gap-2 text-sm text-cream/50">
-                      <Phone className="w-4 h-4 flex-shrink-0" />
-                      {branch.phone}
-                    </p>
-                  )}
+                  <p className="mt-2 text-sm text-slate-500">{branch.company?.name ?? 'Sin empresa'}</p>
                 </div>
 
                 <button
                   onClick={() => openEdit(branch)}
-                  className="p-2 rounded-lg border border-border bg-white hover:bg-surface-2 text-cream/45 hover:text-cream transition-colors"
-                  title="Editar sucursal"
+                  className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
                 >
-                  <Pencil className="w-4 h-4" />
+                  <Pencil className="h-4 w-4" />
                 </button>
+              </div>
+
+              <div className="mt-5 space-y-2 text-sm text-slate-600">
+                {branch.address && (
+                  <p className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-slate-400" />
+                    {branch.address}
+                  </p>
+                )}
+                {branch.phone && (
+                  <p className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-slate-400" />
+                    {branch.phone}
+                  </p>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editing.id ? 'Editar sucursal' : 'Nueva sucursal'}
-      >
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing.id ? 'Editar sucursal' : 'Nueva sucursal'}>
         <div className="space-y-4">
           <Input
-            label="Nombre *"
+            label="Nombre"
             value={editing.name ?? ''}
             onChange={event => setEditing(current => ({ ...current, name: event.target.value }))}
-            placeholder="Punta Carretas"
+            placeholder="Cordón"
           />
+
+          <div>
+            <label className="label">Empresa</label>
+            <select
+              value={editing.company_id ?? ''}
+              onChange={event => setEditing(current => ({ ...current, company_id: event.target.value }))}
+              className="input"
+            >
+              <option value="">Sin empresa</option>
+              {companies.map(company => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <Input
             label="Dirección"
@@ -161,21 +174,21 @@ export default function SucursalesPage() {
             placeholder="096 000 000"
           />
 
-          <label className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-3 text-sm text-cream/70">
+          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <input
               type="checkbox"
               checked={editing.active ?? true}
               onChange={event => setEditing(current => ({ ...current, active: event.target.checked }))}
-              className="accent-gold"
+              className="accent-slate-950"
             />
             Mostrar esta sucursal en la reserva pública
           </label>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
               Cancelar
             </Button>
-            <Button className="flex-1" onClick={saveBranch} loading={saving} disabled={!editing.name?.trim()}>
+            <Button className="flex-1" onClick={saveBranch} loading={saving}>
               {editing.id ? 'Guardar cambios' : 'Crear sucursal'}
             </Button>
           </div>

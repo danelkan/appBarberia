@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'manage_companies')
+  if (denied) return denied
 
   const supabase = createSupabaseAdmin()
   const { data, error } = await supabase
@@ -20,6 +22,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'manage_companies')
+  if (denied) return denied
 
   const body = await req.json()
   const { name, email, phone, address, active } = body
@@ -49,6 +53,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'manage_companies')
+  if (denied) return denied
 
   // Only superadmins can delete companies
   if (auth.role !== 'superadmin') {

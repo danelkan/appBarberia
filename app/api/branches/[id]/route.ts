@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'manage_branches')
+  if (denied) return denied
 
   const body = await req.json()
-  const { name, address, phone, active } = body
+  const { name, address, phone, active, company_id } = body
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
@@ -21,6 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       address: address?.trim() || null,
       phone: phone?.trim() || null,
       active: Boolean(active),
+      company_id: company_id ?? null,
     })
     .eq('id', params.id)
     .select('*')

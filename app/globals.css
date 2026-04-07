@@ -3,28 +3,16 @@
 @tailwind utilities;
 
 @layer base {
-  /* ─── Dark theme (default — public pages: /reservar, /mis-turnos, etc.) ─── */
   :root {
-    --gold: #C9A84C;
-    --gold-light: #E8C96A;
-    --gold-dark: #A07830;
-    --black: #0f0f0f;
+    --gold: #c9a84c;
+    --gold-light: #e8d49b;
+    --gold-dark: #8f6b1d;
 
-    /* Tailwind CSS variable colors — dark variant */
-    --tw-cream:     250 250 248;  /* #fafaf8  — light text on dark bg */
-    --tw-surface:    26  26  26;  /* #1a1a1a  — dark card */
-    --tw-surface-2:  36  36  36;  /* #242424  — alt dark bg */
-    --tw-surface-3:  46  46  46;  /* #2e2e2e  — borders, dividers */
-    --tw-border:     46  46  46;  /* #2e2e2e  — border color */
-  }
-
-  /* ─── Light theme (admin panel) ─────────────────────────────────────────── */
-  .admin-theme {
-    --tw-cream:     17  24  39;   /* #111827  — dark text on light bg */
-    --tw-surface:  255 255 255;   /* #FFFFFF  — white cards */
-    --tw-surface-2: 243 244 246;  /* #F3F4F6  — light gray bg */
-    --tw-surface-3: 233 236 240;  /* #E9ECF0  — subtle dividers */
-    --tw-border:   229 231 235;   /* #E5E7EB  — light border */
+    --tw-cream: 15 23 42;
+    --tw-surface: 255 255 255;
+    --tw-surface-2: 248 250 252;
+    --tw-surface-3: 241 245 249;
+    --tw-border: 226 232 240;
   }
 
   * {
@@ -38,136 +26,114 @@
   }
 
   body {
-    background-color: #0f0f0f;
-    color: #fafaf8;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top left, rgba(201, 168, 76, 0.10), transparent 28%),
+      linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    color: #0f172a;
   }
 
-  /* Admin body background override */
-  .admin-theme {
-    background-color: #F7F8FA;
-    color: #111827;
+  ::selection {
+    background: rgba(15, 23, 42, 0.12);
   }
 
-  /* Custom scrollbar — dark default */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-track { background: #1a1a1a; }
-  ::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-  /* Admin scrollbar */
-  .admin-theme ::-webkit-scrollbar-track { background: #F3F4F6; }
-  .admin-theme ::-webkit-scrollbar-thumb { background: #D1D5DB; }
+  ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+  }
 
-  /* Selection */
-  ::selection { background: rgba(201, 168, 76, 0.2); }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
 }
 
 @layer components {
-  /* ─── Buttons ─────────────────────────────────────── */
   .btn-gold {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           bg-gold text-black font-sans font-semibold text-sm
-           rounded-lg transition-all duration-200 shadow-sm
-           hover:bg-gold-dark active:scale-[0.98]
-           disabled:opacity-40 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50;
   }
 
   .btn-outline {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           border border-border text-cream/70 font-sans text-sm
-           rounded-lg transition-all duration-200 bg-surface
-           hover:border-gold/50 hover:text-cream hover:bg-surface-2
-           active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2
-           text-cream/60 font-sans text-sm rounded-lg
-           transition-all duration-200
-           hover:text-cream hover:bg-surface-2;
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950;
   }
 
-  /* ─── Cards ───────────────────────────────────────── */
   .card {
-    @apply bg-surface border border-border rounded-xl;
-  }
-
-  /* Admin cards get a shadow */
-  .admin-theme .card {
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    @apply rounded-[28px] border border-slate-200 bg-white shadow-sm;
   }
 
   .card-hover {
-    @apply card transition-all duration-200 cursor-pointer
-           hover:border-gold/40;
+    @apply card transition duration-200 hover:-translate-y-0.5 hover:shadow-lg;
   }
 
-  .admin-theme .card-hover:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
-  }
-
-  /* ─── Form elements ───────────────────────────────── */
   .input {
-    @apply w-full bg-surface border border-border rounded-lg
-           px-4 py-2.5 text-sm text-cream placeholder-cream/30
-           outline-none transition-all duration-200
-           focus:border-gold/60 focus:ring-2 focus:ring-gold/10;
-  }
-
-  /* Admin inputs are white */
-  .admin-theme .input {
-    background-color: #FFFFFF;
+    @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-200/70;
   }
 
   .label {
-    @apply block text-xs font-semibold text-cream/50 uppercase tracking-wider mb-1.5;
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500;
   }
 
-  /* ─── Badge ───────────────────────────────────────── */
   .badge {
-    @apply inline-flex items-center gap-1 px-2 py-0.5
-           text-xs font-medium rounded-full border;
+    @apply inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600;
   }
 
-  /* ─── Section title ───────────────────────────────── */
   .section-title {
-    @apply font-serif text-2xl md:text-3xl text-cream;
+    @apply text-3xl font-semibold tracking-tight text-slate-950;
   }
 
-  /* ─── Gold divider ────────────────────────────────── */
   .gold-divider {
-    @apply w-8 h-0.5 bg-gold rounded-full;
+    @apply h-1 w-12 rounded-full bg-slate-950;
   }
 
-  /* ─── Loading skeleton ────────────────────────────── */
   .skeleton {
-    @apply rounded;
-    background: linear-gradient(90deg, #242424 25%, #2e2e2e 50%, #242424 75%);
+    background: linear-gradient(90deg, #f8fafc 25%, #e2e8f0 50%, #f8fafc 75%);
     background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-  }
-
-  /* Admin skeleton — light variant */
-  .admin-theme .skeleton {
-    background: linear-gradient(90deg, #F3F4F6 25%, #E9ECF0 50%, #F3F4F6 75%);
-    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite;
   }
 }
 
-/* ─── Animations ─────────────────────────────────────── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .animate-fade-up {
@@ -182,58 +148,12 @@
   animation: fadeIn 0.25s ease both;
 }
 
-/* ─── Step wizard progress ──────────────────────────── */
-.step-line {
-  position: relative;
-}
-
-.step-line::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 100%;
-  width: 100%;
-  height: 1px;
-  background: #2e2e2e;
-  transform: translateY(-50%);
-}
-
-.admin-theme .step-line::after {
-  background: #E5E7EB;
-}
-
-.step-line.active::after {
-  background: var(--gold);
-}
-
-/* ─── Calendar day grid ─────────────────────────────── */
-.calendar-day {
-  @apply flex flex-col items-center justify-center p-2 rounded-lg
-         text-sm transition-all duration-150 cursor-pointer select-none;
-}
-
-.calendar-day.available {
-  @apply hover:bg-surface-2 border border-transparent hover:border-border;
-}
-
-.calendar-day.selected {
-  @apply bg-gold text-black font-semibold border border-gold;
-}
-
-.calendar-day.disabled {
-  @apply opacity-30 cursor-not-allowed;
-}
-
-.calendar-day.today {
-  @apply border border-gold/40 font-semibold;
-}
-
-/* ─── Safe area ─────────────────────────────────────── */
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-/* ─── Print styles ──────────────────────────────────── */
 @media print {
-  .print\:hidden { display: none !important; }
+  .print\:hidden {
+    display: none !important;
+  }
 }

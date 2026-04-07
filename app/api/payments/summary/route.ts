@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 
 function calcTotals(payments: any[]): {
@@ -18,6 +18,8 @@ function calcTotals(payments: any[]): {
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'view_caja')
+  if (denied) return denied
 
   const { searchParams } = new URL(req.url)
   const branch_id = searchParams.get('branch_id')

@@ -33,19 +33,41 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createSupabaseAdmin()
-  const { role, barber_id, branch_ids } = await resolveUserRole(
+  const { role, barber_id, branch_ids, company_id, permissions, active } = await resolveUserRole(
     admin,
     session.user.id,
     session.user.email ?? undefined
   )
 
+  const branchList = branch_ids.length > 0
+    ? await admin
+        .from('branches')
+        .select('id, name')
+        .in('id', branch_ids)
+        .order('name')
+    : { data: [] }
+
+  const company = company_id
+    ? await admin
+        .from('companies')
+        .select('id, name')
+        .eq('id', company_id)
+        .maybeSingle()
+    : { data: null }
+
   return NextResponse.json({
     user: {
       id: session.user.id,
       email: session.user.email,
+      name: session.user.user_metadata?.full_name ?? session.user.user_metadata?.name ?? null,
       role,
       barber_id,
+      company_id,
       branch_ids,
+      permissions,
+      active,
+      company: company.data ?? null,
+      branches: branchList.data ?? [],
     }
   })
 }

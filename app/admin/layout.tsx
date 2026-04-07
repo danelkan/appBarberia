@@ -1,398 +1,347 @@
 'use client'
+
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, createContext, useContext } from 'react'
+
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Calendar, Users, Scissors, UserCog, LogOut,
-  Shield, Clock, ChevronDown, MapPin, DollarSign,
-  Building2, LayoutDashboard, UserCircle, Menu, X,
+  Building2,
+  Calendar,
+  ChevronDown,
+  Clock3,
+  DollarSign,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Scissors,
+  ShieldCheck,
+  Store,
+  Users,
+  UserSquare2,
+  X,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Button, Spinner } from '@/components/ui'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
-import type { Branch } from '@/types'
-
-interface UserRole {
-  id: string
-  email: string
-  role: 'superadmin' | 'admin' | 'barber'
-  barber_id?: string
-  branch_ids?: string[]
-}
+import { cn } from '@/lib/utils'
+import type { Branch, Permission, UserWithRole } from '@/types'
 
 interface AdminContextValue {
-  user: UserRole | null
-  activeBranch: Branch | null
+  user: UserWithRole | null
   branches: Branch[]
-  setActiveBranch: (b: Branch | null) => void
+  activeBranch: Branch | null
+  setActiveBranch: (branch: Branch | null) => void
+  can: (permission: Permission) => boolean
 }
 
-export const AdminContext = createContext<AdminContextValue>({
-  user: null, activeBranch: null, branches: [], setActiveBranch: () => {},
+const AdminContext = createContext<AdminContextValue>({
+  user: null,
+  branches: [],
+  activeBranch: null,
+  setActiveBranch: () => {},
+  can: () => false,
 })
+
 export const useAdmin = () => useContext(AdminContext)
 
-interface NavItem {
-  href: string
-  label: string
-  icon: React.ElementType
-  roles?: ('superadmin' | 'admin' | 'barber')[]
+const ROUTE_PERMISSIONS: Partial<Record<string, Permission>> = {
+  '/admin/caja': 'view_caja',
+  '/admin/clientes': 'view_clients',
+  '/admin/servicios': 'manage_services',
+  '/admin/barberos': 'manage_barbers',
+  '/admin/horarios': 'manage_schedules',
+  '/admin/sucursales': 'manage_branches',
+  '/admin/empresas': 'manage_companies',
+  '/admin/usuarios': 'manage_users',
 }
 
-const NAV: NavItem[] = [
-  { href: '/admin/dashboard',  label: 'Inicio',     icon: LayoutDashboard },
-  { href: '/admin/agenda',     label: 'Agenda',     icon: Calendar        },
-  { href: '/admin/caja',       label: 'Caja',       icon: DollarSign      },
-  { href: '/admin/clientes',   label: 'Clientes',   icon: Users,          roles: ['superadmin', 'admin'] },
-  { href: '/admin/servicios',  label: 'Servicios',  icon: Scissors,       roles: ['superadmin', 'admin'] },
-  { href: '/admin/barberos',   label: 'Barberos',   icon: UserCog,        roles: ['superadmin', 'admin'] },
-  { href: '/admin/horarios',   label: 'Horarios',   icon: Clock           },
-  { href: '/admin/sucursales', label: 'Sucursales', icon: Building2,      roles: ['superadmin', 'admin'] },
-  { href: '/admin/empresas',   label: 'Empresas',   icon: Building2,      roles: ['superadmin'] },
-  { href: '/admin/usuarios',   label: 'Usuarios',   icon: UserCircle,     roles: ['superadmin'] },
+const NAV_ITEMS = [
+  { href: '/admin/dashboard', label: 'Resumen', icon: LayoutDashboard },
+  { href: '/admin/agenda', label: 'Agenda', icon: Calendar },
+  { href: '/admin/caja', label: 'Caja', icon: DollarSign, permission: 'view_caja' as Permission },
+  { href: '/admin/clientes', label: 'Clientes', icon: Users, permission: 'view_clients' as Permission },
+  { href: '/admin/barberos', label: 'Barberos', icon: Scissors, permission: 'manage_barbers' as Permission },
+  { href: '/admin/servicios', label: 'Servicios', icon: Clock3, permission: 'manage_services' as Permission },
+  { href: '/admin/sucursales', label: 'Sucursales', icon: Store, permission: 'manage_branches' as Permission },
+  { href: '/admin/empresas', label: 'Empresas', icon: Building2, permission: 'manage_companies' as Permission },
+  { href: '/admin/usuarios', label: 'Usuarios', icon: UserSquare2, permission: 'manage_users' as Permission },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [user, setUser]                 = useState<UserRole | null>(null)
-  const [branches, setBranches]         = useState<Branch[]>([])
+  const pathname = usePathname()
+  const router = useRouter()
+  const supabase = createSupabaseBrowserClient()
+  const [user, setUser] = useState<UserWithRole | null>(null)
+  const [branches, setBranches] = useState<Branch[]>([])
   const [activeBranch, setActiveBranch] = useState<Branch | null>(null)
-  const [branchOpen, setBranchOpen]     = useState(false)
-  const [mobileOpen, setMobileOpen]     = useState(false)
-  const [loading, setLoading]           = useState(true)
-  const pathname  = usePathname()
-  const router    = useRouter()
-  const supabase  = createSupabaseBrowserClient()
+  const [loading, setLoading] = useState(true)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [branchOpen, setBranchOpen] = useState(false)
+
+  const can = useMemo(
+    () => (permission: Permission) => {
+      if (!user) return false
+      if (user.role === 'superadmin') return true
+      return user.permissions.includes(permission)
+    },
+    [user]
+  )
 
   useEffect(() => {
     let mounted = true
 
     async function bootstrap() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
       try {
-        const [userRes, branchesRes] = await Promise.all([
-          fetch('/api/auth/me'),
-          fetch('/api/branches'),
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!session) {
+          router.replace('/login')
+          return
+        }
+
+        const [meRes, branchesRes] = await Promise.all([
+          fetch('/api/auth/me', { cache: 'no-store' }),
+          fetch('/api/branches?all=1', { cache: 'no-store' }),
         ])
-        const userData    = await userRes.json()
-        const branchesData = await branchesRes.json()
+
+        if (!meRes.ok) {
+          router.replace('/login')
+          return
+        }
+
+        const [{ user: nextUser }, { branches: nextBranches }] = await Promise.all([
+          meRes.json(),
+          branchesRes.json(),
+        ])
 
         if (!mounted) return
 
-        const nextUser     = userData.user ?? null
-        const allBranches  = branchesData.branches ?? []
-        const allowedBranches = nextUser?.role === 'barber'
-          ? allBranches.filter((b: Branch) => nextUser.branch_ids?.includes(b.id))
-          : allBranches
+        const allowedBranches = (nextUser?.role === 'barber'
+          ? (nextBranches ?? []).filter((branch: Branch) => nextUser.branch_ids.includes(branch.id))
+          : nextBranches ?? []) as Branch[]
 
-        setUser(nextUser)
+        setUser(nextUser ?? null)
         setBranches(allowedBranches)
 
-        const defaultBranch = allowedBranches.find((b: Branch) =>
-          b.name.toLowerCase().includes('punta carretas')
-        ) ?? allowedBranches[0] ?? null
+        const storedBranchId = window.localStorage.getItem('felito.activeBranch')
+        const restoredBranch = allowedBranches.find(branch => branch.id === storedBranchId) ?? null
+        const nextActiveBranch = nextUser?.role === 'barber'
+          ? allowedBranches[0] ?? null
+          : restoredBranch ?? allowedBranches[0] ?? null
 
-        setActiveBranch(nextUser?.role === 'barber' ? (allowedBranches[0] ?? null) : defaultBranch)
+        setActiveBranch(nextActiveBranch)
       } catch {
-        if (mounted) setBranches([])
+        if (mounted) {
+          router.replace('/login')
+        }
       } finally {
-        if (mounted) setLoading(false)
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
 
     bootstrap()
-    return () => { mounted = false }
+
+    return () => {
+      mounted = false
+    }
   }, [router, supabase.auth])
 
-  // Close mobile menu on route change
-  useEffect(() => { setMobileOpen(false) }, [pathname])
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
 
-  const handleLogout = async () => {
+  useEffect(() => {
+    if (activeBranch) {
+      window.localStorage.setItem('felito.activeBranch', activeBranch.id)
+    }
+  }, [activeBranch])
+
+  useEffect(() => {
+    if (!user) return
+
+    const permission = Object.entries(ROUTE_PERMISSIONS).find(([route]) => pathname.startsWith(route))?.[1]
+    if (permission && !can(permission)) {
+      router.replace('/admin/dashboard')
+    }
+  }, [can, pathname, router, user])
+
+  const visibleNav = NAV_ITEMS.filter(item => !item.permission || can(item.permission))
+
+  async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/login')
+    router.replace('/login')
   }
-
-  const visibleNav = NAV.filter(item => {
-    if (!item.roles) return true
-    return user && item.roles.includes(user.role)
-  })
 
   if (loading) {
     return (
       <div className="admin-theme min-h-screen bg-page flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-full border-2 border-gold border-t-transparent animate-spin" />
-          <p className="text-xs uppercase tracking-widest text-cream/30 font-medium">Cargando</p>
+          <Spinner className="h-6 w-6" />
+          <p className="text-sm text-slate-500">Cargando panel</p>
         </div>
       </div>
     )
   }
 
-  const NavItem = ({ item, onClick }: { item: NavItem; onClick?: () => void }) => {
-    const active = pathname === item.href || (item.href !== '/admin/dashboard' && pathname.startsWith(item.href))
-    return (
-      <Link
-        href={item.href}
-        onClick={onClick}
-        className={cn(
-          'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
-          active
-            ? 'bg-gold/10 text-gold-dark border border-gold/20 shadow-sm'
-            : 'text-cream/55 hover:text-cream hover:bg-surface-2'
-        )}
-      >
-        <item.icon className={cn('w-4 h-4 flex-shrink-0', active ? 'text-gold' : '')} />
-        {item.label}
-        {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-gold" />}
-      </Link>
-    )
-  }
+  const sidebar = (
+    <div className="flex h-full flex-col">
+      <div className="border-b border-slate-200 px-5 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
+            <Scissors className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-950">Felito Barber Studio</p>
+            <p className="text-xs text-slate-500">Backoffice operativo</p>
+          </div>
+        </div>
+      </div>
 
-  const BranchSelector = ({ mobile }: { mobile?: boolean }) => (
-    <div className={cn('relative', mobile ? '' : 'px-3 py-3 border-b border-border')}>
-      {!mobile && branches.length > 0 && (
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-cream/30 px-1 mb-2">Sede activa</p>
-      )}
-      {branches.length > 0 && (
-        <>
+      <div className="border-b border-slate-200 px-4 py-4">
+        <div className="relative">
           <button
-            onClick={() => setBranchOpen(!branchOpen)}
-            className={cn(
-              'flex items-center gap-2 rounded-xl border border-border bg-surface-2 hover:bg-surface-3 transition-all',
-              mobile ? 'px-2.5 py-1.5 text-xs' : 'w-full px-3 py-2.5 text-sm'
-            )}
+            onClick={() => setBranchOpen(current => !current)}
+            className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition hover:border-slate-300"
           >
-            <MapPin className={cn('flex-shrink-0 text-gold', mobile ? 'w-3 h-3' : 'w-3.5 h-3.5')} />
-            <span className={cn('flex-1 text-left text-cream/80 truncate font-medium', mobile ? 'max-w-[80px]' : '')}>
-              {activeBranch ? activeBranch.name : 'Todas las sedes'}
-            </span>
-            <ChevronDown className={cn('text-cream/40 transition-transform flex-shrink-0', branchOpen && 'rotate-180', mobile ? 'w-3 h-3' : 'w-3.5 h-3.5')} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+              <Store className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">Sucursal activa</p>
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {activeBranch?.name ?? (user?.role === 'barber' ? 'Sin sucursal asignada' : 'Todas las sucursales')}
+              </p>
+            </div>
+            <ChevronDown className={cn('h-4 w-4 text-slate-400 transition', branchOpen && 'rotate-180')} />
           </button>
 
           {branchOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setBranchOpen(false)} />
-              <div className={cn(
-                'rounded-xl border border-border bg-white shadow-modal overflow-hidden animate-fade-in z-50',
-                mobile ? 'absolute right-0 top-full mt-1 w-48' : 'mt-1.5',
-                !mobile && 'relative z-50'
-              )}>
-                {user?.role !== 'barber' && (
-                  <button
-                    onClick={() => { setActiveBranch(null); setBranchOpen(false) }}
-                    className={cn(
-                      'w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-surface-2 font-medium',
-                      activeBranch === null ? 'text-gold' : 'text-cream/60'
-                    )}
-                  >
-                    Todas las sedes
-                  </button>
-                )}
-                {branches.map(b => (
-                  <button
-                    key={b.id}
-                    onClick={() => { setActiveBranch(b); setBranchOpen(false) }}
-                    className={cn(
-                      'w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-surface-2 font-medium border-t border-border/50',
-                      activeBranch?.id === b.id ? 'text-gold bg-gold/5' : 'text-cream/60'
-                    )}
-                  >
-                    {b.name}
-                  </button>
-                ))}
-              </div>
-            </>
+            <div className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+              {user?.role !== 'barber' && (
+                <button
+                  onClick={() => {
+                    setActiveBranch(null)
+                    setBranchOpen(false)
+                  }}
+                  className={cn(
+                    'w-full px-4 py-3 text-left text-sm transition hover:bg-slate-50',
+                    !activeBranch ? 'bg-slate-50 font-semibold text-slate-950' : 'text-slate-600'
+                  )}
+                >
+                  Todas las sucursales
+                </button>
+              )}
+              {branches.map(branch => (
+                <button
+                  key={branch.id}
+                  onClick={() => {
+                    setActiveBranch(branch)
+                    setBranchOpen(false)
+                  }}
+                  className={cn(
+                    'w-full border-t border-slate-100 px-4 py-3 text-left text-sm transition hover:bg-slate-50',
+                    activeBranch?.id === branch.id ? 'bg-slate-50 font-semibold text-slate-950' : 'text-slate-600'
+                  )}
+                >
+                  {branch.name}
+                </button>
+              ))}
+            </div>
           )}
-        </>
-      )}
+        </div>
+      </div>
+
+      <nav className="flex-1 space-y-1 px-3 py-4">
+        {visibleNav.map(item => {
+          const active = pathname === item.href || (item.href !== '/admin/dashboard' && pathname.startsWith(item.href))
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition',
+                active
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+              )}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          )
+        })}
+      </nav>
+
+      <div className="border-t border-slate-200 p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-950">{user?.name ?? user?.email}</p>
+              <p className="text-xs text-slate-500">{user?.role}</p>
+            </div>
+          </div>
+          <Button variant="outline" className="mt-3 w-full justify-center" onClick={handleLogout}>
+            <LogOut className="h-4 w-4" />
+            Cerrar sesión
+          </Button>
+        </div>
+      </div>
     </div>
   )
 
-  // Separate nav into main and admin sections
-  const mainNav  = visibleNav.filter(item => !['superadmin'].includes(
-    NAV.find(n => n.href === item.href)?.roles?.[0] ?? ''
-  ) || item.href === '/admin/dashboard')
-  const adminNav = visibleNav.filter(item =>
-    NAV.find(n => n.href === item.href)?.roles?.[0] === 'superadmin' && item.href !== '/admin/dashboard'
-  )
-
   return (
-    <AdminContext.Provider value={{ user, activeBranch, branches, setActiveBranch }}>
-      <div className="admin-theme min-h-screen bg-page">
+    <AdminContext.Provider value={{ user, branches, activeBranch, setActiveBranch, can }}>
+      <div className="admin-theme min-h-screen bg-page text-slate-900">
+        <div className="lg:hidden">
+          <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">Felito Barber Studio</p>
+              <p className="text-xs text-slate-500">{activeBranch?.name ?? 'Panel administrativo'}</p>
+            </div>
+            <button
+              onClick={() => setMobileOpen(current => !current)}
+              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-700"
+            >
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </header>
 
-        {/* ── Desktop sidebar ────────────────────────────── */}
-        <aside className="hidden lg:flex fixed inset-y-0 left-0 w-60 flex-col bg-white border-r border-border z-40">
-
-          {/* Logo */}
-          <div className="px-5 py-5 border-b border-border">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center shadow-sm">
-                <Scissors className="w-4 h-4 text-gold" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-cream">Felito Studios</p>
-                <p className="text-[10px] uppercase tracking-widest text-cream/35 font-medium">Panel Admin</p>
+          {mobileOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm">
+              <div className="h-full w-[88%] max-w-sm bg-slate-50 shadow-2xl">
+                {sidebar}
               </div>
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Branch selector */}
-          <BranchSelector />
-
-          {/* Nav */}
-          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {mainNav.map(item => <NavItem key={item.href} item={item} />)}
-
-            {adminNav.length > 0 && (
-              <>
-                <div className="pt-3 pb-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-cream/25 px-3">Sistema</p>
-                </div>
-                {adminNav.map(item => <NavItem key={item.href} item={item} />)}
-              </>
-            )}
-          </nav>
-
-          {/* User + logout */}
-          <div className="px-3 py-3 border-t border-border">
-            {user && (
-              <div className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-xl bg-surface-2">
-                <div className="w-8 h-8 rounded-full bg-gold/15 border border-gold/25 flex items-center justify-center text-xs font-bold text-gold flex-shrink-0">
-                  {user.email[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-cream truncate">{user.email}</p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    {user.role === 'superadmin' && <Shield className="w-2.5 h-2.5 text-gold" />}
-                    <p className="text-[10px] uppercase tracking-wider text-cream/35 font-semibold">{user.role}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-cream/40 hover:text-red-500 hover:bg-red-50 transition-all font-medium"
-            >
-              <LogOut className="w-4 h-4" />
-              Cerrar sesión
-            </button>
-          </div>
+        <aside className="fixed inset-y-0 left-0 hidden w-80 border-r border-slate-200 bg-slate-50 lg:block">
+          {sidebar}
         </aside>
 
-        {/* ── Mobile top bar ──────────────────────────────── */}
-        <header className="lg:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 h-14 bg-white/95 backdrop-blur-md border-b border-border">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center">
-              <Scissors className="w-3.5 h-3.5 text-gold" />
-            </div>
-            <span className="text-sm font-semibold text-cream">Felito Studios</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <BranchSelector mobile />
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="p-2 rounded-xl text-cream/50 hover:text-cream hover:bg-surface-2 transition-all"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-          </div>
-        </header>
-
-        {/* ── Mobile drawer ────────────────────────────────── */}
-        {mobileOpen && (
-          <div className="lg:hidden fixed inset-0 z-50">
-            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-            <div className="absolute right-0 top-0 bottom-0 w-72 bg-white flex flex-col animate-fade-in shadow-modal">
-              {/* Drawer header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-                <div>
-                  <p className="text-sm font-semibold text-cream">Felito Studios</p>
-                  {user && (
-                    <p className="text-xs text-cream/45 font-medium truncate max-w-[160px]">{user.email}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => setMobileOpen(false)}
-                  className="p-2 rounded-xl hover:bg-surface-2 text-cream/40 hover:text-cream transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+        <main className="min-h-screen lg:pl-80">
+          <div className="border-b border-slate-200 bg-white/80 backdrop-blur">
+            <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Operaciones</p>
+                <p className="text-sm text-slate-600">
+                  {activeBranch?.name ?? 'Vista global'}
+                </p>
               </div>
-
-              {/* Drawer nav */}
-              <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-                {mainNav.map(item => <NavItem key={item.href} item={item} onClick={() => setMobileOpen(false)} />)}
-                {adminNav.length > 0 && (
-                  <>
-                    <div className="pt-3 pb-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-cream/25 px-3">Sistema</p>
-                    </div>
-                    {adminNav.map(item => <NavItem key={item.href} item={item} onClick={() => setMobileOpen(false)} />)}
-                  </>
-                )}
-              </nav>
-
-              {/* Drawer footer */}
-              <div className="px-3 py-3 border-t border-border">
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-cream/40 hover:text-red-500 hover:bg-red-50 transition-all font-medium"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Cerrar sesión
-                </button>
-              </div>
+              <Link href="/" className="text-sm font-medium text-slate-500 transition hover:text-slate-950">
+                Ver reserva pública
+              </Link>
             </div>
           </div>
-        )}
-
-        {/* ── Main content ────────────────────────────────── */}
-        <main className="lg:pl-60 pt-14 lg:pt-0 min-h-screen pb-4">
           {children}
         </main>
-
-        {/* ── Mobile bottom nav (main items only) ─────────── */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-border safe-area-pb">
-          <div className="flex items-center justify-around px-1 py-2">
-            {[
-              { href: '/admin/dashboard', label: 'Inicio',  icon: LayoutDashboard },
-              { href: '/admin/agenda',    label: 'Agenda',  icon: Calendar        },
-              { href: '/admin/caja',      label: 'Caja',    icon: DollarSign      },
-              { href: '/admin/barberos',  label: 'Equipo',  icon: UserCog         },
-              { href: '/admin/horarios',  label: 'Más',     icon: Menu, isMenu: true },
-            ].map(item => {
-              const active = 'isMenu' in item && item.isMenu
-                ? false
-                : pathname === item.href || (item.href !== '/admin/dashboard' && pathname.startsWith(item.href))
-              return 'isMenu' in item && item.isMenu ? (
-                <button
-                  key="menu"
-                  onClick={() => setMobileOpen(true)}
-                  className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl text-cream/35 hover:text-cream/60 transition-all min-w-[52px]"
-                >
-                  <item.icon className="w-5 h-5" />
-                  <span className="text-[9px] uppercase tracking-wider font-semibold">Más</span>
-                </button>
-              ) : (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all min-w-[52px]',
-                    active ? 'text-gold' : 'text-cream/35 hover:text-cream/60'
-                  )}
-                >
-                  <item.icon className={cn('w-5 h-5 transition-transform', active && 'scale-110')} />
-                  <span className="text-[9px] uppercase tracking-wider font-semibold">{item.label}</span>
-                  {active && <span className="w-1 h-1 rounded-full bg-gold" />}
-                </Link>
-              )
-            })}
-          </div>
-        </nav>
-
       </div>
     </AdminContext.Provider>
   )

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'edit_caja')
+  if (denied) return denied
 
   const body = await req.json()
   const { appointment_id, amount, method, notes } = body
@@ -73,6 +75,8 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'view_caja')
+  if (denied) return denied
 
   const { searchParams } = new URL(req.url)
   const branch_id  = searchParams.get('branch_id')

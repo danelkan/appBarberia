@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'manage_companies')
+  if (denied) return denied
 
   const supabase = createSupabaseAdmin()
   const { searchParams } = new URL(req.url)
@@ -26,6 +28,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'manage_companies')
+  if (denied) return denied
 
   const body = await req.json()
   const { name, email, phone, address, active } = body
