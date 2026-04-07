@@ -25,10 +25,6 @@ export default async function HomePage() {
               <p className="text-xs text-slate-500">Reserva online</p>
             </div>
           </div>
-
-          <Link href="/login" className="text-sm font-medium text-slate-500 transition hover:text-slate-950">
-            Ingreso staff
-          </Link>
         </header>
 
         <section className="flex flex-1 items-center justify-center py-10">
