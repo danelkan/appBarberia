@@ -107,6 +107,37 @@ export const clientQuerySchema = z.object({
   q: z.string().max(100).optional(),
 })
 
+// ─── Cash Schemas ─────────────────────────────────────────────────
+export const openCashRegisterSchema = z.object({
+  branch_id: uuidSchema,
+  company_id: uuidSchema.optional().nullable(),
+  opening_amount: z.coerce.number().min(0, 'Opening amount must be 0 or greater'),
+  opening_notes: z.string().max(500).optional().nullable(),
+})
+
+export const cashMovementSchema = z.object({
+  type: z.enum(['income_service', 'income_product', 'income_extra', 'expense', 'adjustment']),
+  payment_method: z.enum(['cash', 'card', 'transfer', 'other']),
+  amount: z.coerce.number().positive('Amount must be greater than 0'),
+  description: z.string().min(1, 'Description is required').max(500),
+  reference_type: z.string().max(100).optional().nullable(),
+  reference_id: z.string().max(100).optional().nullable(),
+})
+
+export const closeCashRegisterSchema = z.object({
+  counted_cash_amount: z.coerce.number().min(0, 'Counted cash must be 0 or greater'),
+  closing_notes: z.string().max(500).optional().nullable(),
+})
+
+export const cashRegisterQuerySchema = z.object({
+  status: z.enum(['open', 'closed']).optional(),
+  branch_id: uuidSchema.optional(),
+  company_id: uuidSchema.optional(),
+  opened_by_user_id: uuidSchema.optional(),
+  from: dateSchema.optional(),
+  to: dateSchema.optional(),
+})
+
 // ─── Type exports ──────────────────────────────────────────────────
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>
 export type UpdateAppointmentStatusInput = z.infer<typeof updateAppointmentStatusSchema>
@@ -114,3 +145,6 @@ export type CreateBarberInput = z.infer<typeof createBarberSchema>
 export type UpdateBarberInput = z.infer<typeof updateBarberSchema>
 export type CreateServiceInput = z.infer<typeof createServiceSchema>
 export type UpdateServiceInput = z.infer<typeof updateServiceSchema>
+export type OpenCashRegisterInput = z.infer<typeof openCashRegisterSchema>
+export type CashMovementInput = z.infer<typeof cashMovementSchema>
+export type CloseCashRegisterInput = z.infer<typeof closeCashRegisterSchema>

@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import {
-  ROLE_DEFAULT_PERMISSIONS,
-  type AppRole,
-  type Permission,
-} from '@/types'
+import { type AppRole, type Permission } from '@/types'
+import { getRolePermissions, hasResolvedPermission } from '@/lib/permissions'
 
 interface SessionUser {
   id: string
@@ -35,21 +32,8 @@ function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))))
 }
 
-export function getRolePermissions(role: AppRole, explicitPermissions?: Permission[]) {
-  if (role === 'superadmin') {
-    return [...ROLE_DEFAULT_PERMISSIONS.superadmin]
-  }
-
-  if (explicitPermissions && explicitPermissions.length > 0) {
-    return explicitPermissions
-  }
-
-  return ROLE_DEFAULT_PERMISSIONS[role] ?? []
-}
-
 export function hasPermission(ctx: AuthRoleContext, permission: Permission): boolean {
-  if (ctx.role === 'superadmin') return true
-  return getRolePermissions(ctx.role, ctx.permissions).includes(permission)
+  return hasResolvedPermission(ctx.role, ctx.permissions, permission)
 }
 
 export function forbiddenResponse(message = 'Forbidden') {

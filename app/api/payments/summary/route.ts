@@ -18,7 +18,7 @@ function calcTotals(payments: any[]): {
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
-  const denied = requirePermission(auth, 'view_caja')
+  const denied = requirePermission(auth, 'cash.view')
   if (denied) return denied
 
   const { searchParams } = new URL(req.url)

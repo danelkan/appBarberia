@@ -207,7 +207,7 @@ export default function AgendaPage() {
               appointment={appointment}
               showBarber={!isBarber}
               onOpen={() => setSelected(appointment)}
-              onPay={can('edit_caja') ? () => openPayment(appointment) : undefined}
+              onPay={can('cash.add_movement') ? () => openPayment(appointment) : undefined}
             />
           ))}
         </div>
@@ -235,7 +235,7 @@ export default function AgendaPage() {
                         compact
                         showBarber={!isBarber}
                         onOpen={() => setSelected(appointment)}
-                        onPay={can('edit_caja') ? () => openPayment(appointment) : undefined}
+                        onPay={can('cash.add_movement') ? () => openPayment(appointment) : undefined}
                       />
                     ))
                   )}
@@ -272,7 +272,7 @@ export default function AgendaPage() {
             </div>
 
             <div className="flex gap-3">
-              {!selected.payment && selected.status !== 'cancelada' && can('edit_caja') && (
+              {!selected.payment && selected.status !== 'cancelada' && can('cash.add_movement') && (
                 <Button className="flex-1" onClick={() => openPayment(selected)}>
                   <DollarSign className="h-4 w-4" />
                   Cobrar turno

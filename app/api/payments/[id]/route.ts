@@ -5,7 +5,7 @@ import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
-  const denied = requirePermission(auth, 'view_caja')
+  const denied = requirePermission(auth, 'cash.view')
   if (denied) return denied
 
   const supabase = createSupabaseAdmin()

@@ -3,10 +3,21 @@ export type AppointmentStatus = 'pendiente' | 'completada' | 'cancelada'
 export type PaymentMethod = 'efectivo' | 'mercado_pago' | 'debito' | 'transferencia'
 export type AppRole = 'superadmin' | 'admin' | 'barber'
 
+export type CashRegisterStatus = 'open' | 'closed'
+export type CashMovementType = 'income_service' | 'income_product' | 'income_extra' | 'expense' | 'adjustment'
+export type CashMovementPaymentMethod = 'cash' | 'card' | 'transfer' | 'other'
+
 // All granular permissions that can be assigned per user
 export type Permission =
   | 'view_caja'
   | 'edit_caja'
+  | 'cash.view'
+  | 'cash.open'
+  | 'cash.close'
+  | 'cash.add_movement'
+  | 'cash.export'
+  | 'cash.reopen'
+  | 'cash.edit_closed'
   | 'manage_barbers'
   | 'manage_services'
   | 'manage_branches'
@@ -19,24 +30,31 @@ export type Permission =
   | 'create_appointments'
 
 export const PERMISSION_LABELS: Record<Permission, string> = {
-  view_caja:           'Ver caja',
-  edit_caja:           'Registrar cobros',
-  manage_barbers:      'Gestionar barberos',
-  manage_services:     'Gestionar servicios',
-  manage_branches:     'Gestionar sucursales',
-  manage_companies:    'Gestionar empresas',
-  manage_users:        'Gestionar usuarios',
-  manage_schedules:    'Gestionar horarios',
-  view_clients:        'Ver clientes',
+  view_caja: 'Ver caja (legacy)',
+  edit_caja: 'Registrar cobros (legacy)',
+  'cash.view': 'Ver caja diaria',
+  'cash.open': 'Abrir caja',
+  'cash.close': 'Cerrar caja',
+  'cash.add_movement': 'Agregar movimientos',
+  'cash.export': 'Exportar comprobantes',
+  'cash.reopen': 'Reabrir caja',
+  'cash.edit_closed': 'Editar caja cerrada',
+  manage_barbers: 'Gestionar barberos',
+  manage_services: 'Gestionar servicios',
+  manage_branches: 'Gestionar sucursales',
+  manage_companies: 'Gestionar empresas',
+  manage_users: 'Gestionar usuarios',
+  manage_schedules: 'Gestionar horarios',
+  view_clients: 'Ver clientes',
   cancel_appointments: 'Cancelar turnos',
-  edit_appointments:   'Editar turnos',
+  edit_appointments: 'Editar turnos',
   create_appointments: 'Crear turnos',
 }
 
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
   {
-    label: 'Caja',
-    permissions: ['view_caja', 'edit_caja'],
+    label: 'Caja Diaria',
+    permissions: ['cash.view', 'cash.open', 'cash.close', 'cash.add_movement', 'cash.export', 'cash.reopen', 'cash.edit_closed'],
   },
   {
     label: 'Agenda',
@@ -56,11 +74,21 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
 export const ROLE_DEFAULT_PERMISSIONS: Record<AppRole, Permission[]> = {
   superadmin: Object.keys(PERMISSION_LABELS) as Permission[],
   admin: [
-    'view_caja', 'edit_caja', 'manage_barbers', 'manage_services',
-    'manage_branches', 'manage_schedules', 'view_clients',
-    'cancel_appointments', 'edit_appointments', 'create_appointments',
+    'cash.view',
+    'cash.open',
+    'cash.close',
+    'cash.add_movement',
+    'cash.export',
+    'manage_barbers',
+    'manage_services',
+    'manage_branches',
+    'manage_schedules',
+    'view_clients',
+    'cancel_appointments',
+    'edit_appointments',
+    'create_appointments',
   ],
-  barber: ['view_caja', 'edit_caja', 'view_clients', 'cancel_appointments'],
+  barber: ['view_clients', 'cancel_appointments'],
 }
 
 export interface Company {
@@ -72,7 +100,6 @@ export interface Company {
   address?: string | null
   active: boolean
   created_at: string
-  // Joined
   branches?: Branch[]
 }
 
@@ -84,7 +111,6 @@ export interface Branch {
   active: boolean
   created_at: string
   company_id?: string | null
-  // Joined
   company?: Company | null
 }
 
@@ -97,18 +123,17 @@ export interface Barber {
   created_at: string
   branch_ids?: string[]
   role?: AppRole
-  // Joined
   branches?: Branch[]
 }
 
 export interface WeeklyAvailability {
-  [day: string]: DaySchedule // 'monday', 'tuesday', etc.
+  [day: string]: DaySchedule
 }
 
 export interface DaySchedule {
   enabled: boolean
-  start: string // '09:00'
-  end: string   // '19:00'
+  start: string
+  end: string
 }
 
 export interface Service {
@@ -146,12 +171,11 @@ export interface Appointment {
   barber_id: string
   service_id: string
   branch_id?: string | null
-  date: string       // 'YYYY-MM-DD'
-  start_time: string // 'HH:mm'
-  end_time: string   // 'HH:mm'
+  date: string
+  start_time: string
+  end_time: string
   status: AppointmentStatus
   created_at: string
-  // Joined
   client?: Client
   barber?: Barber
   service?: Service
@@ -159,7 +183,72 @@ export interface Appointment {
   payment?: Payment
 }
 
-// User as returned by /api/users
+export interface CashMovement {
+  id: string
+  cash_register_id: string
+  company_id?: string | null
+  branch_id: string
+  type: CashMovementType
+  payment_method: CashMovementPaymentMethod
+  amount: number
+  description: string
+  reference_type?: string | null
+  reference_id?: string | null
+  created_by_user_id?: string | null
+  created_at: string
+  updated_at?: string
+  created_by_user?: Pick<UserWithRole, 'id' | 'name' | 'email'> | null
+}
+
+export interface CashAuditLog {
+  id: string
+  company_id?: string | null
+  branch_id: string
+  cash_register_id: string
+  action: string
+  entity_type: string
+  entity_id?: string | null
+  performed_by_user_id?: string | null
+  metadata?: Record<string, unknown> | null
+  created_at: string
+  performed_by_user?: Pick<UserWithRole, 'id' | 'name' | 'email'> | null
+}
+
+export interface CashRegisterSummary {
+  opening_amount: number
+  cash_income_total: number
+  cash_expense_total: number
+  cash_adjustment_total: number
+  other_payment_total: number
+  expected_cash_amount: number
+}
+
+export interface CashRegister {
+  id: string
+  company_id?: string | null
+  branch_id: string
+  status: CashRegisterStatus
+  opening_amount: number
+  expected_cash_amount?: number | null
+  counted_cash_amount?: number | null
+  difference_amount?: number | null
+  opened_by_user_id?: string | null
+  opened_at: string
+  closed_by_user_id?: string | null
+  closed_at?: string | null
+  opening_notes?: string | null
+  closing_notes?: string | null
+  created_at: string
+  updated_at: string
+  branch?: Branch | null
+  company?: Company | null
+  opened_by_user?: Pick<UserWithRole, 'id' | 'name' | 'email'> | null
+  closed_by_user?: Pick<UserWithRole, 'id' | 'name' | 'email'> | null
+  movements?: CashMovement[]
+  audit_logs?: CashAuditLog[]
+  summary?: CashRegisterSummary
+}
+
 export interface UserWithRole {
   id: string
   email: string
@@ -173,7 +262,6 @@ export interface UserWithRole {
   created_at?: string
   company?: Pick<Company, 'id' | 'name'> | null
   branches?: Pick<Branch, 'id' | 'name'>[]
-  // Joined barber info
   barber?: Pick<Barber, 'id' | 'name' | 'email'> | null
 }
 
@@ -198,13 +286,11 @@ export interface TimeSlot {
   available: boolean
 }
 
-// ─── API Response Types ───────────────────────────────────────────
 export interface ApiResponse<T> {
   data?: T
   error?: string
 }
 
-// ─── Payment summary types ────────────────────────────────────────
 export interface PaymentTotals {
   efectivo: number
   mercado_pago: number
@@ -220,17 +306,31 @@ export interface PaymentSummary {
   year: PaymentTotals
 }
 
-// ─── Payment method labels ────────────────────────────────────────
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  efectivo:       'Efectivo',
-  mercado_pago:   'Mercado Pago',
-  debito:         'Débito',
-  transferencia:  'Transferencia bancaria',
+  efectivo: 'Efectivo',
+  mercado_pago: 'Mercado Pago',
+  debito: 'Débito',
+  transferencia: 'Transferencia bancaria',
 }
 
 export const PAYMENT_METHOD_ICONS: Record<PaymentMethod, string> = {
-  efectivo:       '💵',
-  mercado_pago:   '💳',
-  debito:         '🏦',
-  transferencia:  '🔄',
+  efectivo: '💵',
+  mercado_pago: '💳',
+  debito: '🏦',
+  transferencia: '🔄',
+}
+
+export const CASH_MOVEMENT_TYPE_LABELS: Record<CashMovementType, string> = {
+  income_service: 'Ingreso por servicio',
+  income_product: 'Ingreso por producto',
+  income_extra: 'Ingreso extra',
+  expense: 'Egreso',
+  adjustment: 'Ajuste',
+}
+
+export const CASH_MOVEMENT_PAYMENT_LABELS: Record<CashMovementPaymentMethod, string> = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  transfer: 'Transferencia',
+  other: 'Otro',
 }

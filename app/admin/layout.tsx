@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react'
 import { Button, Spinner } from '@/components/ui'
+import { hasResolvedPermission } from '@/lib/permissions'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Branch, Permission, UserWithRole } from '@/types'
@@ -45,7 +46,7 @@ const AdminContext = createContext<AdminContextValue>({
 export const useAdmin = () => useContext(AdminContext)
 
 const ROUTE_PERMISSIONS: Partial<Record<string, Permission>> = {
-  '/admin/caja': 'view_caja',
+  '/admin/caja': 'cash.view',
   '/admin/clientes': 'view_clients',
   '/admin/servicios': 'manage_services',
   '/admin/barberos': 'manage_barbers',
@@ -58,7 +59,7 @@ const ROUTE_PERMISSIONS: Partial<Record<string, Permission>> = {
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Resumen', icon: LayoutDashboard },
   { href: '/admin/agenda', label: 'Agenda', icon: Calendar },
-  { href: '/admin/caja', label: 'Caja', icon: DollarSign, permission: 'view_caja' as Permission },
+  { href: '/admin/caja', label: 'Caja', icon: DollarSign, permission: 'cash.view' as Permission },
   { href: '/admin/clientes', label: 'Clientes', icon: Users, permission: 'view_clients' as Permission },
   { href: '/admin/barberos', label: 'Barberos', icon: Scissors, permission: 'manage_barbers' as Permission },
   { href: '/admin/servicios', label: 'Servicios', icon: Clock3, permission: 'manage_services' as Permission },
@@ -81,8 +82,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const can = useMemo(
     () => (permission: Permission) => {
       if (!user) return false
-      if (user.role === 'superadmin') return true
-      return user.permissions.includes(permission)
+      return hasResolvedPermission(user.role, user.permissions, permission)
     },
     [user]
   )

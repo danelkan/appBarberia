@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import {
   forbiddenResponse,
-  getRolePermissions,
   requireAdminAuth,
   requirePermission,
   unauthorizedResponse,
 } from '@/lib/api-auth'
+import { getRolePermissions } from '@/lib/permissions'
 import type { AppRole, Permission } from '@/types'
 
 function sanitizeBranchIds(value: unknown) {
