@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'view_caja')
+  if (denied) return denied
 
   const supabase = createSupabaseAdmin()
   const { data, error } = await supabase

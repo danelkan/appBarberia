@@ -1,17 +1,15 @@
 'use client'
+
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, useCallback } from 'react'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
-import {
-  DollarSign, TrendingUp, MapPin, Receipt, Calendar,
-  Plus, X, CheckCircle, Search,
-} from 'lucide-react'
-import { Button, Spinner, EmptyState, Modal } from '@/components/ui'
-import { cn, formatPrice } from '@/lib/utils'
-import { useAdmin } from '../layout'
-import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ICONS, type PaymentMethod, type PaymentTotals } from '@/types'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { format } from 'date-fns'
+import { Calendar, DollarSign, Plus, Receipt, Search, TrendingUp } from 'lucide-react'
+import { Button, EmptyState, Modal, PageHeader, Spinner } from '@/components/ui'
+import { formatPrice } from '@/lib/utils'
+import { useAdmin } from '../layout'
+import { PAYMENT_METHOD_LABELS, type PaymentMethod, type PaymentTotals } from '@/types'
 
 type Period = 'today' | 'week' | 'month' | 'year' | 'custom'
 
@@ -27,11 +25,11 @@ interface PaymentRow {
     client: { first_name: string; last_name: string }
     barber: { name: string }
     service: { name: string }
-    branch: { name: string }
+    branch?: { name: string }
   }
 }
 
-interface PendingAppt {
+interface PendingAppointment {
   id: string
   date: string
   start_time: string
@@ -41,451 +39,327 @@ interface PendingAppt {
   branch?: { name: string }
 }
 
+const EMPTY_TOTALS: PaymentTotals = { efectivo: 0, mercado_pago: 0, debito: 0, transferencia: 0, total: 0 }
+const PERIODS: Period[] = ['today', 'week', 'month', 'year', 'custom']
 const METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
 
-const METHOD_COLORS: Record<PaymentMethod, string> = {
-  efectivo:      'text-emerald-700 bg-emerald-50 border-emerald-200',
-  mercado_pago:  'text-blue-700 bg-blue-50 border-blue-200',
-  debito:        'text-purple-700 bg-purple-50 border-purple-200',
-  transferencia: 'text-orange-700 bg-orange-50 border-orange-200',
-}
-
-const METHOD_ACTIVE: Record<PaymentMethod, string> = {
-  efectivo:      'text-emerald-700 bg-emerald-100 border-emerald-400 ring-2 ring-emerald-200',
-  mercado_pago:  'text-blue-700 bg-blue-100 border-blue-400 ring-2 ring-blue-200',
-  debito:        'text-purple-700 bg-purple-100 border-purple-400 ring-2 ring-purple-200',
-  transferencia: 'text-orange-700 bg-orange-100 border-orange-400 ring-2 ring-orange-200',
-}
-
-const PERIOD_LABELS: Record<Period, string> = {
-  today: 'Hoy', week: 'Semana', month: 'Mes', year: 'Año', custom: 'Rango',
-}
-
-const EMPTY_TOTALS: PaymentTotals = { efectivo: 0, mercado_pago: 0, debito: 0, transferencia: 0, total: 0 }
-
 export default function CajaPage() {
-  const { activeBranch } = useAdmin()
-  const [period, setPeriod]         = useState<Period>('today')
+  const { activeBranch, can } = useAdmin()
+  const [period, setPeriod] = useState<Period>('today')
   const [customFrom, setCustomFrom] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [customTo, setCustomTo]     = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [payments, setPayments]     = useState<PaymentRow[]>([])
-  const [totals, setTotals]         = useState<PaymentTotals>(EMPTY_TOTALS)
-  const [summary, setSummary]       = useState<Record<string, { total: number; count: number }> | null>(null)
-  const [loading, setLoading]       = useState(true)
+  const [customTo, setCustomTo] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [payments, setPayments] = useState<PaymentRow[]>([])
+  const [totals, setTotals] = useState<PaymentTotals>(EMPTY_TOTALS)
+  const [summary, setSummary] = useState<Record<string, { total: number; count: number }> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [pendingAppointments, setPendingAppointments] = useState<PendingAppointment[]>([])
+  const [appointmentSearch, setAppointmentSearch] = useState('')
+  const [selectedAppointment, setSelectedAppointment] = useState<PendingAppointment | null>(null)
+  const [amount, setAmount] = useState('')
+  const [method, setMethod] = useState<PaymentMethod>('efectivo')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [paidId, setPaidId] = useState<string | null>(null)
 
-  // New payment modal
-  const [showNew, setShowNew]             = useState(false)
-  const [pendingAppts, setPendingAppts]   = useState<PendingAppt[]>([])
-  const [loadingAppts, setLoadingAppts]   = useState(false)
-  const [apptSearch, setApptSearch]       = useState('')
-  const [selectedAppt, setSelectedAppt]   = useState<PendingAppt | null>(null)
-  const [newAmount, setNewAmount]         = useState('')
-  const [newMethod, setNewMethod]         = useState<PaymentMethod | null>(null)
-  const [paying, setPaying]               = useState(false)
-  const [payError, setPayError]           = useState('')
-  const [newPaidId, setNewPaidId]         = useState<string | null>(null)
-
-  const getDateRange = useCallback((): [string, string] => {
+  const getDateRange = useCallback(() => {
     const now = new Date()
-    const pad = (d: Date, end = false) => {
-      const s = format(d, 'yyyy-MM-dd')
-      return end ? s + 'T23:59:59' : s + 'T00:00:00'
-    }
-    if (period === 'today')  return [pad(now) , pad(now, true)]
+    const toString = (date: Date, end = false) => `${format(date, 'yyyy-MM-dd')}T${end ? '23:59:59' : '00:00:00'}`
+
+    if (period === 'today') return [toString(now), toString(now, true)]
     if (period === 'week') {
-      const d = new Date(now); d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-      const e = new Date(d); e.setDate(e.getDate() + 6)
-      return [pad(d), pad(e, true)]
+      const start = new Date(now)
+      start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+      const end = new Date(start)
+      end.setDate(end.getDate() + 6)
+      return [toString(start), toString(end, true)]
     }
     if (period === 'month') {
-      const s = new Date(now.getFullYear(), now.getMonth(), 1)
-      const e = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      return [pad(s), pad(e, true)]
+      return [toString(new Date(now.getFullYear(), now.getMonth(), 1)), toString(new Date(now.getFullYear(), now.getMonth() + 1, 0), true)]
     }
     if (period === 'year') {
       return [`${now.getFullYear()}-01-01T00:00:00`, `${now.getFullYear()}-12-31T23:59:59`]
     }
-    return [customFrom + 'T00:00:00', customTo + 'T23:59:59']
-  }, [period, customFrom, customTo])
+    return [`${customFrom}T00:00:00`, `${customTo}T23:59:59`]
+  }, [customFrom, customTo, period])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [from, to] = getDateRange()
-
     let paymentsUrl = `/api/payments?date_from=${from}&date_to=${to}`
-    let summaryUrl  = '/api/payments/summary'
+    let summaryUrl = '/api/payments/summary'
+
     if (activeBranch) {
       paymentsUrl += `&branch_id=${activeBranch.id}`
-      summaryUrl  += `?branch_id=${activeBranch.id}`
+      summaryUrl += `?branch_id=${activeBranch.id}`
     }
 
     try {
-      // Only 2 requests now instead of 5
       const [paymentsRes, summaryRes] = await Promise.all([
-        fetch(paymentsUrl),
-        fetch(summaryUrl),
+        fetch(paymentsUrl, { cache: 'no-store' }),
+        fetch(summaryUrl, { cache: 'no-store' }),
       ])
-      const [paymentsData, summaryData] = await Promise.all([
-        paymentsRes.json(),
-        summaryRes.json(),
-      ])
-
+      const [paymentsData, summaryData] = await Promise.all([paymentsRes.json(), summaryRes.json()])
       setPayments(paymentsData.payments ?? [])
       setTotals(paymentsData.totals ?? EMPTY_TOTALS)
       setSummary(summaryData.summary ?? null)
-    } catch {
-      setPayments([])
-      setSummary(null)
     } finally {
       setLoading(false)
     }
   }, [activeBranch, getDateRange])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    void fetchData()
+  }, [fetchData])
 
-  const openNewPayment = async () => {
-    setShowNew(true)
-    setSelectedAppt(null)
-    setNewAmount('')
-    setNewMethod(null)
-    setPayError('')
-    setNewPaidId(null)
-    setApptSearch('')
-    setLoadingAppts(true)
-    try {
-      const today  = format(new Date(), 'yyyy-MM-dd')
-      const from30 = format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
-      let url = `/api/appointments?from=${from30}&to=${today}`
-      if (activeBranch) url += `&branch_id=${activeBranch.id}`
-      const res  = await fetch(url)
-      const data = await res.json()
-      setPendingAppts(
-        (data.appointments ?? []).filter((a: any) => a.status !== 'cancelada' && !a.payment)
-      )
-    } catch {
-      setPendingAppts([])
-    } finally {
-      setLoadingAppts(false)
+  async function openNewPayment() {
+    setModalOpen(true)
+    setSelectedAppointment(null)
+    setAmount('')
+    setMethod('efectivo')
+    setAppointmentSearch('')
+    setError('')
+    setPaidId(null)
+
+    const today = format(new Date(), 'yyyy-MM-dd')
+    const fromDate = format(new Date(Date.now() - 1000 * 60 * 60 * 24 * 30), 'yyyy-MM-dd')
+    let url = `/api/appointments?from=${fromDate}&to=${today}`
+    if (activeBranch) url += `&branch_id=${activeBranch.id}`
+
+    const response = await fetch(url, { cache: 'no-store' })
+    const data = await response.json()
+    setPendingAppointments((data.appointments ?? []).filter((appointment: PaymentRow & { payment?: unknown; status: string }) => appointment.status !== 'cancelada' && !appointment.payment))
+  }
+
+  async function submitPayment() {
+    if (!selectedAppointment) return
+    setSaving(true)
+    setError('')
+
+    const response = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appointment_id: selectedAppointment.id,
+        amount: Number(amount),
+        method,
+      }),
+    })
+    const data = await response.json()
+    setSaving(false)
+
+    if (!response.ok) {
+      setError(data.error ?? 'No se pudo registrar el cobro')
+      return
     }
+
+    setPaidId(data.payment?.id ?? null)
+    await fetchData()
   }
 
-  const handlePay = async () => {
-    if (!selectedAppt || !newMethod || !newAmount) { setPayError('Completá todos los campos'); return }
-    const amount = Number(newAmount)
-    if (isNaN(amount) || amount <= 0) { setPayError('Ingresá un monto válido'); return }
-    setPaying(true)
-    setPayError('')
-    try {
-      const res  = await fetch('/api/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appointment_id: selectedAppt.id, amount, method: newMethod }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setPayError(data.error || 'Error al registrar el pago'); return }
-      setNewPaidId(data.payment.id)
-      fetchData()
-    } catch {
-      setPayError('Error de conexión. Intentá de nuevo.')
-    } finally {
-      setPaying(false)
-    }
-  }
-
-  const closeNew = () => {
-    setShowNew(false); setSelectedAppt(null); setNewAmount('')
-    setNewMethod(null); setPayError(''); setPaying(false); setNewPaidId(null)
-  }
-
-  const filteredAppts = pendingAppts.filter(a => {
-    if (!apptSearch) return true
-    const q = apptSearch.toLowerCase()
-    return (
-      a.client.first_name.toLowerCase().includes(q) ||
-      a.client.last_name.toLowerCase().includes(q) ||
-      a.service.name.toLowerCase().includes(q) ||
-      a.barber.name.toLowerCase().includes(q)
+  const filteredAppointments = useMemo(() => {
+    if (!appointmentSearch) return pendingAppointments
+    const query = appointmentSearch.toLowerCase()
+    return pendingAppointments.filter(appointment =>
+      `${appointment.client.first_name} ${appointment.client.last_name}`.toLowerCase().includes(query) ||
+      appointment.service.name.toLowerCase().includes(query) ||
+      appointment.barber.name.toLowerCase().includes(query)
     )
-  })
+  }, [appointmentSearch, pendingAppointments])
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="font-serif text-2xl text-cream">Caja</h1>
-            {activeBranch && (
-              <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-surface-2 text-cream/55 border border-border font-medium">
-                <MapPin className="w-2.5 h-2.5" /> {activeBranch.name}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-cream/45 mt-0.5">Resumen de cobros y comprobantes</p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Period selector */}
-          <div className="flex items-center gap-1 flex-wrap">
-            {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border',
-                  period === p
-                    ? 'bg-gold/10 text-gold-dark border-gold/25'
-                    : 'text-cream/45 border-border bg-white hover:text-cream hover:bg-surface-2'
-                )}
-              >
-                {PERIOD_LABELS[p]}
-              </button>
-            ))}
-          </div>
-          <Button size="sm" onClick={openNewPayment}>
-            <Plus className="w-4 h-4" /> Registrar cobro
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <PageHeader
+        title="Caja"
+        subtitle={`Controlá cobros, comprobantes y recaudación por período.${activeBranch ? ` Sucursal activa: ${activeBranch.name}.` : ''}`}
+        action={can('edit_caja') ? (
+          <Button onClick={openNewPayment}>
+            <Plus className="h-4 w-4" />
+            Registrar cobro
           </Button>
-        </div>
+        ) : undefined}
+      />
+
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        {PERIODS.map(item => (
+          <button
+            key={item}
+            onClick={() => setPeriod(item)}
+            className={`rounded-2xl border px-4 py-2 text-sm font-medium transition ${period === item ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
+          >
+            {item === 'today' ? 'Hoy' : item === 'week' ? 'Semana' : item === 'month' ? 'Mes' : item === 'year' ? 'Año' : 'Rango'}
+          </button>
+        ))}
       </div>
 
-      {/* Custom date range */}
       {period === 'custom' && (
-        <div className="flex items-center gap-3 mb-6 animate-fade-up">
-          <input type="date" className="input flex-1" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-          <span className="text-cream/30 text-sm font-bold">→</span>
-          <input type="date" className="input flex-1" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+        <div className="mb-6 grid gap-3 sm:grid-cols-2">
+          <input type="date" value={customFrom} onChange={event => setCustomFrom(event.target.value)} className="input" />
+          <input type="date" value={customTo} onChange={event => setCustomTo(event.target.value)} className="input" />
         </div>
       )}
 
       {loading ? (
-        <div className="flex justify-center py-20"><Spinner /></div>
+        <div className="flex justify-center py-20">
+          <Spinner />
+        </div>
       ) : (
         <>
-          {/* Quick summary from /api/payments/summary (single request) */}
           {summary && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-              {([
-                { key: 'today', label: 'Hoy'        },
-                { key: 'week',  label: 'Esta semana' },
-                { key: 'month', label: 'Este mes'    },
-                { key: 'year',  label: 'Este año'    },
-              ] as const).map(item => (
-                <div key={item.key} className="rounded-2xl border border-border bg-white p-4 shadow-card">
-                  <p className="text-xs uppercase tracking-wider text-cream/35 font-semibold">{item.label}</p>
-                  <p className="text-xl font-bold text-cream mt-2">{formatPrice((summary[item.key] as any)?.total ?? 0)}</p>
-                  <p className="text-xs text-cream/35 mt-0.5 font-medium">{(summary[item.key] as any)?.count ?? 0} cobros</p>
+            <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { key: 'today', label: 'Hoy' },
+                { key: 'week', label: 'Semana' },
+                { key: 'month', label: 'Mes' },
+                { key: 'year', label: 'Año' },
+              ].map(card => (
+                <div key={card.key} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{card.label}</p>
+                  <p className="mt-3 text-2xl font-semibold text-slate-950">{formatPrice(summary[card.key]?.total ?? 0)}</p>
+                  <p className="mt-1 text-sm text-slate-500">{summary[card.key]?.count ?? 0} cobros</p>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Method breakdown */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            {METHODS.map(m => (
-              <div key={m} className={cn('rounded-2xl border p-4 shadow-card', METHOD_COLORS[m])}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-2xl">{PAYMENT_METHOD_ICONS[m]}</span>
-                  <TrendingUp className="w-3.5 h-3.5 opacity-40" />
-                </div>
-                <p className="text-xl font-bold">{formatPrice(totals[m])}</p>
-                <p className="text-xs font-medium opacity-60 mt-0.5">{PAYMENT_METHOD_LABELS[m]}</p>
+          <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {METHODS.map(paymentMethod => (
+              <div key={paymentMethod} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-sm font-semibold text-slate-950">{PAYMENT_METHOD_LABELS[paymentMethod]}</p>
+                <p className="mt-3 text-xl font-semibold text-slate-950">{formatPrice(totals[paymentMethod])}</p>
               </div>
             ))}
-          </div>
-
-          {/* Total banner */}
-          <div className="rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/8 to-gold/5 px-5 py-4 flex items-center justify-between mb-6 shadow-card">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gold/15 border border-gold/25 flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-gold" />
+            <div className="rounded-[28px] border border-slate-950 bg-slate-950 p-5 text-white shadow-sm">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                <p className="text-sm font-semibold">Total</p>
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-widest text-gold-dark/80 font-semibold">
-                  Total · {PERIOD_LABELS[period].toLowerCase()}
-                </p>
-                <p className="text-2xl font-bold text-cream mt-0.5">{formatPrice(totals.total)}</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-cream/80">{payments.length}</p>
-              <p className="text-xs text-cream/40 font-medium">cobros</p>
+              <p className="mt-3 text-2xl font-semibold">{formatPrice(totals.total)}</p>
+              <p className="mt-1 text-sm text-slate-300">{payments.length} cobros</p>
             </div>
           </div>
 
-          {/* Payments list */}
           {payments.length === 0 ? (
             <EmptyState
-              icon={<Calendar className="w-6 h-6" />}
-              title="Sin cobros en este período"
-              description="Los cobros registrados aparecerán aquí"
-              action={
-                <Button size="sm" onClick={openNewPayment}>
-                  <Plus className="w-4 h-4" /> Registrar cobro
-                </Button>
-              }
+              icon={<Calendar className="h-6 w-6" />}
+              title="No hay cobros en este período"
+              description="Los cobros registrados aparecen acá con acceso directo a cada comprobante."
+              action={can('edit_caja') ? <Button onClick={openNewPayment}>Registrar cobro</Button> : undefined}
             />
           ) : (
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wider text-cream/35 font-semibold mb-3">Detalle</p>
-              {payments.map(p => (
-                <div key={p.id} className="card p-4 flex items-center gap-4 hover:shadow-card-hover transition-all shadow-card">
-                  <div className={cn('w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 text-lg shadow-sm', METHOD_COLORS[p.method])}>
-                    {PAYMENT_METHOD_ICONS[p.method]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold text-cream">
-                        {p.appointment?.client?.first_name} {p.appointment?.client?.last_name}
+            <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+              <div className="grid grid-cols-[1.6fr_0.9fr_0.8fr_0.8fr] gap-4 border-b border-slate-200 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                <p>Detalle</p>
+                <p>Método</p>
+                <p>Monto</p>
+                <p className="text-right">Comprobante</p>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {payments.map(payment => (
+                  <div key={payment.id} className="grid grid-cols-[1.6fr_0.9fr_0.8fr_0.8fr] gap-4 px-6 py-5">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">
+                        {payment.appointment.client.first_name} {payment.appointment.client.last_name}
                       </p>
-                      {p.appointment?.branch && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-2 text-cream/45 border border-border font-medium">
-                          {p.appointment.branch.name}
-                        </span>
-                      )}
+                      <p className="mt-1 text-sm text-slate-500">
+                        {payment.appointment.service.name} · {payment.appointment.barber.name}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {payment.appointment.branch?.name ? `${payment.appointment.branch.name} · ` : ''}
+                        {payment.appointment.date} · {payment.appointment.start_time.slice(0, 5)}
+                      </p>
                     </div>
-                    <p className="text-xs text-cream/45 mt-0.5 font-medium">
-                      {p.appointment?.service?.name} · {p.appointment?.barber?.name}
-                    </p>
-                    <p className="text-xs text-cream/30 mt-0.5 font-mono">{p.receipt_number}</p>
+                    <div className="text-sm text-slate-600">{PAYMENT_METHOD_LABELS[payment.method]}</div>
+                    <div className="text-sm font-semibold text-slate-950">{formatPrice(payment.amount)}</div>
+                    <div className="text-right">
+                      <Link href={`/admin/comprobante/${payment.id}`} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 transition hover:text-slate-950">
+                        <Receipt className="h-4 w-4" />
+                        Ver
+                      </Link>
+                    </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-base font-bold text-cream">{formatPrice(p.amount)}</p>
-                    <p className="text-xs text-cream/35 mt-0.5 font-medium">
-                      {format(new Date(p.created_at), 'HH:mm', { locale: es })}
-                    </p>
-                  </div>
-                  <Link
-                    href={`/admin/comprobante/${p.id}`}
-                    className="p-2 rounded-xl border border-border bg-surface-2 text-cream/35 hover:text-gold hover:border-gold/30 transition-all flex-shrink-0"
-                    title="Ver comprobante"
-                  >
-                    <Receipt className="w-4 h-4" />
-                  </Link>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </>
       )}
 
-      {/* ── New payment modal ──────────────────── */}
-      <Modal open={showNew} onClose={closeNew} title={newPaidId ? '¡Pago registrado!' : 'Registrar cobro'} size="md">
-        {newPaidId ? (
-          <div className="space-y-5 text-center">
-            <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto">
-              <CheckCircle className="w-8 h-8 text-emerald-500" />
-            </div>
-            <div>
-              <p className="text-cream font-bold text-2xl">{formatPrice(Number(newAmount))}</p>
-              <p className="text-cream/50 text-sm mt-1 font-medium">
-                {newMethod && PAYMENT_METHOD_ICONS[newMethod]} {newMethod && PAYMENT_METHOD_LABELS[newMethod]}
-              </p>
-              {selectedAppt && (
-                <p className="text-cream/40 text-xs mt-1">
-                  {selectedAppt.client.first_name} {selectedAppt.client.last_name} · {selectedAppt.service.name}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <Link
-                href={`/admin/comprobante/${newPaidId}`}
-                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-gold/25 bg-gold/10 text-gold-dark text-sm hover:bg-gold/15 transition-all font-semibold"
-              >
-                <Receipt className="w-4 h-4" /> Ver comprobante
-              </Link>
-              <Button variant="outline" className="w-full" onClick={closeNew}>Cerrar</Button>
-            </div>
-          </div>
-        ) : !selectedAppt ? (
-          <div className="space-y-4">
-            <p className="text-sm text-cream/55 font-medium">Seleccioná el turno a cobrar:</p>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cream/35" />
-              <input className="input pl-9" placeholder="Buscar por cliente, servicio..." value={apptSearch} onChange={e => setApptSearch(e.target.value)} />
-            </div>
-            {loadingAppts ? (
-              <div className="flex justify-center py-8"><Spinner /></div>
-            ) : filteredAppts.length === 0 ? (
-              <div className="text-center py-8">
-                <Calendar className="w-8 h-8 text-cream/20 mx-auto mb-2" />
-                <p className="text-sm text-cream/45 font-medium">
-                  {apptSearch ? 'Sin resultados' : 'No hay turnos pendientes de cobro'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                {filteredAppts.map(a => (
-                  <button
-                    key={a.id}
-                    onClick={() => { setSelectedAppt(a); setNewAmount(String(a.service?.price ?? '')) }}
-                    className="w-full text-left p-3.5 rounded-xl border border-border bg-surface-2 hover:border-gold/30 hover:bg-gold/5 transition-all"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-cream">{a.client.first_name} {a.client.last_name}</p>
-                        <p className="text-xs text-cream/50 mt-0.5 font-medium">{a.service.name} · {a.barber.name}</p>
-                        <p className="text-xs text-cream/35 mt-0.5">
-                          {format(new Date(a.date + 'T12:00:00'), "d MMM", { locale: es })} · {a.start_time.slice(0,5)}
-                          {a.branch && ` · ${a.branch.name}`}
-                        </p>
-                      </div>
-                      <span className="text-sm font-bold text-gold-dark flex-shrink-0">{formatPrice(a.service.price)}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={paidId ? 'Cobro registrado' : 'Registrar cobro'} size="lg">
+        {paidId ? (
+          <div className="space-y-4 text-center">
+            <p className="text-3xl font-semibold text-slate-950">{formatPrice(Number(amount || 0))}</p>
+            <Link href={`/admin/comprobante/${paidId}`} className="btn-gold w-full">
+              <Receipt className="h-4 w-4" />
+              Abrir comprobante
+            </Link>
+            <Button variant="outline" className="w-full" onClick={() => setModalOpen(false)}>
+              Cerrar
+            </Button>
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-surface-2 border border-border">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-cream">{selectedAppt.client.first_name} {selectedAppt.client.last_name}</p>
-                <p className="text-xs text-cream/50 mt-0.5 font-medium">{selectedAppt.service.name} · {selectedAppt.start_time.slice(0,5)}</p>
-              </div>
-              <button onClick={() => { setSelectedAppt(null); setNewAmount('') }} className="p-1.5 rounded-lg hover:bg-surface-3 text-cream/30 hover:text-cream transition-colors flex-shrink-0">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
             <div>
-              <label className="label">Monto cobrado (UYU)</label>
+              <label className="label">Buscar turno pendiente</label>
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cream/40 text-sm font-medium">$</span>
-                <input type="number" className="input pl-8" value={newAmount} onChange={e => setNewAmount(e.target.value)} placeholder="0" min="0" step="1" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={appointmentSearch}
+                  onChange={event => setAppointmentSearch(event.target.value)}
+                  className="input pl-10"
+                  placeholder="Cliente, servicio o barbero"
+                />
               </div>
             </div>
 
-            <div>
-              <label className="label">Método de cobro</label>
-              <div className="grid grid-cols-2 gap-2">
-                {METHODS.map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setNewMethod(m)}
-                    className={cn(
-                      'flex flex-col items-center gap-2 p-3.5 rounded-xl border text-sm transition-all duration-150 font-medium',
-                      newMethod === m ? METHOD_ACTIVE[m] : METHOD_COLORS[m] + ' hover:opacity-80'
-                    )}
-                  >
-                    <span className="text-xl">{PAYMENT_METHOD_ICONS[m]}</span>
-                    <span className="text-xs text-center leading-tight text-cream/70">{PAYMENT_METHOD_LABELS[m]}</span>
-                  </button>
-                ))}
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {filteredAppointments.map(appointment => (
+                <button
+                  key={appointment.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedAppointment(appointment)
+                    setAmount(String(appointment.service.price))
+                  }}
+                  className={`w-full rounded-2xl border px-4 py-3 text-left transition ${selectedAppointment?.id === appointment.id ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <p className="text-sm font-semibold">
+                    {appointment.client.first_name} {appointment.client.last_name}
+                  </p>
+                  <p className={`mt-1 text-sm ${selectedAppointment?.id === appointment.id ? 'text-slate-300' : 'text-slate-500'}`}>
+                    {appointment.service.name} · {appointment.barber.name} · {appointment.start_time.slice(0, 5)}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label">Monto</label>
+                <input type="number" value={amount} onChange={event => setAmount(event.target.value)} className="input" />
+              </div>
+              <div>
+                <label className="label">Método</label>
+                <select value={method} onChange={event => setMethod(event.target.value as PaymentMethod)} className="input">
+                  {METHODS.map(item => (
+                    <option key={item} value={item}>
+                      {PAYMENT_METHOD_LABELS[item]}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            {payError && (
-              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 font-medium">
-                <X className="w-4 h-4 flex-shrink-0" /> {payError}
-              </div>
-            )}
+            {error && <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-            <Button className="w-full" size="lg" loading={paying} onClick={handlePay} disabled={!newMethod || !newAmount || paying}>
-              <DollarSign className="w-4 h-4" />
-              Confirmar cobro {newAmount && Number(newAmount) > 0 ? `· ${formatPrice(Number(newAmount))}` : ''}
-            </Button>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button className="flex-1" onClick={submitPayment} loading={saving} disabled={!selectedAppointment}>
+                Confirmar cobro
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

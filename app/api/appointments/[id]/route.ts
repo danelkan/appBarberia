@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendCancellationEmail } from '@/lib/emails'
-import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { updateAppointmentStatusSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -20,6 +20,8 @@ export async function PATCH(
   if (!auth) {
     return unauthorizedResponse()
   }
+  const denied = requirePermission(auth, 'edit_appointments')
+  if (denied) return denied
 
   const { id } = params
 
@@ -88,6 +90,8 @@ export async function DELETE(
   if (!auth) {
     return unauthorizedResponse()
   }
+  const denied = requirePermission(auth, 'cancel_appointments')
+  if (denied) return denied
 
   const { id } = params
 
