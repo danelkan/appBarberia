@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Calendar, Users, Scissors, UserCog, LogOut,
-  Shield, Clock, ChevronDown, MapPin, DollarSign, Building2,
+  Shield, Clock, ChevronDown, MapPin, DollarSign,
+  Building2, LayoutDashboard, UserCircle, Menu, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
@@ -31,14 +32,24 @@ export const AdminContext = createContext<AdminContextValue>({
 })
 export const useAdmin = () => useContext(AdminContext)
 
-const NAV = [
-  { href: '/admin/agenda',    label: 'Agenda',    icon: Calendar   },
-  { href: '/admin/caja',      label: 'Caja',      icon: DollarSign },
-  { href: '/admin/sucursales',label: 'Sucursales',icon: Building2  },
-  { href: '/admin/clientes',  label: 'Clientes',  icon: Users      },
-  { href: '/admin/servicios', label: 'Servicios', icon: Scissors   },
-  { href: '/admin/barberos',  label: 'Barberos',  icon: UserCog    },
-  { href: '/admin/horarios',  label: 'Horarios',  icon: Clock      },
+interface NavItem {
+  href: string
+  label: string
+  icon: React.ElementType
+  roles?: ('superadmin' | 'admin' | 'barber')[]
+}
+
+const NAV: NavItem[] = [
+  { href: '/admin/dashboard',  label: 'Inicio',     icon: LayoutDashboard },
+  { href: '/admin/agenda',     label: 'Agenda',     icon: Calendar        },
+  { href: '/admin/caja',       label: 'Caja',       icon: DollarSign      },
+  { href: '/admin/clientes',   label: 'Clientes',   icon: Users,          roles: ['superadmin', 'admin'] },
+  { href: '/admin/servicios',  label: 'Servicios',  icon: Scissors,       roles: ['superadmin', 'admin'] },
+  { href: '/admin/barberos',   label: 'Barberos',   icon: UserCog,        roles: ['superadmin', 'admin'] },
+  { href: '/admin/horarios',   label: 'Horarios',   icon: Clock           },
+  { href: '/admin/sucursales', label: 'Sucursales', icon: Building2,      roles: ['superadmin', 'admin'] },
+  { href: '/admin/empresas',   label: 'Empresas',   icon: Building2,      roles: ['superadmin'] },
+  { href: '/admin/usuarios',   label: 'Usuarios',   icon: UserCircle,     roles: ['superadmin'] },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -46,6 +57,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [branches, setBranches]         = useState<Branch[]>([])
   const [activeBranch, setActiveBranch] = useState<Branch | null>(null)
   const [branchOpen, setBranchOpen]     = useState(false)
+  const [mobileOpen, setMobileOpen]     = useState(false)
   const [loading, setLoading]           = useState(true)
   const pathname  = usePathname()
   const router    = useRouter()
@@ -56,54 +68,45 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     async function bootstrap() {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
-      }
+      if (!session) { router.push('/login'); return }
 
       try {
         const [userRes, branchesRes] = await Promise.all([
           fetch('/api/auth/me'),
           fetch('/api/branches'),
         ])
-
-        const userData = await userRes.json()
+        const userData    = await userRes.json()
         const branchesData = await branchesRes.json()
 
         if (!mounted) return
 
-        const nextUser = userData.user ?? null
-        const allBranches = branchesData.branches ?? []
+        const nextUser     = userData.user ?? null
+        const allBranches  = branchesData.branches ?? []
         const allowedBranches = nextUser?.role === 'barber'
-          ? allBranches.filter((branch: Branch) => nextUser.branch_ids?.includes(branch.id))
+          ? allBranches.filter((b: Branch) => nextUser.branch_ids?.includes(b.id))
           : allBranches
 
         setUser(nextUser)
         setBranches(allowedBranches)
 
-        const puntaCarretas = allowedBranches.find((branch: Branch) =>
-          branch.name.toLowerCase().includes('punta carretas')
-        )
+        const defaultBranch = allowedBranches.find((b: Branch) =>
+          b.name.toLowerCase().includes('punta carretas')
+        ) ?? allowedBranches[0] ?? null
 
-        if (nextUser?.role === 'barber') {
-          setActiveBranch(allowedBranches[0] ?? null)
-        } else {
-          setActiveBranch(puntaCarretas ?? allowedBranches[0] ?? null)
-        }
+        setActiveBranch(nextUser?.role === 'barber' ? (allowedBranches[0] ?? null) : defaultBranch)
       } catch {
-        if (!mounted) return
-        setBranches([])
+        if (mounted) setBranches([])
       } finally {
         if (mounted) setLoading(false)
       }
     }
 
     bootstrap()
-
-    return () => {
-      mounted = false
-    }
+    return () => { mounted = false }
   }, [router, supabase.auth])
+
+  // Close mobile menu on route change
+  useEffect(() => { setMobileOpen(false) }, [pathname])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -111,19 +114,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const visibleNav = NAV.filter(item => {
-    if (user?.role === 'barber') {
-      return (
-        item.href.includes('agenda') ||
-        item.href.includes('horarios') ||
-        item.href.includes('caja')
-      )
-    }
-
-    if (user?.role === 'admin' && item.href.includes('/sucursales')) {
-      return true
-    }
-
-    return true
+    if (!item.roles) return true
+    return user && item.roles.includes(user.role)
   })
 
   if (loading) {
@@ -137,11 +129,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  const NavItem = ({ item }: { item: typeof NAV[0] }) => {
-    const active = pathname.startsWith(item.href)
+  const NavItem = ({ item, onClick }: { item: NavItem; onClick?: () => void }) => {
+    const active = pathname === item.href || (item.href !== '/admin/dashboard' && pathname.startsWith(item.href))
     return (
       <Link
         href={item.href}
+        onClick={onClick}
         className={cn(
           'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
           active
@@ -171,45 +164,57 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             )}
           >
             <MapPin className={cn('flex-shrink-0 text-gold', mobile ? 'w-3 h-3' : 'w-3.5 h-3.5')} />
-            <span className="flex-1 text-left text-cream/80 truncate font-medium">
+            <span className={cn('flex-1 text-left text-cream/80 truncate font-medium', mobile ? 'max-w-[80px]' : '')}>
               {activeBranch ? activeBranch.name : 'Todas las sedes'}
             </span>
             <ChevronDown className={cn('text-cream/40 transition-transform flex-shrink-0', branchOpen && 'rotate-180', mobile ? 'w-3 h-3' : 'w-3.5 h-3.5')} />
           </button>
 
           {branchOpen && (
-            <div className={cn(
-              'rounded-xl border border-border bg-white shadow-modal overflow-hidden animate-fade-in z-50',
-              mobile ? 'absolute right-0 top-full mt-1 w-44' : 'mt-1.5'
-            )}>
-              {user?.role !== 'barber' && (
-                <button
-                  onClick={() => { setActiveBranch(null); setBranchOpen(false) }}
-                  className={cn(
-                    'w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-surface-2 font-medium',
-                    activeBranch === null ? 'text-gold' : 'text-cream/60'
-                  )}
-                >
-                  Todas las sedes
-                </button>
-              )}
-              {branches.map(b => (
-                <button
-                  key={b.id}
-                  onClick={() => { setActiveBranch(b); setBranchOpen(false) }}
-                  className={cn(
-                    'w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-surface-2 font-medium',
-                    activeBranch?.id === b.id ? 'text-gold bg-gold/5' : 'text-cream/60'
-                  )}
-                >
-                  {b.name}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setBranchOpen(false)} />
+              <div className={cn(
+                'rounded-xl border border-border bg-white shadow-modal overflow-hidden animate-fade-in z-50',
+                mobile ? 'absolute right-0 top-full mt-1 w-48' : 'mt-1.5',
+                !mobile && 'relative z-50'
+              )}>
+                {user?.role !== 'barber' && (
+                  <button
+                    onClick={() => { setActiveBranch(null); setBranchOpen(false) }}
+                    className={cn(
+                      'w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-surface-2 font-medium',
+                      activeBranch === null ? 'text-gold' : 'text-cream/60'
+                    )}
+                  >
+                    Todas las sedes
+                  </button>
+                )}
+                {branches.map(b => (
+                  <button
+                    key={b.id}
+                    onClick={() => { setActiveBranch(b); setBranchOpen(false) }}
+                    className={cn(
+                      'w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-surface-2 font-medium border-t border-border/50',
+                      activeBranch?.id === b.id ? 'text-gold bg-gold/5' : 'text-cream/60'
+                    )}
+                  >
+                    {b.name}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </>
       )}
     </div>
+  )
+
+  // Separate nav into main and admin sections
+  const mainNav  = visibleNav.filter(item => !['superadmin'].includes(
+    NAV.find(n => n.href === item.href)?.roles?.[0] ?? ''
+  ) || item.href === '/admin/dashboard')
+  const adminNav = visibleNav.filter(item =>
+    NAV.find(n => n.href === item.href)?.roles?.[0] === 'superadmin' && item.href !== '/admin/dashboard'
   )
 
   return (
@@ -227,7 +232,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
               <div>
                 <p className="text-sm font-semibold text-cream">Felito Studios</p>
-                <p className="text-[10px] uppercase tracking-widest text-cream/35 font-medium">Admin</p>
+                <p className="text-[10px] uppercase tracking-widest text-cream/35 font-medium">Panel Admin</p>
               </div>
             </div>
           </div>
@@ -237,7 +242,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {visibleNav.map(item => <NavItem key={item.href} item={item} />)}
+            {mainNav.map(item => <NavItem key={item.href} item={item} />)}
+
+            {adminNav.length > 0 && (
+              <>
+                <div className="pt-3 pb-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-cream/25 px-3">Sistema</p>
+                </div>
+                {adminNav.map(item => <NavItem key={item.href} item={item} />)}
+              </>
+            )}
           </nav>
 
           {/* User + logout */}
@@ -277,28 +291,91 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           <div className="flex items-center gap-2">
             <BranchSelector mobile />
-
             <button
-              onClick={handleLogout}
-              className="p-2 rounded-xl text-cream/40 hover:text-red-500 hover:bg-red-50 transition-all"
-              title="Cerrar sesión"
+              onClick={() => setMobileOpen(true)}
+              className="p-2 rounded-xl text-cream/50 hover:text-cream hover:bg-surface-2 transition-all"
             >
-              <LogOut className="w-4 h-4" />
+              <Menu className="w-5 h-5" />
             </button>
           </div>
         </header>
 
+        {/* ── Mobile drawer ────────────────────────────────── */}
+        {mobileOpen && (
+          <div className="lg:hidden fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+            <div className="absolute right-0 top-0 bottom-0 w-72 bg-white flex flex-col animate-fade-in shadow-modal">
+              {/* Drawer header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                <div>
+                  <p className="text-sm font-semibold text-cream">Felito Studios</p>
+                  {user && (
+                    <p className="text-xs text-cream/45 font-medium truncate max-w-[160px]">{user.email}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  className="p-2 rounded-xl hover:bg-surface-2 text-cream/40 hover:text-cream transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer nav */}
+              <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+                {mainNav.map(item => <NavItem key={item.href} item={item} onClick={() => setMobileOpen(false)} />)}
+                {adminNav.length > 0 && (
+                  <>
+                    <div className="pt-3 pb-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-cream/25 px-3">Sistema</p>
+                    </div>
+                    {adminNav.map(item => <NavItem key={item.href} item={item} onClick={() => setMobileOpen(false)} />)}
+                  </>
+                )}
+              </nav>
+
+              {/* Drawer footer */}
+              <div className="px-3 py-3 border-t border-border">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-cream/40 hover:text-red-500 hover:bg-red-50 transition-all font-medium"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Main content ────────────────────────────────── */}
-        <main className="lg:pl-60 pt-14 lg:pt-0 pb-20 lg:pb-0 min-h-screen">
+        <main className="lg:pl-60 pt-14 lg:pt-0 min-h-screen pb-4">
           {children}
         </main>
 
-        {/* ── Mobile bottom nav ───────────────────────────── */}
+        {/* ── Mobile bottom nav (main items only) ─────────── */}
         <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-border safe-area-pb">
           <div className="flex items-center justify-around px-1 py-2">
-            {visibleNav.slice(0, 5).map(item => {
-              const active = pathname.startsWith(item.href)
-              return (
+            {[
+              { href: '/admin/dashboard', label: 'Inicio',  icon: LayoutDashboard },
+              { href: '/admin/agenda',    label: 'Agenda',  icon: Calendar        },
+              { href: '/admin/caja',      label: 'Caja',    icon: DollarSign      },
+              { href: '/admin/barberos',  label: 'Equipo',  icon: UserCog         },
+              { href: '/admin/horarios',  label: 'Más',     icon: Menu, isMenu: true },
+            ].map(item => {
+              const active = 'isMenu' in item && item.isMenu
+                ? false
+                : pathname === item.href || (item.href !== '/admin/dashboard' && pathname.startsWith(item.href))
+              return 'isMenu' in item && item.isMenu ? (
+                <button
+                  key="menu"
+                  onClick={() => setMobileOpen(true)}
+                  className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl text-cream/35 hover:text-cream/60 transition-all min-w-[52px]"
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="text-[9px] uppercase tracking-wider font-semibold">Más</span>
+                </button>
+              ) : (
                 <Link
                   key={item.href}
                   href={item.href}

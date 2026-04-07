@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
+import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   DollarSign, TrendingUp, MapPin, Receipt, Calendar,
@@ -10,7 +10,7 @@ import {
 import { Button, Spinner, EmptyState, Modal } from '@/components/ui'
 import { cn, formatPrice } from '@/lib/utils'
 import { useAdmin } from '../layout'
-import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ICONS, type PaymentMethod } from '@/types'
+import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ICONS, type PaymentMethod, type PaymentTotals } from '@/types'
 import Link from 'next/link'
 
 type Period = 'today' | 'week' | 'month' | 'year' | 'custom'
@@ -29,21 +29,6 @@ interface PaymentRow {
     service: { name: string }
     branch: { name: string }
   }
-}
-
-interface Totals {
-  efectivo: number
-  mercado_pago: number
-  debito: number
-  transferencia: number
-  total: number
-}
-
-interface QuickSummary {
-  today: number
-  week: number
-  month: number
-  year: number
 }
 
 interface PendingAppt {
@@ -73,8 +58,10 @@ const METHOD_ACTIVE: Record<PaymentMethod, string> = {
 }
 
 const PERIOD_LABELS: Record<Period, string> = {
-  today: 'Hoy', week: 'Semana', month: 'Mes', year: 'Año', custom: 'Personalizado',
+  today: 'Hoy', week: 'Semana', month: 'Mes', year: 'Año', custom: 'Rango',
 }
+
+const EMPTY_TOTALS: PaymentTotals = { efectivo: 0, mercado_pago: 0, debito: 0, transferencia: 0, total: 0 }
 
 export default function CajaPage() {
   const { activeBranch } = useAdmin()
@@ -82,8 +69,8 @@ export default function CajaPage() {
   const [customFrom, setCustomFrom] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [customTo, setCustomTo]     = useState(format(new Date(), 'yyyy-MM-dd'))
   const [payments, setPayments]     = useState<PaymentRow[]>([])
-  const [totals, setTotals]         = useState<Totals | null>(null)
-  const [quickSummary, setQuickSummary] = useState<QuickSummary | null>(null)
+  const [totals, setTotals]         = useState<PaymentTotals>(EMPTY_TOTALS)
+  const [summary, setSummary]       = useState<Record<string, { total: number; count: number }> | null>(null)
   const [loading, setLoading]       = useState(true)
 
   // New payment modal
@@ -100,65 +87,59 @@ export default function CajaPage() {
 
   const getDateRange = useCallback((): [string, string] => {
     const now = new Date()
-    if (period === 'today')  return [format(startOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"), format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss")]
-    if (period === 'week') {
-      const ws = startOfWeek(now, { weekStartsOn: 1 })
-      return [format(ws, "yyyy-MM-dd'T'00:00:00"), format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd'T'23:59:59")]
+    const pad = (d: Date, end = false) => {
+      const s = format(d, 'yyyy-MM-dd')
+      return end ? s + 'T23:59:59' : s + 'T00:00:00'
     }
-    if (period === 'month')  return [format(startOfMonth(now), "yyyy-MM-dd'T'00:00:00"), format(endOfMonth(now), "yyyy-MM-dd'T'23:59:59")]
-    if (period === 'year')   return [format(startOfYear(now), "yyyy-MM-dd'T'00:00:00"), format(endOfYear(now), "yyyy-MM-dd'T'23:59:59")]
+    if (period === 'today')  return [pad(now) , pad(now, true)]
+    if (period === 'week') {
+      const d = new Date(now); d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+      const e = new Date(d); e.setDate(e.getDate() + 6)
+      return [pad(d), pad(e, true)]
+    }
+    if (period === 'month') {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1)
+      const e = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      return [pad(s), pad(e, true)]
+    }
+    if (period === 'year') {
+      return [`${now.getFullYear()}-01-01T00:00:00`, `${now.getFullYear()}-12-31T23:59:59`]
+    }
     return [customFrom + 'T00:00:00', customTo + 'T23:59:59']
   }, [period, customFrom, customTo])
-
-  const buildPaymentsUrl = useCallback((from: string, to: string) => {
-    let url = `/api/payments?date_from=${from}&date_to=${to}`
-    if (activeBranch) url += `&branch_id=${activeBranch.id}`
-    return url
-  }, [activeBranch])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [from, to] = getDateRange()
 
-    const now = new Date()
-    const todayRange: [string, string] = [format(startOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"), format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss")]
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 })
-    const weekRange: [string, string] = [format(weekStart, "yyyy-MM-dd'T'00:00:00"), format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd'T'23:59:59")]
-    const monthRange: [string, string] = [format(startOfMonth(now), "yyyy-MM-dd'T'00:00:00"), format(endOfMonth(now), "yyyy-MM-dd'T'23:59:59")]
-    const yearRange: [string, string] = [format(startOfYear(now), "yyyy-MM-dd'T'00:00:00"), format(endOfYear(now), "yyyy-MM-dd'T'23:59:59")]
+    let paymentsUrl = `/api/payments?date_from=${from}&date_to=${to}`
+    let summaryUrl  = '/api/payments/summary'
+    if (activeBranch) {
+      paymentsUrl += `&branch_id=${activeBranch.id}`
+      summaryUrl  += `?branch_id=${activeBranch.id}`
+    }
 
     try {
-      const [mainRes, todayRes, weekRes, monthRes, yearRes] = await Promise.all([
-        fetch(buildPaymentsUrl(from, to)),
-        fetch(buildPaymentsUrl(...todayRange)),
-        fetch(buildPaymentsUrl(...weekRange)),
-        fetch(buildPaymentsUrl(...monthRange)),
-        fetch(buildPaymentsUrl(...yearRange)),
+      // Only 2 requests now instead of 5
+      const [paymentsRes, summaryRes] = await Promise.all([
+        fetch(paymentsUrl),
+        fetch(summaryUrl),
+      ])
+      const [paymentsData, summaryData] = await Promise.all([
+        paymentsRes.json(),
+        summaryRes.json(),
       ])
 
-      const [mainData, todayData, weekData, monthData, yearData] = await Promise.all([
-        mainRes.json(),
-        todayRes.json(),
-        weekRes.json(),
-        monthRes.json(),
-        yearRes.json(),
-      ])
-
-      setPayments(mainData.payments ?? [])
-      setTotals(mainData.totals ?? null)
-      setQuickSummary({
-        today: todayData.totals?.total ?? 0,
-        week: weekData.totals?.total ?? 0,
-        month: monthData.totals?.total ?? 0,
-        year: yearData.totals?.total ?? 0,
-      })
+      setPayments(paymentsData.payments ?? [])
+      setTotals(paymentsData.totals ?? EMPTY_TOTALS)
+      setSummary(summaryData.summary ?? null)
     } catch {
       setPayments([])
-      setQuickSummary(null)
+      setSummary(null)
     } finally {
       setLoading(false)
     }
-  }, [buildPaymentsUrl, getDateRange])
+  }, [activeBranch, getDateRange])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -172,17 +153,15 @@ export default function CajaPage() {
     setApptSearch('')
     setLoadingAppts(true)
     try {
-      const today = format(new Date(), 'yyyy-MM-dd')
-      const from30  = format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
+      const today  = format(new Date(), 'yyyy-MM-dd')
+      const from30 = format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
       let url = `/api/appointments?from=${from30}&to=${today}`
       if (activeBranch) url += `&branch_id=${activeBranch.id}`
       const res  = await fetch(url)
       const data = await res.json()
-      // Include any appointment still missing a payment, even if its status got out of sync.
-      const pending = (data.appointments ?? []).filter(
-        (a: any) => a.status !== 'cancelada' && !a.payment
+      setPendingAppts(
+        (data.appointments ?? []).filter((a: any) => a.status !== 'cancelada' && !a.payment)
       )
-      setPendingAppts(pending)
     } catch {
       setPendingAppts([])
     } finally {
@@ -190,22 +169,10 @@ export default function CajaPage() {
     }
   }
 
-  const handleSelectAppt = (appt: PendingAppt) => {
-    setSelectedAppt(appt)
-    setNewAmount(String(appt.service?.price ?? ''))
-    setPayError('')
-  }
-
   const handlePay = async () => {
-    if (!selectedAppt || !newMethod || !newAmount) {
-      setPayError('Completá todos los campos')
-      return
-    }
+    if (!selectedAppt || !newMethod || !newAmount) { setPayError('Completá todos los campos'); return }
     const amount = Number(newAmount)
-    if (isNaN(amount) || amount <= 0) {
-      setPayError('Ingresá un monto válido')
-      return
-    }
+    if (isNaN(amount) || amount <= 0) { setPayError('Ingresá un monto válido'); return }
     setPaying(true)
     setPayError('')
     try {
@@ -226,13 +193,8 @@ export default function CajaPage() {
   }
 
   const closeNew = () => {
-    setShowNew(false)
-    setSelectedAppt(null)
-    setNewAmount('')
-    setNewMethod(null)
-    setPayError('')
-    setPaying(false)
-    setNewPaidId(null)
+    setShowNew(false); setSelectedAppt(null); setNewAmount('')
+    setNewMethod(null); setPayError(''); setPaying(false); setNewPaidId(null)
   }
 
   const filteredAppts = pendingAppts.filter(a => {
@@ -281,7 +243,6 @@ export default function CajaPage() {
               </button>
             ))}
           </div>
-
           <Button size="sm" onClick={openNewPayment}>
             <Plus className="w-4 h-4" /> Registrar cobro
           </Button>
@@ -291,19 +252,9 @@ export default function CajaPage() {
       {/* Custom date range */}
       {period === 'custom' && (
         <div className="flex items-center gap-3 mb-6 animate-fade-up">
-          <input
-            type="date"
-            className="input flex-1"
-            value={customFrom}
-            onChange={e => setCustomFrom(e.target.value)}
-          />
+          <input type="date" className="input flex-1" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
           <span className="text-cream/30 text-sm font-bold">→</span>
-          <input
-            type="date"
-            className="input flex-1"
-            value={customTo}
-            onChange={e => setCustomTo(e.target.value)}
-          />
+          <input type="date" className="input flex-1" value={customTo} onChange={e => setCustomTo(e.target.value)} />
         </div>
       )}
 
@@ -311,56 +262,56 @@ export default function CajaPage() {
         <div className="flex justify-center py-20"><Spinner /></div>
       ) : (
         <>
-          {quickSummary && (
+          {/* Quick summary from /api/payments/summary (single request) */}
+          {summary && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
               {([
-                { key: 'today', label: 'Acumulado de hoy' },
-                { key: 'week', label: 'Esta semana' },
-                { key: 'month', label: 'Este mes' },
-                { key: 'year', label: 'Este año' },
+                { key: 'today', label: 'Hoy'        },
+                { key: 'week',  label: 'Esta semana' },
+                { key: 'month', label: 'Este mes'    },
+                { key: 'year',  label: 'Este año'    },
               ] as const).map(item => (
                 <div key={item.key} className="rounded-2xl border border-border bg-white p-4 shadow-card">
                   <p className="text-xs uppercase tracking-wider text-cream/35 font-semibold">{item.label}</p>
-                  <p className="text-xl font-bold text-cream mt-2">{formatPrice(quickSummary[item.key])}</p>
+                  <p className="text-xl font-bold text-cream mt-2">{formatPrice((summary[item.key] as any)?.total ?? 0)}</p>
+                  <p className="text-xs text-cream/35 mt-0.5 font-medium">{(summary[item.key] as any)?.count ?? 0} cobros</p>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Totals grid */}
-          {totals && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              {METHODS.map(m => (
-                <div key={m} className={cn('rounded-2xl border p-4 shadow-card', METHOD_COLORS[m])}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-2xl">{PAYMENT_METHOD_ICONS[m]}</span>
-                    <TrendingUp className="w-3.5 h-3.5 opacity-40" />
-                  </div>
-                  <p className="text-xl font-bold text-cream">{formatPrice(totals[m])}</p>
-                  <p className="text-xs font-medium opacity-60 mt-0.5">{PAYMENT_METHOD_LABELS[m]}</p>
+          {/* Method breakdown */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {METHODS.map(m => (
+              <div key={m} className={cn('rounded-2xl border p-4 shadow-card', METHOD_COLORS[m])}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-2xl">{PAYMENT_METHOD_ICONS[m]}</span>
+                  <TrendingUp className="w-3.5 h-3.5 opacity-40" />
                 </div>
-              ))}
-            </div>
-          )}
+                <p className="text-xl font-bold">{formatPrice(totals[m])}</p>
+                <p className="text-xs font-medium opacity-60 mt-0.5">{PAYMENT_METHOD_LABELS[m]}</p>
+              </div>
+            ))}
+          </div>
 
           {/* Total banner */}
-          {totals && (
-            <div className="rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/8 to-gold/5 px-5 py-4 flex items-center justify-between mb-6 shadow-card">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gold/15 border border-gold/25 flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-gold" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-gold-dark/80 font-semibold">Total recaudado</p>
-                  <p className="text-2xl font-bold text-cream mt-0.5">{formatPrice(totals.total)}</p>
-                </div>
+          <div className="rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/8 to-gold/5 px-5 py-4 flex items-center justify-between mb-6 shadow-card">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gold/15 border border-gold/25 flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-gold" />
               </div>
-              <div className="text-right">
-                <p className="text-lg font-bold text-cream/80">{payments.length}</p>
-                <p className="text-xs text-cream/40 font-medium">cobros · {PERIOD_LABELS[period].toLowerCase()}</p>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-gold-dark/80 font-semibold">
+                  Total · {PERIOD_LABELS[period].toLowerCase()}
+                </p>
+                <p className="text-2xl font-bold text-cream mt-0.5">{formatPrice(totals.total)}</p>
               </div>
             </div>
-          )}
+            <div className="text-right">
+              <p className="text-lg font-bold text-cream/80">{payments.length}</p>
+              <p className="text-xs text-cream/40 font-medium">cobros</p>
+            </div>
+          </div>
 
           {/* Payments list */}
           {payments.length === 0 ? (
@@ -376,21 +327,12 @@ export default function CajaPage() {
             />
           ) : (
             <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wider text-cream/35 font-semibold mb-3">
-                Detalle de cobros
-              </p>
+              <p className="text-xs uppercase tracking-wider text-cream/35 font-semibold mb-3">Detalle</p>
               {payments.map(p => (
-                <div
-                  key={p.id}
-                  className="card p-4 flex items-center gap-4 hover:shadow-card-hover transition-all"
-                >
-                  <div className={cn(
-                    'w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 text-lg shadow-sm',
-                    METHOD_COLORS[p.method]
-                  )}>
+                <div key={p.id} className="card p-4 flex items-center gap-4 hover:shadow-card-hover transition-all shadow-card">
+                  <div className={cn('w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 text-lg shadow-sm', METHOD_COLORS[p.method])}>
                     {PAYMENT_METHOD_ICONS[p.method]}
                   </div>
-
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-cream">
@@ -407,14 +349,12 @@ export default function CajaPage() {
                     </p>
                     <p className="text-xs text-cream/30 mt-0.5 font-mono">{p.receipt_number}</p>
                   </div>
-
                   <div className="text-right flex-shrink-0">
                     <p className="text-base font-bold text-cream">{formatPrice(p.amount)}</p>
                     <p className="text-xs text-cream/35 mt-0.5 font-medium">
                       {format(new Date(p.created_at), 'HH:mm', { locale: es })}
                     </p>
                   </div>
-
                   <Link
                     href={`/admin/comprobante/${p.id}`}
                     className="p-2 rounded-xl border border-border bg-surface-2 text-cream/35 hover:text-gold hover:border-gold/30 transition-all flex-shrink-0"
@@ -429,13 +369,8 @@ export default function CajaPage() {
         </>
       )}
 
-      {/* ── New payment modal ──────────────────────── */}
-      <Modal
-        open={showNew}
-        onClose={closeNew}
-        title={newPaidId ? '¡Pago registrado!' : 'Registrar cobro'}
-        size="md"
-      >
+      {/* ── New payment modal ──────────────────── */}
+      <Modal open={showNew} onClose={closeNew} title={newPaidId ? '¡Pago registrado!' : 'Registrar cobro'} size="md">
         {newPaidId ? (
           <div className="space-y-5 text-center">
             <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto">
@@ -459,29 +394,16 @@ export default function CajaPage() {
               >
                 <Receipt className="w-4 h-4" /> Ver comprobante
               </Link>
-              <Button variant="outline" className="w-full" onClick={closeNew}>
-                Cerrar
-              </Button>
+              <Button variant="outline" className="w-full" onClick={closeNew}>Cerrar</Button>
             </div>
           </div>
         ) : !selectedAppt ? (
-          /* Step 1: Select appointment */
           <div className="space-y-4">
-            <p className="text-sm text-cream/55 font-medium">
-              Seleccioná el turno pendiente a cobrar:
-            </p>
-
-            {/* Search */}
+            <p className="text-sm text-cream/55 font-medium">Seleccioná el turno a cobrar:</p>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cream/35" />
-              <input
-                className="input pl-9"
-                placeholder="Buscar por cliente, servicio..."
-                value={apptSearch}
-                onChange={e => setApptSearch(e.target.value)}
-              />
+              <input className="input pl-9" placeholder="Buscar por cliente, servicio..." value={apptSearch} onChange={e => setApptSearch(e.target.value)} />
             </div>
-
             {loadingAppts ? (
               <div className="flex justify-center py-8"><Spinner /></div>
             ) : filteredAppts.length === 0 ? (
@@ -490,36 +412,25 @@ export default function CajaPage() {
                 <p className="text-sm text-cream/45 font-medium">
                   {apptSearch ? 'Sin resultados' : 'No hay turnos pendientes de cobro'}
                 </p>
-                {!apptSearch && (
-                  <p className="text-xs text-cream/30 mt-1">
-                    Los turnos pendientes de pago aparecerán aquí
-                  </p>
-                )}
               </div>
             ) : (
               <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                 {filteredAppts.map(a => (
                   <button
                     key={a.id}
-                    onClick={() => handleSelectAppt(a)}
+                    onClick={() => { setSelectedAppt(a); setNewAmount(String(a.service?.price ?? '')) }}
                     className="w-full text-left p-3.5 rounded-xl border border-border bg-surface-2 hover:border-gold/30 hover:bg-gold/5 transition-all"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-cream">
-                          {a.client.first_name} {a.client.last_name}
-                        </p>
-                        <p className="text-xs text-cream/50 mt-0.5 font-medium">
-                          {a.service.name} · {a.barber.name}
-                        </p>
+                        <p className="text-sm font-semibold text-cream">{a.client.first_name} {a.client.last_name}</p>
+                        <p className="text-xs text-cream/50 mt-0.5 font-medium">{a.service.name} · {a.barber.name}</p>
                         <p className="text-xs text-cream/35 mt-0.5">
                           {format(new Date(a.date + 'T12:00:00'), "d MMM", { locale: es })} · {a.start_time.slice(0,5)}
                           {a.branch && ` · ${a.branch.name}`}
                         </p>
                       </div>
-                      <span className="text-sm font-bold text-gold-dark flex-shrink-0">
-                        {formatPrice(a.service.price)}
-                      </span>
+                      <span className="text-sm font-bold text-gold-dark flex-shrink-0">{formatPrice(a.service.price)}</span>
                     </div>
                   </button>
                 ))}
@@ -527,44 +438,25 @@ export default function CajaPage() {
             )}
           </div>
         ) : (
-          /* Step 2: Enter payment details */
           <div className="space-y-5">
-            {/* Selected appointment */}
             <div className="flex items-start gap-3 p-3.5 rounded-xl bg-surface-2 border border-border">
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-cream">
-                  {selectedAppt.client.first_name} {selectedAppt.client.last_name}
-                </p>
-                <p className="text-xs text-cream/50 mt-0.5 font-medium">
-                  {selectedAppt.service.name} · {selectedAppt.start_time.slice(0,5)}
-                </p>
+                <p className="text-sm font-semibold text-cream">{selectedAppt.client.first_name} {selectedAppt.client.last_name}</p>
+                <p className="text-xs text-cream/50 mt-0.5 font-medium">{selectedAppt.service.name} · {selectedAppt.start_time.slice(0,5)}</p>
               </div>
-              <button
-                onClick={() => { setSelectedAppt(null); setNewAmount('') }}
-                className="p-1.5 rounded-lg hover:bg-surface-3 text-cream/30 hover:text-cream transition-colors flex-shrink-0"
-              >
+              <button onClick={() => { setSelectedAppt(null); setNewAmount('') }} className="p-1.5 rounded-lg hover:bg-surface-3 text-cream/30 hover:text-cream transition-colors flex-shrink-0">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {/* Amount */}
             <div>
               <label className="label">Monto cobrado (UYU)</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cream/40 text-sm font-medium">$</span>
-                <input
-                  type="number"
-                  className="input pl-8"
-                  value={newAmount}
-                  onChange={e => setNewAmount(e.target.value)}
-                  placeholder="0"
-                  min="0"
-                  step="1"
-                />
+                <input type="number" className="input pl-8" value={newAmount} onChange={e => setNewAmount(e.target.value)} placeholder="0" min="0" step="1" />
               </div>
             </div>
 
-            {/* Method */}
             <div>
               <label className="label">Método de cobro</label>
               <div className="grid grid-cols-2 gap-2">
@@ -586,18 +478,11 @@ export default function CajaPage() {
 
             {payError && (
               <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 font-medium">
-                <X className="w-4 h-4 flex-shrink-0" />
-                {payError}
+                <X className="w-4 h-4 flex-shrink-0" /> {payError}
               </div>
             )}
 
-            <Button
-              className="w-full"
-              size="lg"
-              loading={paying}
-              onClick={handlePay}
-              disabled={!newMethod || !newAmount || paying}
-            >
+            <Button className="w-full" size="lg" loading={paying} onClick={handlePay} disabled={!newMethod || !newAmount || paying}>
               <DollarSign className="w-4 h-4" />
               Confirmar cobro {newAmount && Number(newAmount) > 0 ? `· ${formatPrice(Number(newAmount))}` : ''}
             </Button>
