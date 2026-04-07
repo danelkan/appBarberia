@@ -28,6 +28,37 @@ async function getSession(req: NextRequest) {
   return session
 }
 
+async function findBarber(admin: ReturnType<typeof createSupabaseAdmin>, session: NonNullable<Awaited<ReturnType<typeof getSession>>>) {
+  // Try by user_roles.barber_id first (supports superadmin-as-barber)
+  const { data: userRole } = await admin
+    .from('user_roles')
+    .select('barber_id')
+    .eq('user_id', session.user.id)
+    .maybeSingle()
+
+  if (userRole?.barber_id) {
+    const { data } = await admin.from('barbers').select('*').eq('id', userRole.barber_id).single()
+    return data
+  }
+
+  // Fallback: match by email
+  const { data } = await admin.from('barbers').select('*').eq('email', session.user.email ?? '').maybeSingle()
+  return data
+}
+
+// GET /api/barbers/me — returns the logged-in barber's own record
+export async function GET(req: NextRequest) {
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+  const admin = createSupabaseAdmin()
+  const barber = await findBarber(admin, session)
+
+  if (!barber) return NextResponse.json({ error: 'No sos un barbero registrado' }, { status: 403 })
+
+  return NextResponse.json({ barber })
+}
+
 // PUT /api/barbers/me — el barbero actualiza su propia disponibilidad
 export async function PUT(req: NextRequest) {
   const session = await getSession(req)
@@ -36,13 +67,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const admin = createSupabaseAdmin()
-
-  // Encontrar el barbero por email del usuario logueado
-  const { data: barber } = await admin
-    .from('barbers')
-    .select('id')
-    .eq('email', session.user.email ?? '')
-    .single()
+  const barber = await findBarber(admin, session)
 
   if (!barber) {
     return NextResponse.json({ error: 'No sos un barbero registrado' }, { status: 403 })

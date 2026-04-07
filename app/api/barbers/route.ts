@@ -97,18 +97,35 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
-  const { password, role, branch_ids, ...barberInput } = result.data
+  const { password, existing_user_email, role, branch_ids, ...barberInput } = result.data
 
-  const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-    email: barberInput.email,
-    password,
-    email_confirm: true,
-  })
+  // ── Resolve auth user ──────────────────────────────────────────────
+  let authUserId: string
 
-  if (authError || !authUser.user) {
-    return NextResponse.json({ error: authError?.message || 'No se pudo crear el usuario' }, { status: 500 })
+  if (existing_user_email) {
+    // Link an existing Supabase auth user by email
+    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers()
+    if (listError) return NextResponse.json({ error: listError.message }, { status: 500 })
+
+    const existingUser = users.find(u => u.email?.toLowerCase() === existing_user_email.toLowerCase())
+    if (!existingUser) {
+      return NextResponse.json({ error: `No se encontró un usuario con el email ${existing_user_email}` }, { status: 404 })
+    }
+    authUserId = existingUser.id
+  } else {
+    // Create a brand-new auth user
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email: barberInput.email,
+      password: password!,
+      email_confirm: true,
+    })
+    if (authError || !authUser.user) {
+      return NextResponse.json({ error: authError?.message || 'No se pudo crear el usuario' }, { status: 500 })
+    }
+    authUserId = authUser.user.id
   }
 
+  // ── Insert barber record ───────────────────────────────────────────
   const { data, error } = await supabase
     .from('barbers')
     .insert(barberInput)
@@ -116,28 +133,26 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) {
-    await supabase.auth.admin.deleteUser(authUser.user.id)
+    if (!existing_user_email) await supabase.auth.admin.deleteUser(authUserId)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // ── Assign branches ────────────────────────────────────────────────
   const { error: branchError } = await supabase
     .from('barber_branches')
     .insert(branch_ids.map(branch_id => ({ barber_id: data.id, branch_id })))
 
   if (branchError) {
     await supabase.from('barbers').delete().eq('id', data.id)
-    await supabase.auth.admin.deleteUser(authUser.user.id)
+    if (!existing_user_email) await supabase.auth.admin.deleteUser(authUserId)
     return NextResponse.json({ error: branchError.message }, { status: 500 })
   }
 
+  // ── Link user_roles ────────────────────────────────────────────────
   try {
     await supabase
       .from('user_roles')
-      .upsert({
-        user_id: authUser.user.id,
-        role,
-        barber_id: data.id,
-      }, { onConflict: 'user_id' })
+      .upsert({ user_id: authUserId, role, barber_id: data.id }, { onConflict: 'user_id' })
   } catch {
     // Keep the barber usable even if the optional roles table is not present.
   }

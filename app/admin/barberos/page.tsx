@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
-import { Building2, KeyRound, Pencil, Plus, Trash2, UserCog } from 'lucide-react'
+import { Building2, KeyRound, Link2, Pencil, Plus, Trash2, UserCog } from 'lucide-react'
 import { Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
 import { cn, DAY_NAMES } from '@/lib/utils'
 import type { Barber, Branch, DaySchedule, WeeklyAvailability } from '@/types'
@@ -21,6 +21,7 @@ const EMPTY_BARBER = {
   name: '',
   email: '',
   password: '',
+  existing_user_email: '',
   role: 'barber' as const,
   branch_ids: [] as string[],
   availability: DEFAULT_AVAILABILITY,
@@ -28,6 +29,7 @@ const EMPTY_BARBER = {
 
 interface BarberFormState extends Partial<Barber> {
   password?: string
+  existing_user_email?: string
   role?: 'admin' | 'barber'
   branch_ids: string[]
 }
@@ -39,6 +41,7 @@ export default function BarberosPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<BarberFormState>(EMPTY_BARBER)
   const [saving, setSaving] = useState(false)
+  const [linkMode, setLinkMode] = useState(false)
 
   async function fetchData() {
     try {
@@ -66,6 +69,7 @@ export default function BarberosPage() {
 
   function openNew() {
     setEditing(EMPTY_BARBER)
+    setLinkMode(false)
     setModalOpen(true)
   }
 
@@ -81,17 +85,23 @@ export default function BarberosPage() {
 
   async function save() {
     if (!editing.name || !editing.email || editing.branch_ids.length === 0) return
-    if (!editing.id && !editing.password) return
+    if (!editing.id && !linkMode && !editing.password) return
+    if (!editing.id && linkMode && !editing.existing_user_email) return
 
     setSaving(true)
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       name: editing.name,
       email: editing.email,
-      password: editing.password,
       role: editing.role,
       branch_ids: editing.branch_ids,
       availability: editing.availability,
+    }
+
+    if (linkMode && editing.existing_user_email) {
+      payload.existing_user_email = editing.existing_user_email
+    } else if (editing.password) {
+      payload.password = editing.password
     }
 
     const method = editing.id ? 'PUT' : 'POST'
@@ -259,14 +269,60 @@ export default function BarberosPage() {
             />
           </div>
 
+          {/* Auth mode toggle (only for new barbers) */}
+          {!editing.id && (
+            <div className="flex rounded-xl border border-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLinkMode(false)}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-all',
+                  !linkMode ? 'bg-gold/10 text-gold-dark border-r border-gold/20' : 'text-cream/50 hover:bg-surface-2'
+                )}
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                Crear usuario nuevo
+              </button>
+              <button
+                type="button"
+                onClick={() => setLinkMode(true)}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-all',
+                  linkMode ? 'bg-gold/10 text-gold-dark' : 'text-cream/50 hover:bg-surface-2'
+                )}
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                Vincular usuario existente
+              </button>
+            </div>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              label={editing.id ? 'Nueva contraseña' : 'Contraseña *'}
-              type="password"
-              value={editing.password ?? ''}
-              onChange={event => setEditing(current => ({ ...current, password: event.target.value }))}
-              placeholder={editing.id ? 'Dejar vacío para mantenerla' : 'Mínimo 6 caracteres'}
-            />
+            {editing.id ? (
+              <Input
+                label="Nueva contraseña"
+                type="password"
+                value={editing.password ?? ''}
+                onChange={event => setEditing(current => ({ ...current, password: event.target.value }))}
+                placeholder="Dejar vacío para mantenerla"
+              />
+            ) : linkMode ? (
+              <Input
+                label="Email del usuario existente *"
+                type="email"
+                value={editing.existing_user_email ?? ''}
+                onChange={event => setEditing(current => ({ ...current, existing_user_email: event.target.value }))}
+                placeholder="admin@ejemplo.com"
+              />
+            ) : (
+              <Input
+                label="Contraseña *"
+                type="password"
+                value={editing.password ?? ''}
+                onChange={event => setEditing(current => ({ ...current, password: event.target.value }))}
+                placeholder="Mínimo 6 caracteres"
+              />
+            )}
 
             <div>
               <label className="label">Rol de acceso</label>
@@ -357,17 +413,22 @@ export default function BarberosPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm text-cream/55">
-            <div className="flex items-start gap-2">
-              <KeyRound className="w-4 h-4 mt-0.5 text-gold flex-shrink-0" />
-              <div>
-                <p className="font-semibold text-cream">Alta completa</p>
-                <p className="mt-1">
-                  Al guardar, se crea el barbero, su usuario de acceso y la relación con las sucursales elegidas.
-                </p>
+          {!editing.id && (
+            <div className="rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm text-cream/55">
+              <div className="flex items-start gap-2">
+                {linkMode ? <Link2 className="w-4 h-4 mt-0.5 text-gold flex-shrink-0" /> : <KeyRound className="w-4 h-4 mt-0.5 text-gold flex-shrink-0" />}
+                <div>
+                  <p className="font-semibold text-cream">{linkMode ? 'Vinculación de usuario' : 'Alta completa'}</p>
+                  <p className="mt-1">
+                    {linkMode
+                      ? 'El usuario existente (ej: superadmin) se vinculará al barbero y aparecerá en la agenda.'
+                      : 'Al guardar, se crea el barbero, su usuario de acceso y la relación con las sucursales elegidas.'
+                    }
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="flex gap-2 pt-2 sticky bottom-0 bg-white pb-1">
             <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
@@ -377,7 +438,11 @@ export default function BarberosPage() {
               className="flex-1"
               loading={saving}
               onClick={save}
-              disabled={!editing.name || !editing.email || editing.branch_ids.length === 0 || (!editing.id && !editing.password)}
+              disabled={
+                !editing.name || !editing.email || editing.branch_ids.length === 0 ||
+                (!editing.id && !linkMode && !editing.password) ||
+                (!editing.id && linkMode && !editing.existing_user_email)
+              }
             >
               {editing.id ? 'Guardar cambios' : 'Crear barbero'}
             </Button>

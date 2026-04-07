@@ -26,11 +26,10 @@ export default function HorariosPage() {
 
   useEffect(() => {
     if (!userRole?.barber_id) return
-    fetch('/api/barbers')
+    fetch('/api/barbers/me')
       .then(r => r.json())
-      .then((data: { barbers: Barber[] }) => {
-        const me = data.barbers.find(b => b.id === userRole.barber_id)
-        if (me?.availability) setAvailability(me.availability)
+      .then((data: { barber: Barber }) => {
+        if (data.barber?.availability) setAvailability(data.barber.availability)
       })
       .catch(() => {})
       .finally(() => setLoading(false))

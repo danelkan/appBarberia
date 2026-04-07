@@ -53,11 +53,21 @@ export const weeklyAvailabilitySchema = z.object({
 export const createBarberSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   email: z.string().email('Invalid email format').max(255),
-  password: z.string().min(6, 'Password must be at least 6 characters').max(128),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(128).optional(),
+  // If provided, link to an existing auth user instead of creating a new one
+  existing_user_email: z.string().email('Invalid email format').max(255).optional(),
   role: z.enum(['admin', 'barber']).optional().default('barber'),
   branch_ids: z.array(uuidSchema).min(1, 'Select at least one branch'),
   photo_url: z.string().url('Invalid URL').optional().nullable(),
   availability: weeklyAvailabilitySchema.optional(),
+}).superRefine((data, ctx) => {
+  if (!data.existing_user_email && !data.password) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['password'],
+      message: 'Password is required when not linking an existing user',
+    })
+  }
 })
 
 export const updateBarberSchema = z.object({

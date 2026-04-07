@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import type { Permission } from '@/types'
 
 export type AppRole = 'superadmin' | 'admin' | 'barber'
 
@@ -19,6 +20,16 @@ export interface AuthRoleContext extends AuthContext {
   role: AppRole
   barber_id?: string
   branch_ids: string[]
+  permissions: Permission[]
+}
+
+/**
+ * Returns true when the authenticated user has the given permission.
+ * Superadmins and admins implicitly have every permission.
+ */
+export function hasPermission(ctx: AuthRoleContext, permission: Permission): boolean {
+  if (ctx.role === 'superadmin' || ctx.role === 'admin') return true
+  return ctx.permissions.includes(permission)
 }
 
 function createSupabaseServerAuthClient(req: NextRequest) {
@@ -80,15 +91,16 @@ export async function resolveUserRole(
   admin: SupabaseClient,
   userId: string,
   email?: string
-): Promise<{ role: AppRole; barber_id?: string; branch_ids: string[] }> {
+): Promise<{ role: AppRole; barber_id?: string; branch_ids: string[]; permissions: Permission[] }> {
   const normalizedEmail = email?.toLowerCase()
   let role: AppRole = 'barber'
   let barber_id: string | undefined
+  let permissions: Permission[] = []
 
   try {
     const { data: userRole } = await admin
       .from('user_roles')
-      .select('role, barber_id')
+      .select('role, barber_id, permissions')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -98,6 +110,10 @@ export async function resolveUserRole(
 
     if (userRole?.barber_id) {
       barber_id = userRole.barber_id
+    }
+
+    if (Array.isArray(userRole?.permissions)) {
+      permissions = userRole.permissions as Permission[]
     }
   } catch {
     // Graceful fallback when the project does not have user_roles configured yet.
@@ -123,32 +139,24 @@ export async function resolveUserRole(
 
   const branch_ids = await getBranchIdsForBarber(admin, barber_id)
 
-  return { role, barber_id, branch_ids }
+  return { role, barber_id, branch_ids, permissions }
 }
 
 export async function requireAdminAuth(req: NextRequest): Promise<AuthRoleContext | null> {
   const auth = await getAuthSession(req)
-  if (!auth) {
-    return null
-  }
+  if (!auth) return null
 
   const admin = createSupabaseAdmin()
   const resolved = await resolveUserRole(admin, auth.session.user.id, auth.session.user.email)
 
-  if (resolved.role !== 'admin' && resolved.role !== 'superadmin') {
-    return null
-  }
+  if (resolved.role !== 'admin' && resolved.role !== 'superadmin') return null
 
   return { ...auth, ...resolved }
 }
 
-export async function requireAuth(
-  req: NextRequest
-): Promise<AuthRoleContext | null> {
+export async function requireAuth(req: NextRequest): Promise<AuthRoleContext | null> {
   const auth = await getAuthSession(req)
-  if (!auth) {
-    return null
-  }
+  if (!auth) return null
 
   const admin = createSupabaseAdmin()
   const resolved = await resolveUserRole(admin, auth.session.user.id, auth.session.user.email)
