@@ -4,19 +4,29 @@ import { formatDate, formatPrice } from './utils'
 import { sanitize, sanitizeEmail, sanitizePhone, sanitizeTime } from './sanitize'
 
 function getResend() {
-  return new Resend(process.env.RESEND_API_KEY)
+  const key = process.env.RESEND_API_KEY
+  if (!key) {
+    console.warn('[emails] RESEND_API_KEY is not set — emails will not be sent')
+  }
+  return new Resend(key)
 }
 
+// Must be a verified sender domain in Resend. Falls back to test address (only
+// delivers to account owner in sandbox mode; set RESEND_FROM_EMAIL in production).
 const FROM = process.env.RESEND_FROM_EMAIL ?? 'Felito Barber Studio <onboarding@resend.dev>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'admin@felitostudios.com'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? ''
+
+if (!process.env.RESEND_FROM_EMAIL) {
+  console.warn('[emails] RESEND_FROM_EMAIL not set — using test sender. Client emails will only reach the Resend account owner.')
+}
 
 const BRAND = {
-  ink: '#0f172a',
-  muted: '#64748b',
-  line: '#e2e8f0',
-  bg: '#f8fafc',
-  card: '#ffffff',
+  ink:    '#0f172a',
+  muted:  '#64748b',
+  line:   '#e2e8f0',
+  bg:     '#f8fafc',
+  card:   '#ffffff',
   accent: '#111827',
 }
 
@@ -74,8 +84,7 @@ function emailShell({
                   <td style="padding:0 32px 32px;">
                     <div style="border-radius:22px;background:${BRAND.bg};border:1px solid ${BRAND.line};padding:18px 20px;">
                       <p style="margin:0;font-size:13px;line-height:1.6;color:${BRAND.muted};">
-                        Felito Barber Studio<br />
-                        Montevideo, Uruguay
+                        Felito Barber Studio · Montevideo, Uruguay
                       </p>
                     </div>
                   </td>
@@ -113,26 +122,27 @@ export async function sendConfirmationEmail(
   appointment: Appointment
 ) {
   const safeFirstName = sanitize(client.first_name)
-  const safeService = sanitize(service.name)
-  const safePrice = formatPrice(service.price)
-  const safeBarber = sanitize(barber.name)
-  const safeDate = sanitize(formatDate(appointment.date))
-  const safeTime = sanitizeTime(appointment.start_time.slice(0, 5))
+  const safeService   = sanitize(service.name)
+  const safePrice     = formatPrice(service.price)
+  const safeBarber    = sanitize(barber.name)
+  const safeDate      = sanitize(formatDate(appointment.date))
+  const safeTime      = sanitizeTime(appointment.start_time.slice(0, 5))
+  const toEmail       = sanitizeEmail(client.email)
 
-  return getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
-    to: sanitizeEmail(client.email),
+    to: toEmail,
     subject: `Turno confirmado · ${safeDate} ${safeTime}`,
     html: emailShell({
-      eyebrow: 'Confirmacion de turno',
+      eyebrow: 'Confirmación de turno',
       title: 'Tu turno ya está confirmado',
       intro: `Hola ${safeFirstName}, te compartimos el detalle de tu reserva.`,
       content: `
         ${detailTable([
           { label: 'Servicio', value: `${safeService} · ${safePrice}` },
-          { label: 'Barbero', value: safeBarber },
-          { label: 'Fecha', value: safeDate },
-          { label: 'Hora', value: safeTime },
+          { label: 'Barbero',  value: safeBarber },
+          { label: 'Fecha',    value: safeDate },
+          { label: 'Hora',     value: safeTime },
         ])}
         <div style="margin-top:28px;">
           ${ctaButton('Ver o cancelar turno', `${APP_URL}/mis-turnos`)}
@@ -140,6 +150,14 @@ export async function sendConfirmationEmail(
       `,
     }),
   })
+
+  if (result.error) {
+    console.error('[emails] sendConfirmationEmail failed', { to: toEmail, error: result.error })
+  } else {
+    console.log('[emails] sendConfirmationEmail sent', { to: toEmail, id: result.data?.id })
+  }
+
+  return result
 }
 
 export async function sendAdminNotification(
@@ -148,10 +166,15 @@ export async function sendAdminNotification(
   service: Service,
   appointment: Appointment
 ) {
+  if (!ADMIN_EMAIL) {
+    console.warn('[emails] sendAdminNotification skipped — ADMIN_EMAIL not configured')
+    return
+  }
+
   const safeDate = sanitize(formatDate(appointment.date))
   const safeTime = sanitizeTime(appointment.start_time.slice(0, 5))
 
-  return getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
     to: ADMIN_EMAIL,
     subject: `[Nuevo turno] ${sanitize(client.first_name)} ${sanitize(client.last_name)} · ${safeDate}`,
@@ -161,11 +184,11 @@ export async function sendAdminNotification(
       intro: 'Entró una nueva reserva desde la app pública.',
       content: `
         ${detailTable([
-          { label: 'Cliente', value: `${sanitize(client.first_name)} ${sanitize(client.last_name)}` },
-          { label: 'Email', value: sanitizeEmail(client.email) },
-          { label: 'Teléfono', value: sanitizePhone(client.phone) },
-          { label: 'Servicio', value: sanitize(service.name) },
-          { label: 'Barbero', value: sanitize(barber.name) },
+          { label: 'Cliente',      value: `${sanitize(client.first_name)} ${sanitize(client.last_name)}` },
+          { label: 'Email',        value: sanitizeEmail(client.email) },
+          { label: 'Teléfono',     value: sanitizePhone(client.phone) },
+          { label: 'Servicio',     value: sanitize(service.name) },
+          { label: 'Barbero',      value: sanitize(barber.name) },
           { label: 'Fecha y hora', value: `${safeDate} · ${safeTime}` },
         ])}
         <div style="margin-top:28px;">
@@ -174,6 +197,14 @@ export async function sendAdminNotification(
       `,
     }),
   })
+
+  if (result.error) {
+    console.error('[emails] sendAdminNotification failed', { to: ADMIN_EMAIL, error: result.error })
+  } else {
+    console.log('[emails] sendAdminNotification sent', { to: ADMIN_EMAIL, id: result.data?.id })
+  }
+
+  return result
 }
 
 export async function sendCancellationEmail(
@@ -184,21 +215,22 @@ export async function sendCancellationEmail(
 ) {
   const safeDate = sanitize(formatDate(appointment.date))
   const safeTime = sanitizeTime(appointment.start_time.slice(0, 5))
+  const toEmail  = sanitizeEmail(client.email)
 
-  return getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
-    to: sanitizeEmail(client.email),
+    to: toEmail,
     subject: `Turno cancelado · ${safeDate}`,
     html: emailShell({
-      eyebrow: 'Cancelacion',
+      eyebrow: 'Cancelación',
       title: 'Tu turno fue cancelado',
       intro: 'La cancelación se registró correctamente. Podés reservar uno nuevo cuando quieras.',
       content: `
         ${detailTable([
           { label: 'Servicio', value: sanitize(service.name) },
-          { label: 'Barbero', value: sanitize(barber.name) },
-          { label: 'Fecha', value: safeDate },
-          { label: 'Hora', value: safeTime },
+          { label: 'Barbero',  value: sanitize(barber.name) },
+          { label: 'Fecha',    value: safeDate },
+          { label: 'Hora',     value: safeTime },
         ])}
         <div style="margin-top:28px;">
           ${ctaButton('Reservar nuevo turno', `${APP_URL}/`)}
@@ -206,6 +238,14 @@ export async function sendCancellationEmail(
       `,
     }),
   })
+
+  if (result.error) {
+    console.error('[emails] sendCancellationEmail failed', { to: toEmail, error: result.error })
+  } else {
+    console.log('[emails] sendCancellationEmail sent', { to: toEmail, id: result.data?.id })
+  }
+
+  return result
 }
 
 export async function sendBookingEmails(
@@ -221,7 +261,10 @@ export async function sendBookingEmails(
 
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
-      console.error(index === 0 ? 'Client confirmation email failed' : 'Admin notification email failed', result.reason)
+      console.error(
+        index === 0 ? '[emails] Client confirmation rejected' : '[emails] Admin notification rejected',
+        result.reason
+      )
     }
   })
 

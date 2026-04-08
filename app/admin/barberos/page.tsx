@@ -146,7 +146,6 @@ export default function BarberosPage() {
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
         title="Barberos"
-        subtitle="Administrá equipo, roles, accesos, sucursales y disponibilidad semanal desde una sola pantalla."
         action={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />

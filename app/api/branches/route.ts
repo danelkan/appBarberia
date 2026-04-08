@@ -28,17 +28,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
-  const denied = requirePermission(auth, 'manage_branches')
-  if (denied) return denied
+  // Only superadmin can create branches — branch count affects the product scope
+  if (auth.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Solo el superadmin puede crear sucursales' }, { status: 403 })
+  }
 
   const body = await req.json()
-  const { name, address, phone, active, company_id } = body
+  const { name, address, phone, active } = body
   if (!name?.trim()) return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
 
   const supabase = createSupabaseAdmin()
   const { data, error } = await supabase
     .from('branches')
-    .insert({ name: name.trim(), address, phone, active: active ?? true, company_id: company_id ?? null })
+    .insert({ name: name.trim(), address, phone, active: active ?? true })
     .select('*')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

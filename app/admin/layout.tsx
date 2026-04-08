@@ -6,7 +6,6 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Building2,
   Calendar,
   ChevronDown,
   Clock3,
@@ -46,26 +45,24 @@ const AdminContext = createContext<AdminContextValue>({
 export const useAdmin = () => useContext(AdminContext)
 
 const ROUTE_PERMISSIONS: Partial<Record<string, Permission>> = {
-  '/admin/caja': 'cash.view',
-  '/admin/clientes': 'view_clients',
+  '/admin/caja':      'cash.view',
+  '/admin/clientes':  'view_clients',
   '/admin/servicios': 'manage_services',
-  '/admin/barberos': 'manage_barbers',
-  '/admin/horarios': 'manage_schedules',
+  '/admin/barberos':  'manage_barbers',
+  '/admin/horarios':  'manage_schedules',
   '/admin/sucursales': 'manage_branches',
-  '/admin/empresas': 'manage_companies',
-  '/admin/usuarios': 'manage_users',
+  '/admin/usuarios':  'manage_users',
 }
 
 const NAV_ITEMS = [
-  { href: '/admin/dashboard', label: 'Resumen', icon: LayoutDashboard },
-  { href: '/admin/agenda', label: 'Agenda', icon: Calendar },
-  { href: '/admin/caja', label: 'Caja', icon: DollarSign, permission: 'cash.view' as Permission },
-  { href: '/admin/clientes', label: 'Clientes', icon: Users, permission: 'view_clients' as Permission },
-  { href: '/admin/barberos', label: 'Barberos', icon: Scissors, permission: 'manage_barbers' as Permission },
-  { href: '/admin/servicios', label: 'Servicios', icon: Clock3, permission: 'manage_services' as Permission },
-  { href: '/admin/sucursales', label: 'Sucursales', icon: Store, permission: 'manage_branches' as Permission },
-  { href: '/admin/empresas', label: 'Empresas', icon: Building2, permission: 'manage_companies' as Permission },
-  { href: '/admin/usuarios', label: 'Usuarios', icon: UserSquare2, permission: 'manage_users' as Permission },
+  { href: '/admin/dashboard',  label: 'Resumen',    icon: LayoutDashboard },
+  { href: '/admin/agenda',     label: 'Agenda',     icon: Calendar },
+  { href: '/admin/caja',       label: 'Caja',       icon: DollarSign,  permission: 'cash.view'        as Permission },
+  { href: '/admin/clientes',   label: 'Clientes',   icon: Users,       permission: 'view_clients'     as Permission },
+  { href: '/admin/barberos',   label: 'Barberos',   icon: Scissors,    permission: 'manage_barbers'   as Permission },
+  { href: '/admin/servicios',  label: 'Servicios',  icon: Clock3,      permission: 'manage_services'  as Permission },
+  { href: '/admin/sucursales', label: 'Sucursales', icon: Store,       permission: 'manage_branches'  as Permission },
+  { href: '/admin/usuarios',   label: 'Usuarios',   icon: UserSquare2, permission: 'manage_users'     as Permission },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
