@@ -465,7 +465,7 @@ export default function BookingFlow({
 
             {/* ── Desktop sidebar summary ─────────────────────── */}
             <aside className="hidden lg:flex lg:flex-col">
-              <div className="sticky top-[65px] rounded-[32px] border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+              <div className="sticky top-[65px] rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Resumen</p>
 
                 <div className="mt-5 space-y-4">
@@ -521,7 +521,7 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs text-slate-400">{label}</p>
-      <p className={`mt-0.5 text-sm font-semibold ${value === '—' ? 'text-slate-500' : 'text-white'}`}>{value}</p>
+      <p className={`mt-0.5 text-sm font-semibold ${value === '—' ? 'text-slate-400' : 'text-slate-950'}`}>{value}</p>
     </div>
   )
 }
