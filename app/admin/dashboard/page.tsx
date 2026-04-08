@@ -111,7 +111,7 @@ export default function DashboardPage() {
           {format(today, "EEEE d 'de' MMMM", { locale: es })}
         </p>
         <h1 className="font-serif text-2xl sm:text-3xl text-cream">
-          {greeting()}{user?.email ? `, ${user.email.split('@')[0]}` : ''} 👋
+          {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''} 👋
         </h1>
         {activeBranch && (
           <p className="text-sm text-cream/45 mt-1 flex items-center gap-1.5 font-medium">
@@ -205,10 +205,10 @@ export default function DashboardPage() {
             <p className="text-xs uppercase tracking-widest text-cream/35 font-semibold mb-3">Acciones rápidas</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { href: '/admin/agenda',   label: 'Agenda',    icon: Calendar,  desc: 'Ver turnos' },
-                { href: '/admin/caja',     label: 'Caja',      icon: DollarSign,desc: 'Registrar cobros' },
-                { href: '/admin/barberos', label: 'Barberos',  icon: Users,     desc: 'Gestionar equipo' },
-                { href: '/admin/clientes', label: 'Clientes',  icon: Users,     desc: 'Ver clientes' },
+                { href: '/admin/agenda',   label: 'Agenda',   icon: Calendar,  desc: 'Ver turnos' },
+                { href: '/admin/caja',     label: 'Caja',     icon: DollarSign,desc: 'Registrar cobros' },
+                { href: '/admin/usuarios', label: 'Usuarios', icon: Users,     desc: 'Gestionar equipo' },
+                { href: '/admin/clientes', label: 'Clientes', icon: Users,     desc: 'Ver clientes' },
               ].map(item => (
                 <Link
                   key={item.href}

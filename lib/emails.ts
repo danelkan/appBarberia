@@ -1,7 +1,13 @@
 import { Resend } from 'resend'
 import type { Appointment, Barber, Client, Service } from '@/types'
 import { formatDate, formatPrice } from './utils'
-import { sanitize, sanitizeEmail, sanitizePhone, sanitizeTime } from './sanitize'
+import { sanitize, sanitizePhone, sanitizeTime } from './sanitize'
+
+// Raw email normalizer for use in Resend `to:` fields — must NOT HTML-escape
+function normalizeEmail(email: string | null | undefined): string {
+  if (!email) return ''
+  return email.replace(/[<>\s]/g, '').toLowerCase().trim()
+}
 
 function getResend() {
   const key = process.env.RESEND_API_KEY
@@ -120,13 +126,19 @@ export async function sendConfirmationEmail(
   service: Service,
   appointment: Appointment
 ) {
+  const toEmail = normalizeEmail(client.email)
+  if (!toEmail) {
+    // Client has no email — skip confirmation
+    console.log('[emails] sendConfirmationEmail skipped — client has no email')
+    return null
+  }
+
   const safeFirstName = sanitize(client.first_name)
   const safeService   = sanitize(service.name)
   const safePrice     = formatPrice(service.price)
   const safeBarber    = sanitize(barber.name)
   const safeDate      = sanitize(formatDate(appointment.date))
   const safeTime      = sanitizeTime(appointment.start_time.slice(0, 5))
-  const toEmail       = sanitizeEmail(client.email)
 
   const result = await getResend().emails.send({
     from: FROM,
@@ -165,10 +177,10 @@ export async function sendBarberNotification(
   service: Service,
   appointment: Appointment
 ) {
-  const toEmail = sanitizeEmail(barber.email)
+  const toEmail = normalizeEmail(barber.email)
   if (!toEmail) {
     console.warn('[emails] sendBarberNotification skipped — barber has no email')
-    return
+    return null
   }
 
   const safeDate = sanitize(formatDate(appointment.date))
@@ -211,9 +223,11 @@ export async function sendCancellationEmail(
   service: Service,
   appointment: Appointment
 ) {
+  const toEmail = normalizeEmail(client.email)
+  if (!toEmail) return null
+
   const safeDate = sanitize(formatDate(appointment.date))
   const safeTime = sanitizeTime(appointment.start_time.slice(0, 5))
-  const toEmail  = sanitizeEmail(client.email)
 
   const result = await getResend().emails.send({
     from: FROM,

@@ -13,20 +13,20 @@ import {
   ChevronRight,
   Clock3,
   DollarSign,
+  Plus,
   Receipt,
-  UserPlus,
   UserRound,
   XCircle,
+  Zap,
 } from 'lucide-react'
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
-import { formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
+import { cn, formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
 import { useAdmin } from '../layout'
-import type { Appointment, Client, PaymentMethod } from '@/types'
+import type { Appointment, Barber, Client, PaymentMethod, Service } from '@/types'
 
 type ViewMode = 'day' | 'week'
 
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
-
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   efectivo:      'Efectivo',
   mercado_pago:  'Mercado Pago',
@@ -34,21 +34,31 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   transferencia: 'Transferencia',
 }
 
+interface InstantForm {
+  client_name:  string
+  client_phone: string
+  client_email: string
+  service_id:   string
+  barber_id:    string
+  date:         string
+  start_time:   string
+}
+
 export default function AgendaPage() {
   const { user, activeBranch, can } = useAdmin()
-  const [view, setView] = useState<ViewMode>('day')
+  const [view, setView]             = useState<ViewMode>('day')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]       = useState(true)
 
-  // Appointment detail / payment
-  const [selected,      setSelected]      = useState<Appointment | null>(null)
-  const [paymentModal,  setPaymentModal]  = useState(false)
-  const [payMethod,     setPayMethod]     = useState<PaymentMethod>('efectivo')
-  const [payAmount,     setPayAmount]     = useState('')
-  const [paying,        setPaying]        = useState(false)
-  const [payError,      setPayError]      = useState('')
-  const [paidId,        setPaidId]        = useState<string | null>(null)
+  // Detail / payment
+  const [selected,     setSelected]     = useState<Appointment | null>(null)
+  const [paymentModal, setPaymentModal] = useState(false)
+  const [payMethod,    setPayMethod]    = useState<PaymentMethod>('efectivo')
+  const [payAmount,    setPayAmount]    = useState('')
+  const [paying,       setPaying]       = useState(false)
+  const [payError,     setPayError]     = useState('')
+  const [paidId,       setPaidId]       = useState<string | null>(null)
 
   // Quick client creation
   const [clientModal,   setClientModal]   = useState(false)
@@ -57,12 +67,19 @@ export default function AgendaPage() {
   const [clientError,   setClientError]   = useState('')
   const [clientCreated, setClientCreated] = useState<Client | null>(null)
 
+  // Instant appointment
+  const [instantModal,  setInstantModal]  = useState(false)
+  const [instantForm,   setInstantForm]   = useState<InstantForm | null>(null)
+  const [instantSaving, setInstantSaving] = useState(false)
+  const [instantError,  setInstantError]  = useState('')
+  const [barbers,   setBarbers]   = useState<Barber[]>([])
+  const [services,  setServices]  = useState<Service[]>([])
+  const [loadingMeta, setLoadingMeta] = useState(false)
+
   const isBarber = user?.role === 'barber'
 
   const titleDate = useMemo(() => {
-    if (view === 'day') {
-      return format(currentDate, "EEEE d 'de' MMMM", { locale: es })
-    }
+    if (view === 'day') return format(currentDate, "EEEE d 'de' MMMM", { locale: es })
     const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
     const weekEnd   = addDays(weekStart, 6)
     return `${format(weekStart, 'd MMM', { locale: es })} - ${format(weekEnd, 'd MMM yyyy', { locale: es })}`
@@ -159,6 +176,79 @@ export default function AgendaPage() {
     setClientCreated(data.client)
   }
 
+  async function openInstantModal() {
+    // Load barbers + services if not loaded yet
+    if (barbers.length === 0 || services.length === 0) {
+      setLoadingMeta(true)
+      const [barbersRes, servicesRes] = await Promise.all([
+        fetch('/api/barbers', { cache: 'no-store' }),
+        fetch('/api/services', { cache: 'no-store' }),
+      ])
+      const [barbersData, servicesData] = await Promise.all([barbersRes.json(), servicesRes.json()])
+      setBarbers(barbersData.barbers ?? [])
+      setServices(servicesData.services ?? [])
+      setLoadingMeta(false)
+    }
+
+    // Default time = current time rounded to next 15-min
+    const now = new Date()
+    const mins = now.getMinutes()
+    const roundedMins = Math.ceil(mins / 15) * 15
+    now.setMinutes(roundedMins, 0, 0)
+    const defaultTime = format(now, 'HH:mm')
+    const defaultDate = format(currentDate, 'yyyy-MM-dd')
+
+    // Pre-select barber if current user is a barber
+    const defaultBarberId = isBarber && user?.barber_id ? user.barber_id : ''
+
+    setInstantForm({
+      client_name:  '',
+      client_phone: '',
+      client_email: '',
+      service_id:   '',
+      barber_id:    defaultBarberId,
+      date:         defaultDate,
+      start_time:   defaultTime,
+    })
+    setInstantError('')
+    setInstantModal(true)
+  }
+
+  async function saveInstantAppointment() {
+    if (!instantForm) return
+    if (!instantForm.client_name.trim()) { setInstantError('El nombre del cliente es obligatorio'); return }
+    if (!instantForm.service_id)         { setInstantError('Seleccioná un servicio'); return }
+    if (!instantForm.barber_id)          { setInstantError('Seleccioná un barbero'); return }
+    if (!instantForm.date)               { setInstantError('Seleccioná una fecha'); return }
+    if (!instantForm.start_time)         { setInstantError('Ingresá la hora'); return }
+
+    setInstantSaving(true); setInstantError('')
+
+    const payload = {
+      client_name:  instantForm.client_name.trim(),
+      client_phone: instantForm.client_phone.trim() || null,
+      client_email: instantForm.client_email.trim() || null,
+      service_id:   instantForm.service_id,
+      barber_id:    instantForm.barber_id,
+      branch_id:    activeBranch?.id ?? null,
+      date:         instantForm.date,
+      start_time:   instantForm.start_time,
+    }
+
+    const res = await fetch('/api/admin/appointments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json()
+    setInstantSaving(false)
+
+    if (!res.ok) { setInstantError(data.error ?? 'No se pudo crear el turno'); return }
+
+    setInstantModal(false)
+    await fetchAppointments()
+  }
+
   const groupedByDay = useMemo(() => {
     const record: Record<string, Appointment[]> = {}
     const dates = view === 'day'
@@ -173,6 +263,12 @@ export default function AgendaPage() {
     return record
   }, [appointments, currentDate, view, weekDays])
 
+  // Barbers filtered by active branch if applicable
+  const filteredBarbers = useMemo(() => {
+    if (!activeBranch) return barbers
+    return barbers.filter(b => !b.branches || b.branches.some((br: any) => br.id === activeBranch.id) || (b.branch_ids ?? []).includes(activeBranch.id))
+  }, [barbers, activeBranch])
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
@@ -180,13 +276,13 @@ export default function AgendaPage() {
         subtitle={activeBranch ? activeBranch.name : undefined}
         action={
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={openClientModal}
-            >
-              <UserPlus className="h-4 w-4" />
-              <span className="hidden sm:inline">Nuevo cliente</span>
+            <Button size="sm" onClick={openInstantModal} loading={loadingMeta}>
+              <Zap className="h-4 w-4" />
+              <span className="hidden sm:inline">Turno ya</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={openClientModal}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Cliente</span>
             </Button>
             <div className="flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
               {(['day', 'week'] as ViewMode[]).map(mode => (
@@ -229,7 +325,13 @@ export default function AgendaPage() {
         <EmptyState
           icon={<Calendar className="h-6 w-6" />}
           title="Sin turnos en este período"
-          description="Cuando entren reservas o carguen turnos manuales, vas a verlos acá."
+          description="Usá 'Turno ya' para cargar uno en el momento."
+          action={
+            <Button onClick={openInstantModal}>
+              <Zap className="h-4 w-4" />
+              Turno ya
+            </Button>
+          }
         />
       ) : view === 'day' ? (
         <div className="space-y-3">
@@ -284,12 +386,13 @@ export default function AgendaPage() {
           <div className="space-y-5">
             <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
               <div className="grid gap-3 text-sm text-slate-600">
-                <DetailRow label="Cliente"  value={`${selected.client?.first_name} ${selected.client?.last_name}`} />
+                <DetailRow label="Cliente"  value={`${selected.client?.first_name ?? ''} ${selected.client?.last_name ?? ''}`.trim()} />
                 <DetailRow label="Servicio" value={selected.service?.name ?? '-'} />
                 {!isBarber && <DetailRow label="Barbero" value={selected.barber?.name ?? '-'} />}
                 <DetailRow label="Fecha"    value={formatDate(selected.date)} />
                 <DetailRow label="Hora"     value={`${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}`} />
                 {selected.branch && <DetailRow label="Sucursal" value={selected.branch.name} />}
+                {selected.client?.phone && <DetailRow label="Teléfono" value={selected.client.phone} />}
               </div>
             </div>
 
@@ -306,7 +409,7 @@ export default function AgendaPage() {
               {!selected.payment && selected.status !== 'cancelada' && can('cash.add_movement') && (
                 <Button className="flex-1" onClick={() => openPayment(selected)}>
                   <DollarSign className="h-4 w-4" />
-                  Cobrar turno
+                  Cobrar
                 </Button>
               )}
               {!selected.payment && selected.status !== 'cancelada' && can('cancel_appointments') && (
@@ -397,22 +500,18 @@ export default function AgendaPage() {
         )}
       </Modal>
 
-      {/* Quick client creation modal */}
+      {/* Quick client modal */}
       <Modal open={clientModal} onClose={() => setClientModal(false)} title="Nuevo cliente">
         {clientCreated ? (
           <div className="space-y-4">
             <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-sm font-semibold text-emerald-800">
-                ¡Cliente guardado!
-              </p>
+              <p className="text-sm font-semibold text-emerald-800">¡Cliente guardado!</p>
               <p className="mt-1 text-sm text-emerald-700">
                 {clientCreated.first_name} {clientCreated.last_name}
                 {clientCreated.phone && ` · ${clientCreated.phone}`}
               </p>
             </div>
-            <Button className="w-full" onClick={() => setClientModal(false)}>
-              Listo
-            </Button>
+            <Button className="w-full" onClick={() => setClientModal(false)}>Listo</Button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -443,11 +542,128 @@ export default function AgendaPage() {
               </p>
             )}
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setClientModal(false)}>
+              <Button variant="outline" className="flex-1" onClick={() => setClientModal(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={saveClient} loading={clientSaving}>Guardar</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Instant appointment modal */}
+      <Modal
+        open={instantModal}
+        onClose={() => setInstantModal(false)}
+        title="Turno ya"
+        size="lg"
+      >
+        {instantForm && (
+          <div className="space-y-5 max-h-[80vh] overflow-y-auto pr-1">
+            {/* Client */}
+            <div>
+              <p className="label mb-3">Cliente</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  label="Nombre *"
+                  value={instantForm.client_name}
+                  onChange={e => setInstantForm(f => f ? { ...f, client_name: e.target.value } : f)}
+                  placeholder="Juan García"
+                  autoFocus
+                />
+                <Input
+                  label="Teléfono"
+                  type="tel"
+                  value={instantForm.client_phone}
+                  onChange={e => setInstantForm(f => f ? { ...f, client_phone: e.target.value } : f)}
+                  placeholder="091 000 000"
+                />
+              </div>
+            </div>
+
+            {/* Service */}
+            <div>
+              <label className="label">Servicio *</label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {services.filter(s => s.active).map(service => (
+                  <button
+                    key={service.id}
+                    type="button"
+                    onClick={() => setInstantForm(f => f ? { ...f, service_id: service.id } : f)}
+                    className={cn(
+                      'rounded-2xl border px-4 py-3 text-left text-sm transition',
+                      instantForm.service_id === service.id
+                        ? 'border-slate-950 bg-slate-950 text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    )}
+                  >
+                    <p className="font-semibold">{service.name}</p>
+                    <p className={cn('text-xs', instantForm.service_id === service.id ? 'text-slate-300' : 'text-slate-400')}>
+                      {formatPrice(service.price)} · {service.duration_minutes} min
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Barber — only show if user is not a barber themselves */}
+            {!isBarber && (
+              <div>
+                <label className="label">Barbero *</label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {filteredBarbers.map(barber => (
+                    <button
+                      key={barber.id}
+                      type="button"
+                      onClick={() => setInstantForm(f => f ? { ...f, barber_id: barber.id } : f)}
+                      className={cn(
+                        'rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition',
+                        instantForm.barber_id === barber.id
+                          ? 'border-slate-950 bg-slate-950 text-white'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      )}
+                    >
+                      {barber.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Date + Time */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label">Fecha *</label>
+                <input
+                  type="date"
+                  value={instantForm.date}
+                  onChange={e => setInstantForm(f => f ? { ...f, date: e.target.value } : f)}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Hora *</label>
+                <input
+                  type="time"
+                  value={instantForm.start_time}
+                  onChange={e => setInstantForm(f => f ? { ...f, start_time: e.target.value } : f)}
+                  className="input"
+                  step="900"
+                />
+              </div>
+            </div>
+
+            {instantError && (
+              <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {instantError}
+              </p>
+            )}
+
+            <div className="flex gap-3 sticky bottom-0 bg-white pb-1 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => setInstantModal(false)}>
                 Cancelar
               </Button>
-              <Button className="flex-1" onClick={saveClient} loading={clientSaving}>
-                Guardar cliente
+              <Button className="flex-1" onClick={saveInstantAppointment} loading={instantSaving}>
+                <Zap className="h-4 w-4" />
+                Agendar turno
               </Button>
             </div>
           </div>
@@ -481,6 +697,9 @@ function AppointmentCard({
             <Badge className={STATUS_CONFIG[appointment.status].color}>
               {STATUS_CONFIG[appointment.status].label}
             </Badge>
+            {appointment.payment && (
+              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">Cobrado</Badge>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
             <span className="inline-flex items-center gap-1.5">
@@ -512,7 +731,7 @@ function AppointmentCard({
         onClick={onOpen}
         className="mt-4 text-sm font-semibold text-slate-700 transition hover:text-slate-950"
       >
-        Ver detalle
+        Ver detalle →
       </button>
     </div>
   )
