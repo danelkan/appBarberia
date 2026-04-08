@@ -8,21 +8,34 @@ import {
   Pencil,
   Plus,
   Power,
+  Scissors,
   Shield,
   Trash2,
   UserSquare2,
 } from 'lucide-react'
 import { Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
-import { cn } from '@/lib/utils'
+import { cn, DAY_NAMES } from '@/lib/utils'
 import { useAdmin } from '../layout'
 import {
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
   type AppRole,
   type Branch,
+  type DaySchedule,
   type Permission,
   type UserWithRole,
+  type WeeklyAvailability,
 } from '@/types'
+
+const DEFAULT_AVAILABILITY: WeeklyAvailability = {
+  monday:    { enabled: true,  start: '09:00', end: '19:00' },
+  tuesday:   { enabled: true,  start: '09:00', end: '19:00' },
+  wednesday: { enabled: true,  start: '09:00', end: '19:00' },
+  thursday:  { enabled: true,  start: '09:00', end: '19:00' },
+  friday:    { enabled: true,  start: '09:00', end: '19:00' },
+  saturday:  { enabled: true,  start: '09:00', end: '14:00' },
+  sunday:    { enabled: false, start: '09:00', end: '13:00' },
+}
 
 interface UserFormState {
   user_id?: string
@@ -33,16 +46,20 @@ interface UserFormState {
   branch_ids: string[]
   permissions: Permission[]
   active: boolean
+  is_barber: boolean
+  availability: WeeklyAvailability
 }
 
 const EMPTY_FORM: UserFormState = {
-  name:        '',
-  email:       '',
-  password:    '',
-  role:        'barber',
-  branch_ids:  [],
-  permissions: [],
-  active:      true,
+  name:         '',
+  email:        '',
+  password:     '',
+  role:         'barber',
+  branch_ids:   [],
+  permissions:  [],
+  active:       true,
+  is_barber:    true,
+  availability: DEFAULT_AVAILABILITY,
 }
 
 const ROLE_LABELS: Record<AppRole, string> = {
@@ -59,12 +76,12 @@ const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
 
 export default function UsuariosPage() {
   const { user: me } = useAdmin()
-  const [users,   setUsers]   = useState<UserWithRole[]>([])
+  const [users,    setUsers]    = useState<UserWithRole[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving,  setSaving]  = useState(false)
-  const [modalOpen,   setModalOpen]   = useState(false)
-  const [isCreating,  setIsCreating]  = useState(true)
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [modalOpen,  setModalOpen]  = useState(false)
+  const [isCreating, setIsCreating] = useState(true)
   const [form,  setForm]  = useState<UserFormState>(EMPTY_FORM)
   const [error, setError] = useState('')
 
@@ -92,24 +109,26 @@ export default function UsuariosPage() {
   function openEdit(user: UserWithRole) {
     setIsCreating(false); setError('')
     setForm({
-      user_id:     user.id,
-      name:        user.name ?? '',
-      email:       user.email,
-      password:    '',
-      role:        user.role,
-      branch_ids:  user.branch_ids ?? [],
-      permissions: user.permissions ?? [],
-      active:      user.active,
+      user_id:      user.id,
+      name:         user.name ?? '',
+      email:        user.email,
+      password:     '',
+      role:         user.role,
+      branch_ids:   user.branch_ids ?? [],
+      permissions:  user.permissions ?? [],
+      active:       user.active,
+      is_barber:    !!user.barber_id,
+      availability: (user.barber as any)?.availability ?? DEFAULT_AVAILABILITY,
     })
     setModalOpen(true)
   }
 
-  function togglePermission(permission: Permission) {
+  function togglePermission(p: Permission) {
     setForm(f => ({
       ...f,
-      permissions: f.permissions.includes(permission)
-        ? f.permissions.filter(p => p !== permission)
-        : [...f.permissions, permission],
+      permissions: f.permissions.includes(p)
+        ? f.permissions.filter(x => x !== p)
+        : [...f.permissions, p],
     }))
   }
 
@@ -120,6 +139,19 @@ export default function UsuariosPage() {
         ? f.branch_ids.filter(id => id !== branchId)
         : [...f.branch_ids, branchId],
     }))
+  }
+
+  function updateDay(day: string, field: keyof DaySchedule, value: string | boolean) {
+    setForm(f => {
+      const avail = f.availability ?? DEFAULT_AVAILABILITY
+      return {
+        ...f,
+        availability: {
+          ...avail,
+          [day]: { ...avail[day], [field]: value },
+        },
+      }
+    })
   }
 
   async function saveUser() {
@@ -151,7 +183,6 @@ export default function UsuariosPage() {
     await loadData()
   }
 
-  // Permissions are only meaningful for 'barber' role; admins/superadmins have all
   const showPermissions = form.role === 'barber'
 
   return (
@@ -187,7 +218,6 @@ export default function UsuariosPage() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  {/* Header row */}
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-base font-semibold text-slate-950">
                       {user.name ?? 'Sin nombre'}
@@ -195,23 +225,25 @@ export default function UsuariosPage() {
                     <span className={cn(
                       'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold',
                       user.role === 'superadmin' ? 'bg-slate-950 text-white' :
-                      user.role === 'admin'       ? 'bg-slate-100 text-slate-700' :
-                                                    'bg-slate-50 text-slate-600'
+                      user.role === 'admin'      ? 'bg-slate-100 text-slate-700' :
+                                                   'bg-slate-50 text-slate-600'
                     )}>
                       {user.role === 'superadmin' && <Shield className="h-3 w-3" />}
                       {ROLE_LABELS[user.role]}
                     </span>
+                    {user.barber_id && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                        <Scissors className="h-3 w-3" />
+                        Barbero
+                      </span>
+                    )}
                     {!user.active && (
                       <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600">
                         Inactivo
                       </span>
                     )}
                   </div>
-
-                  {/* Email */}
                   <p className="mt-1 text-sm text-slate-500">{user.email}</p>
-
-                  {/* Branches */}
                   {(user.branches ?? []).length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {(user.branches ?? []).map(b => (
@@ -223,7 +255,6 @@ export default function UsuariosPage() {
                   )}
                 </div>
 
-                {/* Actions */}
                 {user.id !== me?.id && (
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
@@ -292,7 +323,7 @@ export default function UsuariosPage() {
             />
           )}
 
-          {/* Role selection */}
+          {/* Role */}
           <div>
             <label className="label">Rol</label>
             <div className="grid grid-cols-3 gap-2">
@@ -348,13 +379,64 @@ export default function UsuariosPage() {
             </div>
           </div>
 
-          {/* Granular permissions — only for barbers */}
+          {/* Es barbero toggle */}
+          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.is_barber}
+              onChange={e => setForm(f => ({ ...f, is_barber: e.target.checked }))}
+              className="accent-slate-950"
+            />
+            <div>
+              <p className="font-semibold">Aparece en agenda como barbero</p>
+              <p className="text-xs text-slate-400">Puede recibir turnos y está visible en la app de reservas</p>
+            </div>
+          </label>
+
+          {/* Disponibilidad — solo si es barbero */}
+          {form.is_barber && (
+            <div>
+              <label className="label">Disponibilidad semanal</label>
+              <div className="space-y-2">
+                {Object.entries(form.availability).map(([day, schedule]) => (
+                  <div key={day} className="rounded-[20px] border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <label className="flex items-center gap-3 text-sm font-medium capitalize text-slate-700 sm:w-36">
+                        <input
+                          type="checkbox"
+                          checked={schedule.enabled}
+                          onChange={e => updateDay(day, 'enabled', e.target.checked)}
+                          className="accent-slate-950"
+                        />
+                        {DAY_NAMES[day]}
+                      </label>
+                      <div className="grid flex-1 grid-cols-2 gap-2">
+                        <input
+                          type="time"
+                          value={schedule.start}
+                          onChange={e => updateDay(day, 'start', e.target.value)}
+                          className="input"
+                          disabled={!schedule.enabled}
+                        />
+                        <input
+                          type="time"
+                          value={schedule.end}
+                          onChange={e => updateDay(day, 'end', e.target.value)}
+                          className="input"
+                          disabled={!schedule.enabled}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Permisos — solo para barbero */}
           {showPermissions && (
             <div>
               <label className="label">Permisos adicionales</label>
-              <p className="mb-3 text-xs text-slate-500">
-                Admins y superadmins tienen todos los permisos automáticamente.
-              </p>
               <div className="space-y-3">
                 {PERMISSION_GROUPS.map(group => (
                   <div key={group.label} className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">

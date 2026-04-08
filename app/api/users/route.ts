@@ -7,7 +7,17 @@ import {
   unauthorizedResponse,
 } from '@/lib/api-auth'
 import { getRolePermissions } from '@/lib/permissions'
-import type { AppRole, Permission } from '@/types'
+import type { AppRole, Permission, WeeklyAvailability } from '@/types'
+
+const DEFAULT_AVAILABILITY: WeeklyAvailability = {
+  monday:    { enabled: true,  start: '09:00', end: '19:00' },
+  tuesday:   { enabled: true,  start: '09:00', end: '19:00' },
+  wednesday: { enabled: true,  start: '09:00', end: '19:00' },
+  thursday:  { enabled: true,  start: '09:00', end: '19:00' },
+  friday:    { enabled: true,  start: '09:00', end: '19:00' },
+  saturday:  { enabled: true,  start: '09:00', end: '14:00' },
+  sunday:    { enabled: false, start: '09:00', end: '13:00' },
+}
 
 function sanitizeBranchIds(value: unknown) {
   if (!Array.isArray(value)) return []
@@ -19,7 +29,6 @@ function buildUserRolePayload(input: {
   permissions?: Permission[]
   active?: boolean
   barber_id?: string | null
-  company_id?: string | null
   branch_ids?: string[]
 }) {
   const payload: Record<string, unknown> = {}
@@ -28,10 +37,16 @@ function buildUserRolePayload(input: {
   if (input.permissions) payload.permissions = getRolePermissions(input.role ?? 'barber', input.permissions)
   if (typeof input.active === 'boolean') payload.active = input.active
   if (input.barber_id !== undefined) payload.barber_id = input.barber_id
-  if (input.company_id !== undefined) payload.company_id = input.company_id
   if (input.branch_ids !== undefined) payload.branch_ids = sanitizeBranchIds(input.branch_ids)
 
   return payload
+}
+
+async function syncBarberBranches(supabase: ReturnType<typeof createSupabaseAdmin>, barberId: string, branchIds: string[]) {
+  await supabase.from('barber_branches').delete().eq('barber_id', barberId)
+  if (branchIds.length > 0) {
+    await supabase.from('barber_branches').insert(branchIds.map(bid => ({ barber_id: barberId, branch_id: bid })))
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -42,11 +57,15 @@ export async function GET(req: NextRequest) {
   if (denied) return denied
 
   const supabase = createSupabaseAdmin()
-  const [{ data: authUsersData, error: authError }, { data: roleRows }, { data: barbers }, { data: companies }, { data: branches }] = await Promise.all([
+  const [
+    { data: authUsersData, error: authError },
+    { data: roleRows },
+    { data: barbers },
+    { data: branches },
+  ] = await Promise.all([
     supabase.auth.admin.listUsers(),
     supabase.from('user_roles').select('*'),
-    supabase.from('barbers').select('id, name, email'),
-    supabase.from('companies').select('id, name'),
+    supabase.from('barbers').select('id, name, email, availability'),
     supabase.from('branches').select('id, name'),
   ])
 
@@ -55,31 +74,28 @@ export async function GET(req: NextRequest) {
   }
 
   const authUsers = authUsersData?.users ?? []
-  const roleMap = new Map((roleRows ?? []).map((row: any) => [row.user_id, row]))
-  const barberMap = new Map((barbers ?? []).map((barber: any) => [barber.id, barber]))
-  const companyMap = new Map((companies ?? []).map((company: any) => [company.id, company]))
-  const branchMap = new Map((branches ?? []).map((branch: any) => [branch.id, branch]))
+  const roleMap   = new Map((roleRows ?? []).map((row: any) => [row.user_id, row]))
+  const barberMap = new Map((barbers ?? []).map((b: any) => [b.id, b]))
+  const branchMap = new Map((branches ?? []).map((b: any) => [b.id, b]))
 
   const users = authUsers.map((user: any) => {
-    const roleRow = roleMap.get(user.id)
-    const role = (roleRow?.role ?? 'barber') as AppRole
+    const roleRow    = roleMap.get(user.id)
+    const role       = (roleRow?.role ?? 'barber') as AppRole
     const branch_ids = sanitizeBranchIds(roleRow?.branch_ids)
     const permissions = getRolePermissions(role, Array.isArray(roleRow?.permissions) ? roleRow.permissions : [])
 
     return {
-      id: user.id,
-      email: user.email,
-      name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+      id:         user.id,
+      email:      user.email,
+      name:       user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
       role,
-      barber_id: roleRow?.barber_id ?? null,
-      company_id: roleRow?.company_id ?? null,
+      barber_id:  roleRow?.barber_id ?? null,
       branch_ids,
       permissions,
-      active: roleRow?.active ?? true,
+      active:     roleRow?.active ?? true,
       created_at: user.created_at,
-      barber: roleRow?.barber_id ? barberMap.get(roleRow.barber_id) ?? null : null,
-      company: roleRow?.company_id ? companyMap.get(roleRow.company_id) ?? null : null,
-      branches: branch_ids.map(branchId => branchMap.get(branchId)).filter(Boolean),
+      barber:     roleRow?.barber_id ? barberMap.get(roleRow.barber_id) ?? null : null,
+      branches:   branch_ids.map((id: string) => branchMap.get(id)).filter(Boolean),
     }
   })
 
@@ -93,14 +109,15 @@ export async function POST(req: NextRequest) {
   const denied = requirePermission(auth, 'manage_users')
   if (denied) return denied
 
-  const body = await req.json()
-  const name = String(body.name ?? '').trim()
-  const email = String(body.email ?? '').trim().toLowerCase()
-  const password = String(body.password ?? '')
-  const role = (body.role ?? 'barber') as AppRole
+  const body        = await req.json()
+  const name        = String(body.name ?? '').trim()
+  const email       = String(body.email ?? '').trim().toLowerCase()
+  const password    = String(body.password ?? '')
+  const role        = (body.role ?? 'barber') as AppRole
   const permissions = Array.isArray(body.permissions) ? body.permissions as Permission[] : []
-  const company_id = typeof body.company_id === 'string' ? body.company_id : null
-  const branch_ids = sanitizeBranchIds(body.branch_ids)
+  const branch_ids  = sanitizeBranchIds(body.branch_ids)
+  const is_barber   = body.is_barber === true
+  const availability = (body.availability as WeeklyAvailability | undefined) ?? DEFAULT_AVAILABILITY
 
   if (!name || !email || !password) {
     return NextResponse.json({ error: 'Nombre, email y contraseña son requeridos' }, { status: 400 })
@@ -115,45 +132,40 @@ export async function POST(req: NextRequest) {
     email,
     password,
     email_confirm: true,
-    user_metadata: {
-      full_name: name,
-      name,
-    },
+    user_metadata: { full_name: name, name },
   })
 
   if (authError || !authUser.user) {
     return NextResponse.json({ error: authError?.message || 'Error al crear usuario' }, { status: 500 })
   }
 
-  const payload = buildUserRolePayload({
-    role,
-    permissions,
-    active: true,
-    company_id,
-    branch_ids,
-    barber_id: null,
-  })
+  const userId = authUser.user.id
 
+  // Create user_roles row (barber_id set later if needed)
   const { error: upsertError } = await supabase
     .from('user_roles')
-    .upsert({ user_id: authUser.user.id, ...payload }, { onConflict: 'user_id' })
+    .upsert({ user_id: userId, ...buildUserRolePayload({ role, permissions, active: true, branch_ids }) }, { onConflict: 'user_id' })
 
   if (upsertError) {
-    await supabase.auth.admin.deleteUser(authUser.user.id)
+    await supabase.auth.admin.deleteUser(userId)
     return NextResponse.json({ error: upsertError.message }, { status: 500 })
   }
 
-  return NextResponse.json({
-    user: {
-      id: authUser.user.id,
-      email,
-      name,
-      role,
-      company_id,
-      branch_ids,
-      permissions: getRolePermissions(role, permissions),
-    },
-  }, { status: 201 })
+  // If marked as barber, create barber record and link it
+  if (is_barber) {
+    const { data: newBarber, error: barberError } = await supabase
+      .from('barbers')
+      .insert({ name, email, availability })
+      .select('id')
+      .single()
+
+    if (!barberError && newBarber) {
+      await supabase.from('user_roles').update({ barber_id: newBarber.id }).eq('user_id', userId)
+      await syncBarberBranches(supabase, newBarber.id, branch_ids)
+    }
+  }
+
+  return NextResponse.json({ user: { id: userId, email, name, role, branch_ids } }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -163,19 +175,20 @@ export async function PATCH(req: NextRequest) {
   const denied = requirePermission(auth, 'manage_users')
   if (denied) return denied
 
-  const body = await req.json()
+  const body    = await req.json()
   const user_id = String(body.user_id ?? '')
 
   if (!user_id) {
     return NextResponse.json({ error: 'user_id requerido' }, { status: 400 })
   }
 
-  const role = body.role as AppRole | undefined
+  const role        = body.role as AppRole | undefined
   const permissions = Array.isArray(body.permissions) ? body.permissions as Permission[] : undefined
-  const active = typeof body.active === 'boolean' ? body.active : undefined
-  const name = typeof body.name === 'string' ? body.name.trim() : undefined
-  const company_id = body.company_id === null || typeof body.company_id === 'string' ? body.company_id : undefined
-  const branch_ids = body.branch_ids !== undefined ? sanitizeBranchIds(body.branch_ids) : undefined
+  const active      = typeof body.active === 'boolean' ? body.active : undefined
+  const name        = typeof body.name === 'string' ? body.name.trim() : undefined
+  const branch_ids  = body.branch_ids !== undefined ? sanitizeBranchIds(body.branch_ids) : undefined
+  const is_barber   = typeof body.is_barber === 'boolean' ? body.is_barber : undefined
+  const availability = body.availability as WeeklyAvailability | undefined
 
   if (role === 'superadmin' && auth.role !== 'superadmin') {
     return forbiddenResponse('Solo el superadmin puede asignar el rol superadmin')
@@ -186,32 +199,78 @@ export async function PATCH(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
-  const payload = buildUserRolePayload({
-    role,
-    permissions,
-    active,
-    company_id,
-    branch_ids,
-  })
 
-  const { error } = await supabase
-    .from('user_roles')
-    .upsert({ user_id, ...payload }, { onConflict: 'user_id' })
+  // Update user_roles (role, permissions, active, branches — NOT barber_id, handled below)
+  const payload = buildUserRolePayload({ role, permissions, active, branch_ids })
+  if (Object.keys(payload).length > 0) {
+    const { error } = await supabase
+      .from('user_roles')
+      .upsert({ user_id, ...payload }, { onConflict: 'user_id' })
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
   }
 
+  // Update auth user name if changed
   if (name) {
     const { error: updateUserError } = await supabase.auth.admin.updateUserById(user_id, {
-      user_metadata: {
-        full_name: name,
-        name,
-      },
+      user_metadata: { full_name: name, name },
     })
-
     if (updateUserError) {
       return NextResponse.json({ error: updateUserError.message }, { status: 500 })
+    }
+  }
+
+  // Handle barber record sync
+  if (is_barber !== undefined) {
+    const { data: roleRow } = await supabase
+      .from('user_roles')
+      .select('barber_id')
+      .eq('user_id', user_id)
+      .single()
+
+    const currentBarberId = roleRow?.barber_id as string | null
+
+    if (is_barber && !currentBarberId) {
+      // Create barber record for this user
+      const { data: authUser } = await supabase.auth.admin.getUserById(user_id)
+      const barberName  = authUser?.user?.user_metadata?.full_name ?? authUser?.user?.email ?? name ?? ''
+      const barberEmail = authUser?.user?.email ?? ''
+
+      const { data: newBarber, error: barberError } = await supabase
+        .from('barbers')
+        .insert({ name: barberName, email: barberEmail, availability: availability ?? DEFAULT_AVAILABILITY })
+        .select('id')
+        .single()
+
+      if (!barberError && newBarber) {
+        await supabase.from('user_roles').update({ barber_id: newBarber.id }).eq('user_id', user_id)
+        if (branch_ids) await syncBarberBranches(supabase, newBarber.id, branch_ids)
+      }
+    } else if (is_barber && currentBarberId) {
+      // Update existing barber record
+      const updates: Record<string, unknown> = {}
+      if (availability) updates.availability = availability
+      if (name) updates.name = name
+      if (Object.keys(updates).length > 0) {
+        await supabase.from('barbers').update(updates).eq('id', currentBarberId)
+      }
+      if (branch_ids) await syncBarberBranches(supabase, currentBarberId, branch_ids)
+    } else if (!is_barber && currentBarberId) {
+      // Unlink barber from user (keep barber record for appointment history)
+      await supabase.from('user_roles').update({ barber_id: null }).eq('user_id', user_id)
+    }
+  } else if (branch_ids !== undefined) {
+    // Branch sync for existing barbers even when is_barber not explicitly sent
+    const { data: roleRow } = await supabase
+      .from('user_roles')
+      .select('barber_id')
+      .eq('user_id', user_id)
+      .single()
+
+    if (roleRow?.barber_id) {
+      await syncBarberBranches(supabase, roleRow.barber_id, branch_ids)
     }
   }
 

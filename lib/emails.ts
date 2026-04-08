@@ -15,7 +15,6 @@ function getResend() {
 // delivers to account owner in sandbox mode; set RESEND_FROM_EMAIL in production).
 const FROM = process.env.RESEND_FROM_EMAIL ?? 'Felito Barber Studio <onboarding@resend.dev>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? ''
 
 if (!process.env.RESEND_FROM_EMAIL) {
   console.warn('[emails] RESEND_FROM_EMAIL not set — using test sender. Client emails will only reach the Resend account owner.')
@@ -160,14 +159,15 @@ export async function sendConfirmationEmail(
   return result
 }
 
-export async function sendAdminNotification(
+export async function sendBarberNotification(
   client: Client,
   barber: Barber,
   service: Service,
   appointment: Appointment
 ) {
-  if (!ADMIN_EMAIL) {
-    console.warn('[emails] sendAdminNotification skipped — ADMIN_EMAIL not configured')
+  const toEmail = sanitizeEmail(barber.email)
+  if (!toEmail) {
+    console.warn('[emails] sendBarberNotification skipped — barber has no email')
     return
   }
 
@@ -176,19 +176,17 @@ export async function sendAdminNotification(
 
   const result = await getResend().emails.send({
     from: FROM,
-    to: ADMIN_EMAIL,
+    to: toEmail,
     subject: `[Nuevo turno] ${sanitize(client.first_name)} ${sanitize(client.last_name)} · ${safeDate}`,
     html: emailShell({
       eyebrow: 'Nuevo turno',
-      title: 'Se reservó un nuevo turno',
-      intro: 'Entró una nueva reserva desde la app pública.',
+      title: 'Tenés un nuevo turno',
+      intro: `${sanitize(client.first_name)} reservó un turno para vos.`,
       content: `
         ${detailTable([
           { label: 'Cliente',      value: `${sanitize(client.first_name)} ${sanitize(client.last_name)}` },
-          { label: 'Email',        value: sanitizeEmail(client.email) },
           { label: 'Teléfono',     value: sanitizePhone(client.phone) },
           { label: 'Servicio',     value: sanitize(service.name) },
-          { label: 'Barbero',      value: sanitize(barber.name) },
           { label: 'Fecha y hora', value: `${safeDate} · ${safeTime}` },
         ])}
         <div style="margin-top:28px;">
@@ -199,9 +197,9 @@ export async function sendAdminNotification(
   })
 
   if (result.error) {
-    console.error('[emails] sendAdminNotification failed', { to: ADMIN_EMAIL, error: result.error })
+    console.error('[emails] sendBarberNotification failed', { to: toEmail, error: result.error })
   } else {
-    console.log('[emails] sendAdminNotification sent', { to: ADMIN_EMAIL, id: result.data?.id })
+    console.log('[emails] sendBarberNotification sent', { to: toEmail, id: result.data?.id })
   }
 
   return result
@@ -256,13 +254,13 @@ export async function sendBookingEmails(
 ) {
   const results = await Promise.allSettled([
     sendConfirmationEmail(client, barber, service, appointment),
-    sendAdminNotification(client, barber, service, appointment),
+    sendBarberNotification(client, barber, service, appointment),
   ])
 
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
       console.error(
-        index === 0 ? '[emails] Client confirmation rejected' : '[emails] Admin notification rejected',
+        index === 0 ? '[emails] Client confirmation rejected' : '[emails] Barber notification rejected',
         result.reason
       )
     }
