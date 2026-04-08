@@ -12,32 +12,41 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
+
+  // Only return barbers that are linked to an active user (user_roles.barber_id)
+  // This filters out stale/test records that have no real user behind them
+  const { data: activeRoles } = await supabase
+    .from('user_roles')
+    .select('barber_id, role, active')
+    .not('barber_id', 'is', null)
+
+  const activeBarberIds = (activeRoles ?? [])
+    .filter((row: any) => row.active !== false && row.barber_id)
+    .map((row: any) => row.barber_id as string)
+
+  if (activeBarberIds.length === 0) {
+    const response = NextResponse.json({ barbers: [] })
+    Object.entries(getRateLimitHeaders(rateLimit)).forEach(([k, v]) => response.headers.set(k, v))
+    return response
+  }
+
   const { data, error } = await supabase
-    .from('barbers').select('*').order('created_at')
+    .from('barbers')
+    .select('*')
+    .in('id', activeBarberIds)
+    .order('created_at')
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   const barberIds = (data ?? []).map(barber => barber.id)
-  let rolesByBarberId = new Map<string, 'superadmin' | 'admin' | 'barber'>()
 
-  try {
-    const { data: userRoles } = barberIds.length > 0
-      ? await supabase
-          .from('user_roles')
-          .select('role, barber_id')
-          .in('barber_id', barberIds)
-      : { data: [] }
-
-    rolesByBarberId = new Map(
-      (userRoles ?? [])
-        .filter((row: any) => row.barber_id && row.role)
-        .map((row: any) => [row.barber_id, row.role])
-    )
-  } catch {
-    rolesByBarberId = new Map()
-  }
+  const rolesByBarberId = new Map(
+    (activeRoles ?? [])
+      .filter((row: any) => row.barber_id && row.role)
+      .map((row: any) => [row.barber_id, row.role])
+  )
 
   const { data: branchLinks } = barberIds.length > 0
     ? await supabase
@@ -54,11 +63,7 @@ export async function GET(req: NextRequest) {
 
     return {
       ...barber,
-      role: rolesByBarberId.get(barber.id) ?? (
-        process.env.ADMIN_EMAIL && barber.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
-          ? 'admin'
-          : 'barber'
-      ),
+      role: rolesByBarberId.get(barber.id) ?? 'barber',
       branches,
       branch_ids: branches.map((branch: { id: string }) => branch.id),
     }
