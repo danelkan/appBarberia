@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin, formatSupabaseError } from '@/lib/supabase'
 import BookingFlow from '@/components/booking/booking-flow'
 
@@ -20,28 +21,19 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
 
   let branches
   let services
-  let barbers
-  let links
-  let userRoles
-  let authUsersData
+  let branchBarbers
 
   try {
     const results = await Promise.all([
       supabase.from('branches').select('id, name, address').eq('active', true).order('name'),
       supabase.from('services').select('*').eq('active', true).order('price'),
-      supabase.from('barbers').select('*').order('name'),
-      supabase.from('barber_branches').select('barber_id, branch_id').eq('branch_id', branchId),
-      supabase.from('user_roles').select('user_id, barber_id, active').not('barber_id', 'is', null),
-      supabase.auth.admin.listUsers({ perPage: 1000 }),
+      listVisibleBarbers(supabase, { branchId }),
     ])
 
     ;[
       { data: branches },
       { data: services },
-      { data: barbers },
-      { data: links },
-      { data: userRoles },
-      { data: authUsersData },
+      { barbers: branchBarbers },
     ] = results
   } catch (error) {
     console.error('[booking] Failed to load booking data from Supabase:', formatSupabaseError(error))
@@ -54,16 +46,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
     redirect('/')
   }
 
-  const validAuthIds = new Set((authUsersData?.users ?? []).map((u: any) => u.id))
-  const validBarberIds = new Set(
-    (userRoles ?? [])
-      .filter((r: any) => r.active !== false && r.barber_id && validAuthIds.has(r.user_id))
-      .map((r: any) => r.barber_id as string)
-  )
-
-  const branchBarberIds = new Set((links ?? []).map(link => link.barber_id))
-  const branchBarbers = (barbers ?? [])
-    .filter(barber => branchBarberIds.has(barber.id) && validBarberIds.has(barber.id))
+  const barbersForBranch = (branchBarbers ?? [])
     .map(barber => ({
       ...barber,
       branch_ids: [branchId],
@@ -73,7 +56,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
     <BookingFlow
       branch={selectedBranch}
       services={services ?? []}
-      barbers={branchBarbers}
+      barbers={barbersForBranch}
     />
   )
 }

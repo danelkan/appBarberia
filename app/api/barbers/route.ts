@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { createBarberSchema } from '@/lib/validations'
@@ -12,57 +13,13 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
-
-  // Only return barbers linked to an active, real auth user.
-  // Strategy:
-  //  1. Fetch user_roles entries that have barber_id set
-  //  2. Cross-reference their user_id against actual Supabase auth users
-  //  3. Any barber_id whose user no longer exists in auth is excluded
-  const [{ data: activeRoles }, { data: authUsersData }] = await Promise.all([
-    supabase.from('user_roles').select('user_id, barber_id, role, active').not('barber_id', 'is', null),
-    supabase.auth.admin.listUsers({ perPage: 1000 }),
-  ])
-
-  const validAuthIds = new Set((authUsersData?.users ?? []).map((u: any) => u.id))
-
-  const activeBarberIds = (activeRoles ?? [])
-    .filter((row: any) =>
-      row.active !== false &&
-      row.barber_id &&
-      validAuthIds.has(row.user_id)   // must have a real auth user behind it
-    )
-    .map((row: any) => row.barber_id as string)
-
-  if (activeBarberIds.length === 0) {
-    const response = NextResponse.json({ barbers: [] })
-    Object.entries(getRateLimitHeaders(rateLimit)).forEach(([k, v]) => response.headers.set(k, v))
-    return response
-  }
-
-  const { data, error } = await supabase
-    .from('barbers')
-    .select('*')
-    .in('id', activeBarberIds)
-    .order('created_at')
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  const barberIds = (data ?? []).map(barber => barber.id)
+  const { barbers: data, userRoles: activeRoles, branchLinks } = await listVisibleBarbers(supabase)
 
   const rolesByBarberId = new Map(
     (activeRoles ?? [])
       .filter((row: any) => row.barber_id && row.role)
       .map((row: any) => [row.barber_id, row.role])
   )
-
-  const { data: branchLinks } = barberIds.length > 0
-    ? await supabase
-        .from('barber_branches')
-        .select('barber_id, branch:branches(*)')
-        .in('barber_id', barberIds)
-    : { data: [] }
 
   const barbers = (data ?? []).map((barber) => {
     const branches = (branchLinks ?? [])
