@@ -1,6 +1,99 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
+interface SupabasePublicConfig {
+  url: string
+  anonKey: string
+}
+
+interface SupabaseAdminConfig extends SupabasePublicConfig {
+  serviceRoleKey: string
+}
+
+function validateSupabaseUrl(rawUrl: string, envName: string) {
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(rawUrl)
+  } catch {
+    throw new Error(`${envName} must be a valid URL`)
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error(`${envName} must use http or https`)
+  }
+
+  if (parsedUrl.hostname === 'your-project.supabase.co') {
+    throw new Error(`${envName} still uses the placeholder host`)
+  }
+
+  return parsedUrl.toString().replace(/\/$/, '')
+}
+
+function validateSupabaseKey(rawKey: string, envName: string) {
+  if (rawKey.trim().split('.').length !== 3) {
+    throw new Error(`${envName} must be a valid JWT key`)
+  }
+
+  return rawKey.trim()
+}
+
+export function getSupabasePublicConfig(): SupabasePublicConfig {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+  }
+
+  if (!anonKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
+  }
+
+  return {
+    url: validateSupabaseUrl(url, 'NEXT_PUBLIC_SUPABASE_URL'),
+    anonKey: validateSupabaseKey(anonKey, 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+  }
+}
+
+export function getOptionalSupabasePublicConfig(): SupabasePublicConfig | null {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return null
+  }
+
+  return getSupabasePublicConfig()
+}
+
+export function getSupabaseAdminConfig(): SupabaseAdminConfig {
+  const publicConfig = getSupabasePublicConfig()
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!serviceRoleKey) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
+  }
+
+  return {
+    ...publicConfig,
+    serviceRoleKey: validateSupabaseKey(serviceRoleKey, 'SUPABASE_SERVICE_ROLE_KEY'),
+  }
+}
+
+export function formatSupabaseError(error: unknown) {
+  if (error instanceof Error) {
+    const causeCode =
+      typeof error.cause === 'object' &&
+      error.cause !== null &&
+      'code' in error.cause &&
+      typeof (error.cause as { code?: unknown }).code === 'string'
+        ? (error.cause as { code: string }).code
+        : undefined
+
+    return causeCode ? `${error.message} (${causeCode})` : error.message
+  }
+
+  return String(error)
+}
+
 /**
  * Creates a Supabase client for browser/client-side use.
  * Uses the public anon key - subject to RLS policies.
@@ -31,14 +124,23 @@ const ssrStub = {
 } as unknown as SupabaseClient
 
 export function createSupabaseBrowserClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const config = getOptionalSupabasePublicConfig()
 
-  if (!url || !key) {
+  if (!config) {
     return ssrStub
   }
 
-  return createBrowserClient(url, key)
+  return createBrowserClient(config.url, config.anonKey)
+}
+
+export function createSupabaseServerReadClient(): SupabaseClient {
+  const config = getSupabasePublicConfig()
+  return createClient(config.url, config.anonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  })
 }
 
 /**
@@ -53,18 +155,9 @@ export function createSupabaseBrowserClient(): SupabaseClient {
  * NEVER expose this client to the browser!
  */
 export function createSupabaseAdmin(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const config = getSupabaseAdminConfig()
 
-  if (!url) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
-  }
-
-  if (!key) {
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
-  }
-
-  return createClient(url, key, {
+  return createClient(config.url, config.serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

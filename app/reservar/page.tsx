@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createSupabaseAdmin } from '@/lib/supabase'
+import { createSupabaseAdmin, formatSupabaseError } from '@/lib/supabase'
 import BookingFlow from '@/components/booking/booking-flow'
 
 interface BookingPageProps {
@@ -7,6 +7,8 @@ interface BookingPageProps {
     branch?: string
   }
 }
+
+export const dynamic = 'force-dynamic'
 
 export default async function BookingPage({ searchParams }: BookingPageProps) {
   const supabase = createSupabaseAdmin()
@@ -16,21 +18,35 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
     redirect('/')
   }
 
-  const [
-    { data: branches },
-    { data: services },
-    { data: barbers },
-    { data: links },
-    { data: userRoles },
-    { data: authUsersData },
-  ] = await Promise.all([
-    supabase.from('branches').select('id, name, address').eq('active', true).order('name'),
-    supabase.from('services').select('*').eq('active', true).order('price'),
-    supabase.from('barbers').select('*').order('name'),
-    supabase.from('barber_branches').select('barber_id, branch_id').eq('branch_id', branchId),
-    supabase.from('user_roles').select('user_id, barber_id, active').not('barber_id', 'is', null),
-    supabase.auth.admin.listUsers({ perPage: 1000 }),
-  ])
+  let branches
+  let services
+  let barbers
+  let links
+  let userRoles
+  let authUsersData
+
+  try {
+    const results = await Promise.all([
+      supabase.from('branches').select('id, name, address').eq('active', true).order('name'),
+      supabase.from('services').select('*').eq('active', true).order('price'),
+      supabase.from('barbers').select('*').order('name'),
+      supabase.from('barber_branches').select('barber_id, branch_id').eq('branch_id', branchId),
+      supabase.from('user_roles').select('user_id, barber_id, active').not('barber_id', 'is', null),
+      supabase.auth.admin.listUsers({ perPage: 1000 }),
+    ])
+
+    ;[
+      { data: branches },
+      { data: services },
+      { data: barbers },
+      { data: links },
+      { data: userRoles },
+      { data: authUsersData },
+    ] = results
+  } catch (error) {
+    console.error('[booking] Failed to load booking data from Supabase:', formatSupabaseError(error))
+    throw new Error('Unable to load booking data from Supabase')
+  }
 
   const selectedBranch = (branches ?? []).find(branch => branch.id === branchId)
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createSupabaseAdmin } from '@/lib/supabase'
+import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
 import { type AppRole, type Permission } from '@/types'
 import { getRolePermissions, hasResolvedPermission } from '@/lib/permissions'
 
@@ -45,16 +45,11 @@ export function unauthorizedResponse(message = 'Unauthorized') {
 }
 
 function createSupabaseServerAuthClient(req: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase public environment variables')
-  }
+  const config = getSupabasePublicConfig()
 
   let response = NextResponse.next({ request: req })
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createServerClient(config.url, config.anonKey, {
     cookies: {
       get(name: string) {
         return req.cookies.get(name)?.value

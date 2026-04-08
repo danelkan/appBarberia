@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { formatSupabaseError, getOptionalSupabasePublicConfig } from '@/lib/supabase'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -7,18 +8,24 @@ export async function middleware(request: NextRequest) {
   const isStaffRoute = pathname.startsWith('/admin') || pathname.startsWith('/staff')
   const isLoginPage  = pathname === '/login'
 
-  const supabaseUrl    = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  let response = NextResponse.next({ request })
+  let supabaseConfig
 
-  // Avoid crashing when env vars are not set (preview builds, first deploy, etc.)
-  if (!supabaseUrl || !supabaseAnonKey) {
+  try {
+    supabaseConfig = getOptionalSupabasePublicConfig()
+  } catch (error) {
+    console.error('[middleware] Invalid Supabase configuration:', formatSupabaseError(error))
     if (isStaffRoute) return NextResponse.redirect(new URL('/login', request.url))
-    return NextResponse.next({ request })
+    return response
   }
 
-  let response = NextResponse.next({ request })
+  // Avoid crashing when env vars are not set (preview builds, first deploy, etc.)
+  if (!supabaseConfig) {
+    if (isStaffRoute) return NextResponse.redirect(new URL('/login', request.url))
+    return response
+  }
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createServerClient(supabaseConfig.url, supabaseConfig.anonKey, {
     cookies: {
       get(name: string) { return request.cookies.get(name)?.value },
       set(name: string, value: string, options: CookieOptions) {
@@ -49,7 +56,7 @@ export async function middleware(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error('[middleware] Auth check failed:', error)
+    console.error('[middleware] Auth check failed:', formatSupabaseError(error))
     if (isStaffRoute) return NextResponse.redirect(new URL('/login', request.url))
     return response
   }

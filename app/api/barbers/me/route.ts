@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { createSupabaseAdmin } from '@/lib/supabase'
+import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
 import { weeklyAvailabilitySchema } from '@/lib/validations'
 
 async function getSession(req: NextRequest) {
   let response = NextResponse.next({ request: req })
+  const config = getSupabasePublicConfig()
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    config.url,
+    config.anonKey,
     {
       cookies: {
         get(name: string) { return req.cookies.get(name)?.value },

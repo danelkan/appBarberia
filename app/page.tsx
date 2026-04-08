@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, MapPin, Scissors } from 'lucide-react'
-import { createSupabaseAdmin } from '@/lib/supabase'
+import { createSupabaseServerReadClient, formatSupabaseError } from '@/lib/supabase'
 
-export const revalidate = 300
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Felito Barber Studio — Reserva tu turno',
@@ -11,12 +11,24 @@ export const metadata: Metadata = {
 }
 
 export default async function HomePage() {
-  const supabase = createSupabaseAdmin()
-  const { data: branches } = await supabase
-    .from('branches')
-    .select('id, name, address')
-    .eq('active', true)
-    .order('name')
+  let branches: Array<{ id: string; name: string; address: string | null }> = []
+
+  try {
+    const supabase = createSupabaseServerReadClient()
+    const { data, error } = await supabase
+      .from('branches')
+      .select('id, name, address')
+      .eq('active', true)
+      .order('name')
+
+    if (error) {
+      throw error
+    }
+
+    branches = data ?? []
+  } catch (error) {
+    console.error('[home] Failed to load branches from Supabase:', formatSupabaseError(error))
+  }
 
   return (
     <main className="flex min-h-screen flex-col px-4 py-5 sm:px-6">
@@ -45,7 +57,7 @@ export default async function HomePage() {
           </h1>
 
           <div className="mt-5 space-y-3">
-            {(branches ?? []).map(branch => (
+            {branches.map(branch => (
               <Link
                 key={branch.id}
                 href={`/reservar?branch=${branch.id}`}
@@ -65,6 +77,12 @@ export default async function HomePage() {
                 <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
               </Link>
             ))}
+
+            {branches.length === 0 && (
+              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
+                No pudimos cargar las sucursales en este momento.
+              </div>
+            )}
           </div>
 
           <div className="mt-5 text-center">
