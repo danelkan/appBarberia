@@ -13,15 +13,24 @@ export async function GET(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
 
-  // Only return barbers that are linked to an active user (user_roles.barber_id)
-  // This filters out stale/test records that have no real user behind them
-  const { data: activeRoles } = await supabase
-    .from('user_roles')
-    .select('barber_id, role, active')
-    .not('barber_id', 'is', null)
+  // Only return barbers linked to an active, real auth user.
+  // Strategy:
+  //  1. Fetch user_roles entries that have barber_id set
+  //  2. Cross-reference their user_id against actual Supabase auth users
+  //  3. Any barber_id whose user no longer exists in auth is excluded
+  const [{ data: activeRoles }, { data: authUsersData }] = await Promise.all([
+    supabase.from('user_roles').select('user_id, barber_id, role, active').not('barber_id', 'is', null),
+    supabase.auth.admin.listUsers({ perPage: 1000 }),
+  ])
+
+  const validAuthIds = new Set((authUsersData?.users ?? []).map((u: any) => u.id))
 
   const activeBarberIds = (activeRoles ?? [])
-    .filter((row: any) => row.active !== false && row.barber_id)
+    .filter((row: any) =>
+      row.active !== false &&
+      row.barber_id &&
+      validAuthIds.has(row.user_id)   // must have a real auth user behind it
+    )
     .map((row: any) => row.barber_id as string)
 
   if (activeBarberIds.length === 0) {

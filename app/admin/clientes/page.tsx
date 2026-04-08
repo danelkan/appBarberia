@@ -1,8 +1,9 @@
 'use client'
 export const dynamic = 'force-dynamic'
+
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Users, ChevronDown, ChevronRight, Phone, Mail, Calendar } from 'lucide-react'
-import { Input, Spinner, EmptyState, Badge } from '@/components/ui'
+import { Calendar, ChevronDown, ChevronRight, Phone, Search, Users } from 'lucide-react'
+import { Badge, EmptyState, Input, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
 import type { Client, Appointment } from '@/types'
 
@@ -11,9 +12,9 @@ interface ClientWithHistory extends Client {
 }
 
 export default function ClientesPage() {
-  const [clients, setClients]   = useState<ClientWithHistory[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [q, setQ]               = useState('')
+  const [clients,  setClients]  = useState<ClientWithHistory[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [q,        setQ]        = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const fetchClients = useCallback(async (query: string) => {
@@ -35,17 +36,17 @@ export default function ClientesPage() {
   }, [q, fetchClients])
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-serif text-2xl text-cream">Clientes</h1>
-          <p className="text-sm text-cream/45 mt-0.5">
+          <h1 className="text-xl font-semibold text-slate-950">Clientes</h1>
+          <p className="mt-0.5 text-sm text-slate-500">
             {clients.length} registrado{clients.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cream/35" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             className="input pl-9 w-full"
             placeholder="Buscar por nombre o email..."
@@ -59,11 +60,11 @@ export default function ClientesPage() {
         <div className="flex justify-center py-20"><Spinner /></div>
       ) : clients.length === 0 ? (
         <EmptyState
-          icon={<Users className="w-6 h-6" />}
+          icon={<Users className="h-6 w-6" />}
           title={q ? 'Sin resultados' : 'Sin clientes aún'}
           description={q
             ? `No hay clientes que coincidan con "${q}"`
-            : 'Los clientes aparecerán cuando hagan una reserva'
+            : 'Los clientes aparecen cuando hacen una reserva o son cargados manualmente.'
           }
         />
       ) : (
@@ -74,66 +75,68 @@ export default function ClientesPage() {
             const completadas = client.appointments?.filter(a => a.status === 'completada').length ?? 0
 
             return (
-              <div key={client.id} className="card overflow-hidden">
+              <div key={client.id} className="rounded-[24px] border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <button
-                  className="w-full text-left p-4 flex items-center gap-3 hover:bg-surface-2 transition-colors"
+                  className="w-full text-left p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                   onClick={() => setExpanded(isOpen ? null : client.id)}
                 >
                   {/* Avatar */}
-                  <div className="w-10 h-10 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-gold font-bold text-sm flex-shrink-0">
+                  <div className="h-10 w-10 flex-shrink-0 rounded-xl bg-slate-100 flex items-center justify-center text-sm font-semibold text-slate-700">
                     {client.first_name[0]}{client.last_name?.[0] ?? ''}
                   </div>
 
                   {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-cream">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-950">
                       {client.first_name} {client.last_name}
                     </p>
-                    <p className="text-xs text-cream/45 truncate font-medium">{client.email}</p>
+                    <p className="text-xs text-slate-400 truncate">
+                      {client.email ?? client.phone ?? '—'}
+                    </p>
                   </div>
 
                   {/* Stats */}
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-xs font-semibold text-cream/60">
+                    <div className="hidden text-right sm:block">
+                      <p className="text-xs font-semibold text-slate-500">
                         {total} turno{total !== 1 ? 's' : ''}
                       </p>
-                      <p className="text-xs text-emerald-600 font-semibold">
+                      <p className="text-xs font-semibold text-emerald-600">
                         {completadas} completado{completadas !== 1 ? 's' : ''}
                       </p>
                     </div>
                     {isOpen
-                      ? <ChevronDown className="w-4 h-4 text-cream/30" />
-                      : <ChevronRight className="w-4 h-4 text-cream/30" />
+                      ? <ChevronDown className="h-4 w-4 text-slate-300" />
+                      : <ChevronRight className="h-4 w-4 text-slate-300" />
                     }
                   </div>
                 </button>
 
                 {isOpen && (
-                  <div className="border-t border-border px-4 pb-4 pt-4 animate-fade-in">
+                  <div className="border-t border-slate-100 px-4 pb-4 pt-4">
                     {/* Contact info */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                    <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
                       {client.phone && (
-                        <div className="flex items-center gap-2 bg-surface-2 rounded-xl p-3">
-                          <Phone className="w-3.5 h-3.5 text-cream/40 flex-shrink-0" />
+                        <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3">
+                          <Phone className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
                           <div>
-                            <p className="text-[10px] text-cream/35 font-semibold uppercase tracking-wider">Teléfono</p>
-                            <p className="text-sm text-cream font-medium">{client.phone}</p>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Teléfono</p>
+                            <p className="text-sm font-medium text-slate-950">{client.phone}</p>
                           </div>
                         </div>
                       )}
-                      <div className="flex items-center gap-2 bg-surface-2 rounded-xl p-3">
-                        <Calendar className="w-3.5 h-3.5 text-cream/40 flex-shrink-0" />
+                      <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3">
+                        <Calendar className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
                         <div>
-                          <p className="text-[10px] text-cream/35 font-semibold uppercase tracking-wider">Cliente desde</p>
-                          <p className="text-sm text-cream font-medium capitalize">{formatDate(client.created_at)}</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Cliente desde</p>
+                          <p className="text-sm font-medium text-slate-950 capitalize">{formatDate(client.created_at)}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 bg-surface-2 rounded-xl p-3">
-                        <Users className="w-3.5 h-3.5 text-cream/40 flex-shrink-0" />
+                      <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3">
+                        <Users className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
                         <div>
-                          <p className="text-[10px] text-cream/35 font-semibold uppercase tracking-wider">Total visitas</p>
-                          <p className="text-sm text-cream font-bold">{total}</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total visitas</p>
+                          <p className="text-sm font-semibold text-slate-950">{total}</p>
                         </div>
                       </div>
                     </div>
@@ -141,7 +144,7 @@ export default function ClientesPage() {
                     {/* History */}
                     {client.appointments?.length > 0 && (
                       <>
-                        <p className="text-xs text-cream/35 uppercase tracking-wider font-semibold mb-2">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                           Últimas visitas
                         </p>
                         <div className="space-y-1.5">
@@ -153,16 +156,16 @@ export default function ClientesPage() {
                               return (
                                 <div
                                   key={appt.id}
-                                  className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-surface-2 hover:bg-surface-3 transition-colors"
+                                  className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 transition hover:bg-slate-100"
                                 >
                                   <div className="min-w-0">
-                                    <p className="text-xs font-semibold text-cream">{appt.service?.name}</p>
-                                    <p className="text-xs text-cream/40 mt-0.5 capitalize font-medium">
-                                      {formatDate(appt.date)} · {appt.barber?.name}
+                                    <p className="text-xs font-semibold text-slate-950">{appt.service?.name}</p>
+                                    <p className="mt-0.5 text-xs font-medium text-slate-400 capitalize">
+                                      {formatDate(appt.date)}{appt.barber?.name ? ` · ${appt.barber.name}` : ''}
                                     </p>
                                   </div>
-                                  <div className="flex items-center gap-2 flex-shrink-0">
-                                    <span className="text-xs font-bold text-gold-dark">
+                                  <div className="flex flex-shrink-0 items-center gap-2">
+                                    <span className="text-xs font-semibold text-slate-700">
                                       {formatPrice(appt.service?.price ?? 0)}
                                     </span>
                                     <Badge className={cn('text-xs', cfg?.color)}>{cfg?.label}</Badge>
