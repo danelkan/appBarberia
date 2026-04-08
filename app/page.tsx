@@ -23,7 +23,7 @@ export default async function HomePage() {
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
 
         {/* Header */}
-        <header className="flex items-center justify-between">
+        <header className="flex items-center">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white">
               <Scissors className="h-4 w-4" />
@@ -33,12 +33,6 @@ export default async function HomePage() {
               <p className="text-xs text-slate-400">Montevideo</p>
             </div>
           </div>
-          <Link
-            href="/staff"
-            className="text-xs font-medium text-slate-400 transition hover:text-slate-600"
-          >
-            Staff
-          </Link>
         </header>
 
         {/* Branch selection */}
