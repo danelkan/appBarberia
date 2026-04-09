@@ -66,7 +66,9 @@ const NAV_ITEMS = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createSupabaseBrowserClient()
+  // Memoize so supabase.auth has a stable reference across renders —
+  // prevents the bootstrap useEffect from re-firing on every state update.
+  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [user, setUser] = useState<UserWithRole | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [activeBranch, setActiveBranch] = useState<Branch | null>(null)

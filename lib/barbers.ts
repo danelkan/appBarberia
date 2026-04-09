@@ -1,14 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-interface AuthUserLike {
-  id: string
-  email?: string | null
-}
+// ─── Internal types ───────────────────────────────────────────────
 
 interface UserRoleLike {
   user_id?: string | null
   barber_id?: string | null
-  branch_ids?: unknown
   active?: boolean | null
 }
 
@@ -24,6 +20,8 @@ interface BarberWriteInput {
   photo_url?: string | null
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────
+
 export class BarberEmailConflictError extends Error {
   constructor() {
     super('Ese email ya tiene un perfil de barbero asociado a otro usuario')
@@ -35,69 +33,77 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
-function sanitizeBranchIds(value: unknown) {
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is string => typeof item === 'string')
-}
-
 function cleanBarberPayload(input: BarberWriteInput) {
   const payload: Record<string, unknown> = {
     name: input.name.trim(),
     email: normalizeEmail(input.email),
   }
-
   if (input.availability !== undefined) payload.availability = input.availability
   if (input.photo_url !== undefined) payload.photo_url = input.photo_url
-
   return payload
 }
 
-export function getVisibleBarberIds(input: {
-  authUsers: AuthUserLike[]
-  userRoles: UserRoleLike[]
-  branchLinks?: BarberBranchLike[]
-  branchId?: string
-}) {
-  const activeAuthIds = new Set(
-    input.authUsers.map(user => user.id)
-  )
+// ─── Core visibility logic ────────────────────────────────────────
 
-  const agendaBranchIdsByBarberId = new Map<string, Set<string>>()
-  for (const link of input.branchLinks ?? []) {
+/**
+ * Determines which barbers are visible in the booking flow.
+ *
+ * Single source of truth:
+ *   - user_roles.active ≠ false  →  barber account is active
+ *   - barber_branches             →  which branches the barber works at
+ *
+ * We do NOT gate on user_roles.branch_ids — that field controls admin
+ * access scope, not public booking visibility.
+ *
+ * We do NOT call auth.admin.listUsers — we trust that user_roles is kept
+ * in sync with auth users by the DELETE handler in /api/users.
+ * (When a user is deleted via our API, the user_roles row is also deleted.)
+ */
+export function getVisibleBarberIds(input: {
+  userRoles: UserRoleLike[]
+  branchLinks: BarberBranchLike[]
+  branchId?: string
+}): Set<string> {
+  // Build: barber_id → set of branch_ids they work at
+  const barberBranches = new Map<string, Set<string>>()
+  for (const link of input.branchLinks) {
     if (!link.barber_id || !link.branch_id) continue
-    const branchIds = agendaBranchIdsByBarberId.get(link.barber_id) ?? new Set<string>()
-    branchIds.add(link.branch_id)
-    agendaBranchIdsByBarberId.set(link.barber_id, branchIds)
+    const set = barberBranches.get(link.barber_id) ?? new Set<string>()
+    set.add(link.branch_id)
+    barberBranches.set(link.barber_id, set)
   }
 
-  const activeLinkedBarberIds = input.userRoles
-    .filter(role => {
-      if (role.active === false) return false
-      if (!role.barber_id || !role.user_id) return false
-      if (!activeAuthIds.has(role.user_id)) return false
+  return new Set(
+    input.userRoles
+      .filter(role => {
+        // Must be active and linked to a valid auth user
+        if (role.active === false) return false
+        if (!role.barber_id || !role.user_id) return false
 
-      const userBranchIds = sanitizeBranchIds(role.branch_ids)
-      const agendaBranchIds = agendaBranchIdsByBarberId.get(role.barber_id) ?? new Set<string>()
-      const effectiveBranchIds = userBranchIds.length > 0
-        ? userBranchIds
-        : Array.from(agendaBranchIds)
+        // Must be assigned to at least one branch
+        const branches = barberBranches.get(role.barber_id)
+        if (!branches || branches.size === 0) return false
 
-      if (input.branchId) {
-        return effectiveBranchIds.includes(input.branchId) && agendaBranchIds.has(input.branchId)
-      }
+        // If filtering by branch, must be assigned to that specific branch
+        if (input.branchId) return branches.has(input.branchId)
 
-      return effectiveBranchIds.some(branchId => agendaBranchIds.has(branchId))
-    })
-    .map(role => role.barber_id as string)
-
-  return new Set(activeLinkedBarberIds)
+        return true
+      })
+      .map(role => role.barber_id as string)
+  )
 }
+
+// ─── Barber CRUD helpers ──────────────────────────────────────────
 
 async function hasExistingAuthUser(supabase: SupabaseClient, userId: string) {
   const { data, error } = await supabase.auth.admin.getUserById(userId)
   return !error && Boolean(data?.user)
 }
 
+/**
+ * Creates a new barber record or reuses an existing one (matched by email).
+ * Detects email conflicts with OTHER valid auth users and throws accordingly.
+ */
 export async function createOrReuseBarberForUser(
   supabase: SupabaseClient,
   input: BarberWriteInput,
@@ -124,11 +130,10 @@ export async function createOrReuseBarberForUser(
 
     for (const role of linkedRoles ?? []) {
       if (!role.user_id || role.user_id === userId) continue
-
       if (await hasExistingAuthUser(supabase, role.user_id)) {
         throw new BarberEmailConflictError()
       }
-
+      // Orphaned role row (auth user gone) — clean it up
       await supabase.from('user_roles').delete().eq('user_id', role.user_id)
     }
 
@@ -153,53 +158,90 @@ export async function createOrReuseBarberForUser(
   return { barber: newBarber, reused: false }
 }
 
+// ─── Public query helpers ─────────────────────────────────────────
+
+/**
+ * List all barbers visible in the booking flow, optionally scoped to a branch.
+ *
+ * Runs 3 parallel DB queries — no auth.admin.listUsers call.
+ * When branchId is provided, the barber_branches query is filtered at DB level.
+ */
 export async function listVisibleBarbers(
   supabase: SupabaseClient,
   options?: { branchId?: string }
 ) {
+  // Filter barber_branches at DB level when branch filter is given — avoids
+  // pulling the entire join table just to filter in JS.
+  const branchLinksQuery = options?.branchId
+    ? supabase
+        .from('barber_branches')
+        .select('barber_id, branch_id, branch:branches(*)')
+        .eq('branch_id', options.branchId)
+    : supabase
+        .from('barber_branches')
+        .select('barber_id, branch_id, branch:branches(*)')
+
   const [
     { data: barbers, error: barbersError },
     { data: userRoles, error: rolesError },
-    { data: authUsersData, error: authError },
     { data: branchLinks, error: branchError },
   ] = await Promise.all([
     supabase.from('barbers').select('*').order('created_at'),
-    supabase.from('user_roles').select('user_id, barber_id, role, active, branch_ids').not('barber_id', 'is', null),
-    supabase.auth.admin.listUsers({ perPage: 1000 }),
-    supabase.from('barber_branches').select('barber_id, branch_id, branch:branches(*)'),
+    supabase.from('user_roles').select('user_id, barber_id, role, active').not('barber_id', 'is', null),
+    branchLinksQuery,
   ])
 
   if (barbersError) throw barbersError
   if (rolesError) throw rolesError
-  if (authError) throw authError
   if (branchError) throw branchError
 
   const visibleBarberIds = getVisibleBarberIds({
-    authUsers: authUsersData?.users ?? [],
     userRoles: userRoles ?? [],
     branchLinks: branchLinks ?? [],
     branchId: options?.branchId,
   })
 
-  const branchLinksList = branchLinks ?? []
-  const filteredBarbers = (barbers ?? []).filter(barber => visibleBarberIds.has(barber.id))
-
   return {
-    barbers: filteredBarbers,
+    barbers: (barbers ?? []).filter(barber => visibleBarberIds.has(barber.id)),
     userRoles: userRoles ?? [],
-    branchLinks: branchLinksList,
+    branchLinks: branchLinks ?? [],
   }
 }
 
+/**
+ * Targeted single-barber visibility check for booking POST validation.
+ * Runs 3 parallel queries scoped to the specific barber — does NOT load
+ * all barbers then filter.
+ */
 export async function getVisibleBarberById(
   supabase: SupabaseClient,
   barberId: string,
   options?: { branchId?: string | null }
 ) {
-  const { barbers } = await listVisibleBarbers(
-    supabase,
-    options?.branchId ? { branchId: options.branchId } : undefined
-  )
+  const branchLinksQuery = options?.branchId
+    ? supabase
+        .from('barber_branches')
+        .select('branch_id')
+        .eq('barber_id', barberId)
+        .eq('branch_id', options.branchId)
+    : supabase
+        .from('barber_branches')
+        .select('branch_id')
+        .eq('barber_id', barberId)
 
-  return barbers.find(barber => barber.id === barberId) ?? null
+  const [
+    { data: barber },
+    { data: roleRow },
+    { data: branchLinks },
+  ] = await Promise.all([
+    supabase.from('barbers').select('*').eq('id', barberId).maybeSingle(),
+    supabase.from('user_roles').select('user_id, barber_id, active').eq('barber_id', barberId).maybeSingle(),
+    branchLinksQuery,
+  ])
+
+  if (!barber || !roleRow) return null
+  if (roleRow.active === false || !roleRow.user_id) return null
+  if ((branchLinks ?? []).length === 0) return null
+
+  return barber
 }

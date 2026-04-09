@@ -23,17 +23,11 @@ import {
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
 import { useAdmin } from '../layout'
-import type { Appointment, Barber, Client, PaymentMethod, Service } from '@/types'
+import { PAYMENT_METHOD_LABELS, type Appointment, type Barber, type Client, type PaymentMethod, type Service } from '@/types'
 
 type ViewMode = 'day' | 'week'
 
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  efectivo:      'Efectivo',
-  mercado_pago:  'Mercado Pago',
-  debito:        'Débito',
-  transferencia: 'Transferencia',
-}
 
 interface InstantForm {
   client_name:  string

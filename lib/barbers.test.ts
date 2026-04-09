@@ -1,77 +1,98 @@
 import { describe, expect, it } from 'vitest'
 import { getVisibleBarberIds } from '@/lib/barbers'
 
-const authUsers = [
-  { id: 'active-user', email: 'active@felito.test' },
-  { id: 'inactive-user', email: 'inactive@felito.test' },
-]
+// ─── Contract: getVisibleBarberIds ────────────────────────────────
+//
+// A barber is visible iff:
+//   1. user_roles row has active !== false
+//   2. user_roles row has both user_id and barber_id set
+//   3. barber_branches has at least one entry for this barber
+//   4. If branchId filter: barber_branches must include that branch
+//
+// auth.admin.listUsers is NOT used — we trust that the user_roles row is
+// deleted when a user is deleted via /api/users (DELETE handler).
 
 describe('getVisibleBarberIds', () => {
-  it('only exposes barbers linked to existing active users', () => {
+  it('exposes active barbers that have branch assignments', () => {
     const visible = getVisibleBarberIds({
-      authUsers,
       userRoles: [
-        { user_id: 'active-user', barber_id: 'active-barber', active: true, branch_ids: ['branch-a'] },
-        { user_id: 'inactive-user', barber_id: 'inactive-barber', active: false, branch_ids: ['branch-a'] },
-        { user_id: 'deleted-user', barber_id: 'deleted-barber', active: true, branch_ids: ['branch-a'] },
+        { user_id: 'active-user', barber_id: 'active-barber', active: true },
+        { user_id: 'inactive-user', barber_id: 'inactive-barber', active: false },
       ],
       branchLinks: [
         { barber_id: 'active-barber', branch_id: 'branch-a' },
         { barber_id: 'inactive-barber', branch_id: 'branch-a' },
-        { barber_id: 'deleted-barber', branch_id: 'branch-a' },
       ],
     })
 
-    expect(Array.from(visible)).toEqual(['active-barber'])
+    expect(visible.has('active-barber')).toBe(true)
+    expect(visible.has('inactive-barber')).toBe(false)
   })
 
-  it('does not re-expose orphan barbers by matching email', () => {
+  it('hides barbers deactivated via user_roles.active = false', () => {
     const visible = getVisibleBarberIds({
-      authUsers: [{ id: 'active-user', email: 'same-email@felito.test' }],
-      userRoles: [],
+      userRoles: [
+        { user_id: 'admin', barber_id: 'deactivated-barber', active: false },
+      ],
+      branchLinks: [
+        { barber_id: 'deactivated-barber', branch_id: 'branch-a' },
+      ],
+      branchId: 'branch-a',
+    })
+
+    expect(visible.has('deactivated-barber')).toBe(false)
+  })
+
+  it('hides barbers with no barber_branches entries (appears_in_agenda: false)', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [
+        { user_id: 'user-a', barber_id: 'hidden-barber', active: true },
+      ],
+      branchLinks: [], // no branch assignments
+    })
+
+    expect(visible.has('hidden-barber')).toBe(false)
+  })
+
+  it('filters by branchId — only shows barbers assigned to that branch', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [
+        { user_id: 'u1', barber_id: 'barber-branch-a', active: true },
+        { user_id: 'u2', barber_id: 'barber-branch-b', active: true },
+        { user_id: 'u3', barber_id: 'barber-both', active: true },
+      ],
+      branchLinks: [
+        { barber_id: 'barber-branch-a', branch_id: 'branch-a' },
+        { barber_id: 'barber-branch-b', branch_id: 'branch-b' },
+        { barber_id: 'barber-both', branch_id: 'branch-a' },
+        { barber_id: 'barber-both', branch_id: 'branch-b' },
+      ],
+      branchId: 'branch-a',
+    })
+
+    expect(visible.has('barber-branch-a')).toBe(true)
+    expect(visible.has('barber-branch-b')).toBe(false) // wrong branch
+    expect(visible.has('barber-both')).toBe(true)
+  })
+
+  it('hides barbers whose user_roles row has no user_id (orphaned)', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [
+        { user_id: null, barber_id: 'orphan-barber', active: true },
+      ],
+      branchLinks: [
+        { barber_id: 'orphan-barber', branch_id: 'branch-a' },
+      ],
+      branchId: 'branch-a',
     })
 
     expect(visible.has('orphan-barber')).toBe(false)
   })
 
-  it('requires agenda visibility when agenda barber ids are provided', () => {
+  it('shows admin-role users who also have a barber profile', () => {
     const visible = getVisibleBarberIds({
-      authUsers: [{ id: 'admin-user', email: 'admin@felito.test' }],
       userRoles: [
-        { user_id: 'admin-user', barber_id: 'admin-barber', active: true, branch_ids: ['branch-a'] },
-        { user_id: 'admin-user', barber_id: 'hidden-admin-barber', active: true, branch_ids: ['branch-a'] },
-      ],
-      branchLinks: [
-        { barber_id: 'admin-barber', branch_id: 'branch-a' },
-      ],
-    })
-
-    expect(Array.from(visible)).toEqual(['admin-barber'])
-  })
-
-  it('requires the user to belong to the selected branch and appear in agenda there', () => {
-    const visible = getVisibleBarberIds({
-      authUsers: [{ id: 'admin-user', email: 'admin@felito.test' }],
-      userRoles: [
-        { user_id: 'admin-user', barber_id: 'ok-barber', active: true, branch_ids: ['branch-a'] },
-        { user_id: 'admin-user', barber_id: 'wrong-branch', active: true, branch_ids: ['branch-b'] },
-        { user_id: 'admin-user', barber_id: 'hidden-barber', active: true, branch_ids: ['branch-a'] },
-      ],
-      branchLinks: [
-        { barber_id: 'ok-barber', branch_id: 'branch-a' },
-        { barber_id: 'wrong-branch', branch_id: 'branch-b' },
-      ],
-      branchId: 'branch-a',
-    })
-
-    expect(Array.from(visible)).toEqual(['ok-barber'])
-  })
-
-  it('keeps admin plus barber users visible when they are operationally valid', () => {
-    const visible = getVisibleBarberIds({
-      authUsers: [{ id: 'felito-admin', email: 'felito@felito.test' }],
-      userRoles: [
-        { user_id: 'felito-admin', barber_id: 'felito-barber', active: true, branch_ids: ['branch-a'] },
+        { user_id: 'felito-admin', barber_id: 'felito-barber', active: true },
       ],
       branchLinks: [
         { barber_id: 'felito-barber', branch_id: 'branch-a' },
@@ -82,18 +103,22 @@ describe('getVisibleBarberIds', () => {
     expect(Array.from(visible)).toEqual(['felito-barber'])
   })
 
-  it('supports legacy barber users that were linked before branch_ids existed on user_roles', () => {
+  it('shows all barbers across branches when no branchId filter is given', () => {
     const visible = getVisibleBarberIds({
-      authUsers: [{ id: 'legacy-user', email: 'legacy@felito.test' }],
       userRoles: [
-        { user_id: 'legacy-user', barber_id: 'legacy-barber', active: true, branch_ids: [] },
+        { user_id: 'u1', barber_id: 'barber-1', active: true },
+        { user_id: 'u2', barber_id: 'barber-2', active: true },
+        { user_id: 'u3', barber_id: 'barber-hidden', active: true },
       ],
       branchLinks: [
-        { barber_id: 'legacy-barber', branch_id: 'branch-a' },
+        { barber_id: 'barber-1', branch_id: 'branch-a' },
+        { barber_id: 'barber-2', branch_id: 'branch-b' },
+        // barber-hidden has no entries → stays hidden
       ],
-      branchId: 'branch-a',
     })
 
-    expect(Array.from(visible)).toEqual(['legacy-barber'])
+    expect(visible.has('barber-1')).toBe(true)
+    expect(visible.has('barber-2')).toBe(true)
+    expect(visible.has('barber-hidden')).toBe(false)
   })
 })
