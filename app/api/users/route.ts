@@ -422,7 +422,8 @@ export async function PATCH(req: NextRequest) {
       await supabase.from('user_roles').update({ barber_id: null }).eq('user_id', user_id)
     }
   } else if (scopedBranchIds !== undefined) {
-    // Branch sync for existing barbers even when is_barber not explicitly sent
+    // Branch sync for existing barbers even when is_barber not explicitly sent.
+    // Keep hidden barbers hidden instead of re-exposing them by branch edits alone.
     const { data: roleRow } = await supabase
       .from('user_roles')
       .select('barber_id')
@@ -430,7 +431,13 @@ export async function PATCH(req: NextRequest) {
       .single()
 
     if (roleRow?.barber_id) {
-      await syncBarberBranches(supabase, roleRow.barber_id, scopedBranchIds)
+      const { data: branchLinks } = await supabase
+        .from('barber_branches')
+        .select('branch_id')
+        .eq('barber_id', roleRow.barber_id)
+
+      const isVisibleInAgenda = (branchLinks ?? []).length > 0
+      await syncBarberBranches(supabase, roleRow.barber_id, isVisibleInAgenda ? scopedBranchIds : [])
     }
   }
 

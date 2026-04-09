@@ -35,7 +35,6 @@ type SessionContext = NonNullable<Awaited<ReturnType<typeof getSession>>>
 type Session = NonNullable<SessionContext['session']>
 
 async function findBarber(admin: ReturnType<typeof createSupabaseAdmin>, session: Session) {
-  // Try by user_roles.barber_id first (supports superadmin-as-barber)
   const { data: userRole } = await admin
     .from('user_roles')
     .select('barber_id')
@@ -46,10 +45,7 @@ async function findBarber(admin: ReturnType<typeof createSupabaseAdmin>, session
     const { data } = await admin.from('barbers').select('*').eq('id', userRole.barber_id).single()
     return data
   }
-
-  // Fallback: match by email
-  const { data } = await admin.from('barbers').select('*').eq('email', session.user.email ?? '').maybeSingle()
-  return data
+  return null
 }
 
 // GET /api/barbers/me — returns the logged-in barber's own record

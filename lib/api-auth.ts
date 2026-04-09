@@ -153,18 +153,6 @@ export async function resolveUserRole(
     // Fallback for projects without the optional columns/table wiring.
   }
 
-  if (!barber_id && normalizedEmail) {
-    const { data: barber } = await admin
-      .from('barbers')
-      .select('id')
-      .eq('email', normalizedEmail)
-      .maybeSingle()
-
-    if (barber?.id) {
-      barber_id = barber.id
-    }
-  }
-
   if (process.env.SUPERADMIN_UUID && userId === process.env.SUPERADMIN_UUID) {
     role = 'superadmin'
   } else if (process.env.ADMIN_EMAIL && normalizedEmail === process.env.ADMIN_EMAIL.toLowerCase()) {

@@ -8,7 +8,13 @@ interface AuthUserLike {
 interface UserRoleLike {
   user_id?: string | null
   barber_id?: string | null
+  branch_ids?: unknown
   active?: boolean | null
+}
+
+interface BarberBranchLike {
+  barber_id?: string | null
+  branch_id?: string | null
 }
 
 interface BarberWriteInput {
@@ -29,6 +35,11 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
+function sanitizeBranchIds(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
 function cleanBarberPayload(input: BarberWriteInput) {
   const payload: Record<string, unknown> = {
     name: input.name.trim(),
@@ -44,22 +55,36 @@ function cleanBarberPayload(input: BarberWriteInput) {
 export function getVisibleBarberIds(input: {
   authUsers: AuthUserLike[]
   userRoles: UserRoleLike[]
-  agendaBarberIds?: Set<string>
+  branchLinks?: BarberBranchLike[]
+  branchId?: string
 }) {
   const activeAuthIds = new Set(
     input.authUsers.map(user => user.id)
   )
 
-  const agendaBarberIds = input.agendaBarberIds
+  const agendaBranchIdsByBarberId = new Map<string, Set<string>>()
+  for (const link of input.branchLinks ?? []) {
+    if (!link.barber_id || !link.branch_id) continue
+    const branchIds = agendaBranchIdsByBarberId.get(link.barber_id) ?? new Set<string>()
+    branchIds.add(link.branch_id)
+    agendaBranchIdsByBarberId.set(link.barber_id, branchIds)
+  }
 
   const activeLinkedBarberIds = input.userRoles
-    .filter(role =>
-      role.active !== false &&
-      role.barber_id &&
-      role.user_id &&
-      activeAuthIds.has(role.user_id) &&
-      (!agendaBarberIds || agendaBarberIds.has(role.barber_id))
-    )
+    .filter(role => {
+      if (role.active === false) return false
+      if (!role.barber_id || !role.user_id) return false
+      if (!activeAuthIds.has(role.user_id)) return false
+
+      const userBranchIds = sanitizeBranchIds(role.branch_ids)
+      const agendaBranchIds = agendaBranchIdsByBarberId.get(role.barber_id) ?? new Set<string>()
+
+      if (input.branchId) {
+        return userBranchIds.includes(input.branchId) && agendaBranchIds.has(input.branchId)
+      }
+
+      return userBranchIds.some(branchId => agendaBranchIds.has(branchId))
+    })
     .map(role => role.barber_id as string)
 
   return new Set(activeLinkedBarberIds)
@@ -129,10 +154,6 @@ export async function listVisibleBarbers(
   supabase: SupabaseClient,
   options?: { branchId?: string }
 ) {
-  const branchLinksQuery = supabase
-    .from('barber_branches')
-    .select('barber_id, branch:branches(*)')
-
   const [
     { data: barbers, error: barbersError },
     { data: userRoles, error: rolesError },
@@ -140,11 +161,9 @@ export async function listVisibleBarbers(
     { data: branchLinks, error: branchError },
   ] = await Promise.all([
     supabase.from('barbers').select('*').order('created_at'),
-    supabase.from('user_roles').select('user_id, barber_id, role, active').not('barber_id', 'is', null),
+    supabase.from('user_roles').select('user_id, barber_id, role, active, branch_ids').not('barber_id', 'is', null),
     supabase.auth.admin.listUsers({ perPage: 1000 }),
-    (options?.branchId
-      ? branchLinksQuery.eq('branch_id', options.branchId)
-      : branchLinksQuery),
+    supabase.from('barber_branches').select('barber_id, branch_id, branch:branches(*)'),
   ])
 
   if (barbersError) throw barbersError
@@ -155,15 +174,12 @@ export async function listVisibleBarbers(
   const visibleBarberIds = getVisibleBarberIds({
     authUsers: authUsersData?.users ?? [],
     userRoles: userRoles ?? [],
-    agendaBarberIds: new Set((branchLinks ?? []).map((link: any) => link.barber_id).filter(Boolean)),
+    branchLinks: branchLinks ?? [],
+    branchId: options?.branchId,
   })
 
   const branchLinksList = branchLinks ?? []
-  const filteredBarbers = (barbers ?? []).filter(barber => {
-    if (!visibleBarberIds.has(barber.id)) return false
-    if (!options?.branchId) return true
-    return branchLinksList.some(link => link.barber_id === barber.id)
-  })
+  const filteredBarbers = (barbers ?? []).filter(barber => visibleBarberIds.has(barber.id))
 
   return {
     barbers: filteredBarbers,

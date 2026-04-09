@@ -11,9 +11,14 @@ describe('getVisibleBarberIds', () => {
     const visible = getVisibleBarberIds({
       authUsers,
       userRoles: [
-        { user_id: 'active-user', barber_id: 'active-barber', active: true },
-        { user_id: 'inactive-user', barber_id: 'inactive-barber', active: false },
-        { user_id: 'deleted-user', barber_id: 'deleted-barber', active: true },
+        { user_id: 'active-user', barber_id: 'active-barber', active: true, branch_ids: ['branch-a'] },
+        { user_id: 'inactive-user', barber_id: 'inactive-barber', active: false, branch_ids: ['branch-a'] },
+        { user_id: 'deleted-user', barber_id: 'deleted-barber', active: true, branch_ids: ['branch-a'] },
+      ],
+      branchLinks: [
+        { barber_id: 'active-barber', branch_id: 'branch-a' },
+        { barber_id: 'inactive-barber', branch_id: 'branch-a' },
+        { barber_id: 'deleted-barber', branch_id: 'branch-a' },
       ],
     })
 
@@ -33,12 +38,47 @@ describe('getVisibleBarberIds', () => {
     const visible = getVisibleBarberIds({
       authUsers: [{ id: 'admin-user', email: 'admin@felito.test' }],
       userRoles: [
-        { user_id: 'admin-user', barber_id: 'admin-barber', active: true },
-        { user_id: 'admin-user', barber_id: 'hidden-admin-barber', active: true },
+        { user_id: 'admin-user', barber_id: 'admin-barber', active: true, branch_ids: ['branch-a'] },
+        { user_id: 'admin-user', barber_id: 'hidden-admin-barber', active: true, branch_ids: ['branch-a'] },
       ],
-      agendaBarberIds: new Set(['admin-barber']),
+      branchLinks: [
+        { barber_id: 'admin-barber', branch_id: 'branch-a' },
+      ],
     })
 
     expect(Array.from(visible)).toEqual(['admin-barber'])
+  })
+
+  it('requires the user to belong to the selected branch and appear in agenda there', () => {
+    const visible = getVisibleBarberIds({
+      authUsers: [{ id: 'admin-user', email: 'admin@felito.test' }],
+      userRoles: [
+        { user_id: 'admin-user', barber_id: 'ok-barber', active: true, branch_ids: ['branch-a'] },
+        { user_id: 'admin-user', barber_id: 'wrong-branch', active: true, branch_ids: ['branch-b'] },
+        { user_id: 'admin-user', barber_id: 'hidden-barber', active: true, branch_ids: ['branch-a'] },
+      ],
+      branchLinks: [
+        { barber_id: 'ok-barber', branch_id: 'branch-a' },
+        { barber_id: 'wrong-branch', branch_id: 'branch-b' },
+      ],
+      branchId: 'branch-a',
+    })
+
+    expect(Array.from(visible)).toEqual(['ok-barber'])
+  })
+
+  it('keeps admin plus barber users visible when they are operationally valid', () => {
+    const visible = getVisibleBarberIds({
+      authUsers: [{ id: 'felito-admin', email: 'felito@felito.test' }],
+      userRoles: [
+        { user_id: 'felito-admin', barber_id: 'felito-barber', active: true, branch_ids: ['branch-a'] },
+      ],
+      branchLinks: [
+        { barber_id: 'felito-barber', branch_id: 'branch-a' },
+      ],
+      branchId: 'branch-a',
+    })
+
+    expect(Array.from(visible)).toEqual(['felito-barber'])
   })
 })

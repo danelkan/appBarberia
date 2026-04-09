@@ -184,16 +184,23 @@ export default function AgendaPage() {
   }
 
   async function openInstantModal() {
-    // Load barbers + services if not loaded yet
-    if (barbers.length === 0 || services.length === 0) {
-      setLoadingMeta(true)
+    setLoadingMeta(true)
+    try {
+      const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
       const [barbersRes, servicesRes] = await Promise.all([
-        fetch('/api/barbers', { cache: 'no-store' }),
+        fetch(`/api/barbers${branchQuery}`, { cache: 'no-store' }),
         fetch('/api/services', { cache: 'no-store' }),
       ])
+
+      if (barbersRes.status === 401 || servicesRes.status === 401) {
+        router.replace('/login')
+        return
+      }
+
       const [barbersData, servicesData] = await Promise.all([barbersRes.json(), servicesRes.json()])
-      setBarbers(barbersData.barbers ?? [])
-      setServices(servicesData.services ?? [])
+      setBarbers(barbersRes.ok ? (barbersData.barbers ?? []) : [])
+      setServices(servicesRes.ok ? (servicesData.services ?? []) : [])
+    } finally {
       setLoadingMeta(false)
     }
 
