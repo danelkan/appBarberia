@@ -255,6 +255,9 @@ export interface UserWithRole {
   name?: string | null
   role: AppRole
   barber_id?: string | null
+  is_barber?: boolean
+  appears_in_agenda?: boolean
+  agenda_branch_ids?: string[]
   company_id?: string | null
   branch_ids: string[]
   permissions: Permission[]

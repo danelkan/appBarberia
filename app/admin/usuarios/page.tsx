@@ -47,6 +47,7 @@ interface UserFormState {
   permissions: Permission[]
   active: boolean
   is_barber: boolean
+  appears_in_agenda: boolean
   availability: WeeklyAvailability
 }
 
@@ -59,6 +60,7 @@ const EMPTY_FORM: UserFormState = {
   permissions:  [],
   active:       true,
   is_barber:    true,
+  appears_in_agenda: true,
   availability: DEFAULT_AVAILABILITY,
 }
 
@@ -117,7 +119,8 @@ export default function UsuariosPage() {
       branch_ids:   user.branch_ids ?? [],
       permissions:  user.permissions ?? [],
       active:       user.active,
-      is_barber:    !!user.barber_id,
+      is_barber:    user.is_barber ?? !!user.barber_id,
+      appears_in_agenda: user.appears_in_agenda ?? Boolean(user.barber_id),
       availability: (user.barber as any)?.availability ?? DEFAULT_AVAILABILITY,
     })
     setModalOpen(true)
@@ -334,7 +337,12 @@ export default function UsuariosPage() {
                 <button
                   key={role}
                   type="button"
-                  onClick={() => setForm(f => ({ ...f, role, is_barber: role === 'barber' }))}
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    role,
+                    is_barber: role === 'barber' ? true : f.is_barber,
+                    appears_in_agenda: role === 'barber' ? true : f.appears_in_agenda,
+                  }))}
                   className={cn(
                     'rounded-2xl border px-3 py-3 text-left transition',
                     form.role === role
@@ -387,12 +395,33 @@ export default function UsuariosPage() {
             <input
               type="checkbox"
               checked={form.is_barber}
-              onChange={e => setForm(f => ({ ...f, is_barber: e.target.checked }))}
+              onChange={e => setForm(f => ({
+                ...f,
+                is_barber: e.target.checked,
+                appears_in_agenda: e.target.checked ? f.appears_in_agenda : false,
+              }))}
               className="accent-slate-950"
             />
             <div>
-              <p className="font-semibold">Aparece en agenda como barbero</p>
-              <p className="text-xs text-slate-400">Puede recibir turnos y está visible en la app de reservas</p>
+              <p className="font-semibold">Es barbero</p>
+              <p className="text-xs text-slate-400">Puede tener disponibilidad y atender turnos sin perder su rol administrativo.</p>
+            </div>
+          </label>
+
+          <label className={cn(
+            'flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700',
+            form.is_barber ? 'cursor-pointer' : 'opacity-60'
+          )}>
+            <input
+              type="checkbox"
+              checked={form.is_barber && form.appears_in_agenda}
+              disabled={!form.is_barber}
+              onChange={e => setForm(f => ({ ...f, appears_in_agenda: e.target.checked }))}
+              className="accent-slate-950"
+            />
+            <div>
+              <p className="font-semibold">Aparece en agenda y reservas</p>
+              <p className="text-xs text-slate-400">Si está activo y tiene sucursal, los clientes pueden reservarle turnos.</p>
             </div>
           </label>
 

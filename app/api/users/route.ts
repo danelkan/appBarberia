@@ -29,7 +29,7 @@ function sanitizeBranchIds(value: unknown) {
 function isSuperadminIdentity(user: { id: string; email?: string | null }, role?: AppRole | null) {
   if (role === 'superadmin') return true
   if (process.env.SUPERADMIN_UUID && user.id === process.env.SUPERADMIN_UUID) return true
-  return Boolean(process.env.ADMIN_EMAIL && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase())
+  return false
 }
 
 async function getCompanyScope(supabase: ReturnType<typeof createSupabaseAdmin>, auth: AuthRoleContext) {
@@ -149,9 +149,11 @@ export async function GET(req: NextRequest) {
   const users = authUsers.flatMap((user: any) => {
     const roleRow    = roleMap.get(user.id)
     const role       = (roleRow?.role ?? 'barber') as AppRole
-    const branch_ids = sanitizeBranchIds(roleRow?.branch_ids)
+    const roleBranchIds = sanitizeBranchIds(roleRow?.branch_ids)
     const permissions = getRolePermissions(role, Array.isArray(roleRow?.permissions) ? roleRow.permissions : [])
     const barber_id = roleRow?.barber_id ?? null
+    const agendaBranchIds = barber_id ? barberBranchIds.get(barber_id) ?? [] : []
+    const branch_ids = Array.from(new Set([...roleBranchIds, ...agendaBranchIds]))
     const userCompanyId = (roleRow?.company_id as string | null) ?? null
 
     if (auth.role !== 'superadmin') {
@@ -172,6 +174,9 @@ export async function GET(req: NextRequest) {
       name:       user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
       role,
       barber_id,
+      is_barber: Boolean(barber_id),
+      appears_in_agenda: agendaBranchIds.length > 0,
+      agenda_branch_ids: agendaBranchIds,
       company_id: userCompanyId,
       branch_ids,
       permissions,
@@ -199,7 +204,8 @@ export async function POST(req: NextRequest) {
   const role        = (body.role ?? 'barber') as AppRole
   const permissions = Array.isArray(body.permissions) ? body.permissions as Permission[] : []
   const branch_ids  = sanitizeBranchIds(body.branch_ids)
-  const is_barber   = role === 'barber' && body.is_barber === true
+  const is_barber   = body.is_barber === true
+  const appears_in_agenda = is_barber && body.appears_in_agenda !== false
   const availability = (body.availability as WeeklyAvailability | undefined) ?? DEFAULT_AVAILABILITY
 
   if (!name || !email || !password) {
@@ -217,7 +223,7 @@ export async function POST(req: NextRequest) {
     ? (typeof body.company_id === 'string' ? body.company_id : null)
     : scope?.companyId ?? null
 
-  if (is_barber && scopedBranchIds.length === 0) {
+  if (appears_in_agenda && scopedBranchIds.length === 0) {
     return NextResponse.json({ error: 'Seleccioná al menos una sucursal para mostrar el barbero en reservas' }, { status: 400 })
   }
 
@@ -271,7 +277,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await syncBarberBranches(supabase, barber.id, scopedBranchIds)
+      await syncBarberBranches(supabase, barber.id, appears_in_agenda ? scopedBranchIds : [])
     } catch (error) {
       if (!reusedBarber) await supabase.from('barbers').delete().eq('id', barber.id)
       await supabase.from('user_roles').delete().eq('user_id', userId)
@@ -280,7 +286,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ user: { id: userId, email, name, role, branch_ids: scopedBranchIds, company_id } }, { status: 201 })
+  return NextResponse.json({ user: { id: userId, email, name, role, branch_ids: scopedBranchIds, company_id, is_barber, appears_in_agenda } }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -302,9 +308,8 @@ export async function PATCH(req: NextRequest) {
   const active      = typeof body.active === 'boolean' ? body.active : undefined
   const name        = typeof body.name === 'string' ? body.name.trim() : undefined
   const branch_ids  = body.branch_ids !== undefined ? sanitizeBranchIds(body.branch_ids) : undefined
-  const is_barber   = typeof body.is_barber === 'boolean'
-    ? (role && role !== 'barber' ? false : body.is_barber)
-    : undefined
+  const is_barber   = typeof body.is_barber === 'boolean' ? body.is_barber : undefined
+  const appears_in_agenda = typeof body.appears_in_agenda === 'boolean' ? body.appears_in_agenda : undefined
   const availability = body.availability as WeeklyAvailability | undefined
 
   if (auth.role !== 'superadmin' && role === 'superadmin') {
@@ -339,6 +344,9 @@ export async function PATCH(req: NextRequest) {
 
   // Update user_roles (role, permissions, active, branches — NOT barber_id, handled below)
   const scopedBranchIds = branch_ids ? sanitizeBranchIdsForScope(branch_ids, scope) : undefined
+  if ((is_barber === true || appears_in_agenda === true) && scopedBranchIds !== undefined && scopedBranchIds.length === 0) {
+    return NextResponse.json({ error: 'Seleccioná al menos una sucursal para mostrar el barbero en reservas' }, { status: 400 })
+  }
   const payload = buildUserRolePayload({ role, permissions, active, branch_ids: scopedBranchIds })
   if (Object.keys(payload).length > 0) {
     const { error } = await supabase
@@ -388,7 +396,7 @@ export async function PATCH(req: NextRequest) {
         )
         const { error: linkError } = await supabase.from('user_roles').update({ barber_id: barber.id }).eq('user_id', user_id)
         if (linkError) return NextResponse.json({ error: linkError.message }, { status: 500 })
-        if (scopedBranchIds) await syncBarberBranches(supabase, barber.id, scopedBranchIds)
+        await syncBarberBranches(supabase, barber.id, appears_in_agenda === false ? [] : scopedBranchIds ?? [])
       } catch (error) {
         return NextResponse.json(
           { error: error instanceof Error ? error.message : 'Error al crear barbero' },
@@ -403,7 +411,11 @@ export async function PATCH(req: NextRequest) {
       if (Object.keys(updates).length > 0) {
         await supabase.from('barbers').update(updates).eq('id', currentBarberId)
       }
-      if (scopedBranchIds) await syncBarberBranches(supabase, currentBarberId, scopedBranchIds)
+      if (appears_in_agenda === false) {
+        await syncBarberBranches(supabase, currentBarberId, [])
+      } else if (scopedBranchIds) {
+        await syncBarberBranches(supabase, currentBarberId, scopedBranchIds)
+      }
     } else if (!is_barber && currentBarberId) {
       // Unlink barber from user (keep barber record for appointment history)
       await supabase.from('barber_branches').delete().eq('barber_id', currentBarberId)

@@ -44,17 +44,21 @@ function cleanBarberPayload(input: BarberWriteInput) {
 export function getVisibleBarberIds(input: {
   authUsers: AuthUserLike[]
   userRoles: UserRoleLike[]
+  agendaBarberIds?: Set<string>
 }) {
   const activeAuthIds = new Set(
     input.authUsers.map(user => user.id)
   )
+
+  const agendaBarberIds = input.agendaBarberIds
 
   const activeLinkedBarberIds = input.userRoles
     .filter(role =>
       role.active !== false &&
       role.barber_id &&
       role.user_id &&
-      activeAuthIds.has(role.user_id)
+      activeAuthIds.has(role.user_id) &&
+      (!agendaBarberIds || agendaBarberIds.has(role.barber_id))
     )
     .map(role => role.barber_id as string)
 
@@ -151,6 +155,7 @@ export async function listVisibleBarbers(
   const visibleBarberIds = getVisibleBarberIds({
     authUsers: authUsersData?.users ?? [],
     userRoles: userRoles ?? [],
+    agendaBarberIds: new Set((branchLinks ?? []).map((link: any) => link.barber_id).filter(Boolean)),
   })
 
   const branchLinksList = branchLinks ?? []

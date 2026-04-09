@@ -28,4 +28,17 @@ describe('getVisibleBarberIds', () => {
 
     expect(visible.has('orphan-barber')).toBe(false)
   })
+
+  it('requires agenda visibility when agenda barber ids are provided', () => {
+    const visible = getVisibleBarberIds({
+      authUsers: [{ id: 'admin-user', email: 'admin@felito.test' }],
+      userRoles: [
+        { user_id: 'admin-user', barber_id: 'admin-barber', active: true },
+        { user_id: 'admin-user', barber_id: 'hidden-admin-barber', active: true },
+      ],
+      agendaBarberIds: new Set(['admin-barber']),
+    })
+
+    expect(Array.from(visible)).toEqual(['admin-barber'])
+  })
 })
