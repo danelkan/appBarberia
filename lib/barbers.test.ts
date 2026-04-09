@@ -3,122 +3,134 @@ import { getVisibleBarberIds } from '@/lib/barbers'
 
 // ─── Contract: getVisibleBarberIds ────────────────────────────────
 //
-// A barber is visible iff:
-//   1. user_roles row has active !== false
-//   2. user_roles row has both user_id and barber_id set
-//   3. barber_branches has at least one entry for this barber
-//   4. If branchId filter: barber_branches must include that branch
-//
-// auth.admin.listUsers is NOT used — we trust that the user_roles row is
-// deleted when a user is deleted via /api/users (DELETE handler).
+// A barber is visible iff ALL of:
+//   1. user_roles.active !== false
+//   2. user_roles.user_id is set (linked to an auth user)
+//   3. user_roles.barber_id is set
+//   4. Branch assignment exists in AT LEAST ONE of:
+//        a. barber_branches table entries  (primary)
+//        b. user_roles.branch_ids          (legacy fallback)
+//   5. If branchId filter: at least one source must include that branch
 
 describe('getVisibleBarberIds', () => {
-  it('exposes active barbers that have branch assignments', () => {
-    const visible = getVisibleBarberIds({
-      userRoles: [
-        { user_id: 'active-user', barber_id: 'active-barber', active: true },
-        { user_id: 'inactive-user', barber_id: 'inactive-barber', active: false },
-      ],
-      branchLinks: [
-        { barber_id: 'active-barber', branch_id: 'branch-a' },
-        { barber_id: 'inactive-barber', branch_id: 'branch-a' },
-      ],
-    })
 
-    expect(visible.has('active-barber')).toBe(true)
-    expect(visible.has('inactive-barber')).toBe(false)
+  // ── Active/inactive ─────────────────────────────────────────────
+
+  it('shows active barbers with barber_branches entry', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: true }],
+      branchLinks: [{ barber_id: 'b1', branch_id: 'br-a' }],
+    })
+    expect(visible.has('b1')).toBe(true)
   })
 
-  it('hides barbers deactivated via user_roles.active = false', () => {
+  it('hides barbers with active: false', () => {
     const visible = getVisibleBarberIds({
-      userRoles: [
-        { user_id: 'admin', barber_id: 'deactivated-barber', active: false },
-      ],
-      branchLinks: [
-        { barber_id: 'deactivated-barber', branch_id: 'branch-a' },
-      ],
-      branchId: 'branch-a',
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: false }],
+      branchLinks: [{ barber_id: 'b1', branch_id: 'br-a' }],
     })
-
-    expect(visible.has('deactivated-barber')).toBe(false)
+    expect(visible.has('b1')).toBe(false)
   })
 
-  it('hides barbers with no barber_branches entries (appears_in_agenda: false)', () => {
+  it('hides barbers with no user_id (orphaned role row)', () => {
     const visible = getVisibleBarberIds({
-      userRoles: [
-        { user_id: 'user-a', barber_id: 'hidden-barber', active: true },
-      ],
-      branchLinks: [], // no branch assignments
+      userRoles: [{ user_id: null, barber_id: 'b1', active: true }],
+      branchLinks: [{ barber_id: 'b1', branch_id: 'br-a' }],
     })
-
-    expect(visible.has('hidden-barber')).toBe(false)
+    expect(visible.has('b1')).toBe(false)
   })
 
-  it('filters by branchId — only shows barbers assigned to that branch', () => {
-    const visible = getVisibleBarberIds({
-      userRoles: [
-        { user_id: 'u1', barber_id: 'barber-branch-a', active: true },
-        { user_id: 'u2', barber_id: 'barber-branch-b', active: true },
-        { user_id: 'u3', barber_id: 'barber-both', active: true },
-      ],
-      branchLinks: [
-        { barber_id: 'barber-branch-a', branch_id: 'branch-a' },
-        { barber_id: 'barber-branch-b', branch_id: 'branch-b' },
-        { barber_id: 'barber-both', branch_id: 'branch-a' },
-        { barber_id: 'barber-both', branch_id: 'branch-b' },
-      ],
-      branchId: 'branch-a',
-    })
+  // ── Dual-source branch assignment ───────────────────────────────
 
-    expect(visible.has('barber-branch-a')).toBe(true)
-    expect(visible.has('barber-branch-b')).toBe(false) // wrong branch
-    expect(visible.has('barber-both')).toBe(true)
+  it('shows barber when branch comes from barber_branches only', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: true, branch_ids: [] }],
+      branchLinks: [{ barber_id: 'b1', branch_id: 'br-a' }],
+    })
+    expect(visible.has('b1')).toBe(true)
   })
 
-  it('hides barbers whose user_roles row has no user_id (orphaned)', () => {
+  it('shows barber when branch comes from user_roles.branch_ids only (legacy)', () => {
     const visible = getVisibleBarberIds({
-      userRoles: [
-        { user_id: null, barber_id: 'orphan-barber', active: true },
-      ],
-      branchLinks: [
-        { barber_id: 'orphan-barber', branch_id: 'branch-a' },
-      ],
-      branchId: 'branch-a',
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: true, branch_ids: ['br-a'] }],
+      branchLinks: [], // barber_branches empty — migration not run yet
     })
-
-    expect(visible.has('orphan-barber')).toBe(false)
+    expect(visible.has('b1')).toBe(true)
   })
 
-  it('shows admin-role users who also have a barber profile', () => {
+  it('hides barber when neither source has branch assignment', () => {
     const visible = getVisibleBarberIds({
-      userRoles: [
-        { user_id: 'felito-admin', barber_id: 'felito-barber', active: true },
-      ],
-      branchLinks: [
-        { barber_id: 'felito-barber', branch_id: 'branch-a' },
-      ],
-      branchId: 'branch-a',
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: true, branch_ids: [] }],
+      branchLinks: [],
     })
-
-    expect(Array.from(visible)).toEqual(['felito-barber'])
+    expect(visible.has('b1')).toBe(false)
   })
 
-  it('shows all barbers across branches when no branchId filter is given', () => {
+  // ── Branch filter ────────────────────────────────────────────────
+
+  it('filters to requested branch using barber_branches', () => {
     const visible = getVisibleBarberIds({
       userRoles: [
-        { user_id: 'u1', barber_id: 'barber-1', active: true },
-        { user_id: 'u2', barber_id: 'barber-2', active: true },
-        { user_id: 'u3', barber_id: 'barber-hidden', active: true },
+        { user_id: 'u1', barber_id: 'b-a', active: true },
+        { user_id: 'u2', barber_id: 'b-b', active: true },
       ],
       branchLinks: [
-        { barber_id: 'barber-1', branch_id: 'branch-a' },
-        { barber_id: 'barber-2', branch_id: 'branch-b' },
-        // barber-hidden has no entries → stays hidden
+        { barber_id: 'b-a', branch_id: 'br-a' },
+        { barber_id: 'b-b', branch_id: 'br-b' },
       ],
+      branchId: 'br-a',
     })
+    expect(visible.has('b-a')).toBe(true)
+    expect(visible.has('b-b')).toBe(false)
+  })
 
-    expect(visible.has('barber-1')).toBe(true)
-    expect(visible.has('barber-2')).toBe(true)
-    expect(visible.has('barber-hidden')).toBe(false)
+  it('filters to requested branch using user_roles.branch_ids fallback', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [
+        { user_id: 'u1', barber_id: 'b-a', active: true, branch_ids: ['br-a'] },
+        { user_id: 'u2', barber_id: 'b-b', active: true, branch_ids: ['br-b'] },
+      ],
+      branchLinks: [], // empty — legacy data scenario
+      branchId: 'br-a',
+    })
+    expect(visible.has('b-a')).toBe(true)
+    expect(visible.has('b-b')).toBe(false)
+  })
+
+  it('shows barber assigned to multiple branches when filtering by one', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: true }],
+      branchLinks: [
+        { barber_id: 'b1', branch_id: 'br-a' },
+        { barber_id: 'b1', branch_id: 'br-b' },
+      ],
+      branchId: 'br-b',
+    })
+    expect(visible.has('b1')).toBe(true)
+  })
+
+  // ── Edge cases ───────────────────────────────────────────────────
+
+  it('deactivated user is hidden even when barber_branches has entries', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: false }],
+      branchLinks: [{ barber_id: 'b1', branch_id: 'br-a' }],
+      branchId: 'br-a',
+    })
+    expect(visible.has('b1')).toBe(false)
+  })
+
+  it('admin-role user who is also a barber appears in booking', () => {
+    const visible = getVisibleBarberIds({
+      userRoles: [{ user_id: 'admin-user', barber_id: 'admin-barber', active: true, branch_ids: ['br-a'] }],
+      branchLinks: [{ barber_id: 'admin-barber', branch_id: 'br-a' }],
+      branchId: 'br-a',
+    })
+    expect(visible.has('admin-barber')).toBe(true)
+  })
+
+  it('returns empty set when no barbers exist', () => {
+    const visible = getVisibleBarberIds({ userRoles: [], branchLinks: [] })
+    expect(visible.size).toBe(0)
   })
 })

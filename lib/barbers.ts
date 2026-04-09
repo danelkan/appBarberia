@@ -6,6 +6,9 @@ interface UserRoleLike {
   user_id?: string | null
   barber_id?: string | null
   active?: boolean | null
+  // branch_ids stored on user_roles — used as fallback when barber_branches
+  // hasn't been populated yet (legacy records / migration not yet run).
+  branch_ids?: unknown
 }
 
 interface BarberBranchLike {
@@ -33,6 +36,11 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
+function sanitizeBranchIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
 function cleanBarberPayload(input: BarberWriteInput) {
   const payload: Record<string, unknown> = {
     name: input.name.trim(),
@@ -48,44 +56,61 @@ function cleanBarberPayload(input: BarberWriteInput) {
 /**
  * Determines which barbers are visible in the booking flow.
  *
- * Single source of truth:
- *   - user_roles.active ≠ false  →  barber account is active
- *   - barber_branches             →  which branches the barber works at
+ * Rules:
+ *   1. user_roles row must exist with active !== false, user_id set, barber_id set.
+ *   2. The barber must be assigned to at least one branch. Branch assignment is
+ *      checked from TWO sources (either one is sufficient):
+ *        a. barber_branches table  — primary, set by the UI when creating/editing
+ *        b. user_roles.branch_ids  — legacy fallback for records created before
+ *                                    barber_branches was fully adopted
  *
- * We do NOT gate on user_roles.branch_ids — that field controls admin
- * access scope, not public booking visibility.
+ * Why dual-source:
+ *   Existing deployments may have branch_ids on user_roles but no barber_branches
+ *   rows yet. Rather than requiring a one-time migration to run correctly, the code
+ *   is resilient to either column being populated.
  *
- * We do NOT call auth.admin.listUsers — we trust that user_roles is kept
- * in sync with auth users by the DELETE handler in /api/users.
- * (When a user is deleted via our API, the user_roles row is also deleted.)
+ * What is NOT used:
+ *   - auth.admin.listUsers (slow Auth API call, eliminated entirely)
+ *   - Email-based fallback (was the original bug: deactivated users still matched)
  */
 export function getVisibleBarberIds(input: {
   userRoles: UserRoleLike[]
   branchLinks: BarberBranchLike[]
   branchId?: string
 }): Set<string> {
-  // Build: barber_id → set of branch_ids they work at
-  const barberBranches = new Map<string, Set<string>>()
+  // Build: barber_id → set of branch_ids from the barber_branches join table
+  const tableSourceBranches = new Map<string, Set<string>>()
   for (const link of input.branchLinks) {
     if (!link.barber_id || !link.branch_id) continue
-    const set = barberBranches.get(link.barber_id) ?? new Set<string>()
+    const set = tableSourceBranches.get(link.barber_id) ?? new Set<string>()
     set.add(link.branch_id)
-    barberBranches.set(link.barber_id, set)
+    tableSourceBranches.set(link.barber_id, set)
   }
 
   return new Set(
     input.userRoles
       .filter(role => {
-        // Must be active and linked to a valid auth user
+        // Gate 1: must have a linked auth user and be active
         if (role.active === false) return false
         if (!role.barber_id || !role.user_id) return false
 
-        // Must be assigned to at least one branch
-        const branches = barberBranches.get(role.barber_id)
-        if (!branches || branches.size === 0) return false
+        // Gate 2: must be assigned to at least one branch
+        // Source A — barber_branches table
+        const tableBranches = tableSourceBranches.get(role.barber_id)
+        // Source B — user_roles.branch_ids (legacy / not-yet-migrated data)
+        const roleBranchIds = sanitizeBranchIds(role.branch_ids)
 
-        // If filtering by branch, must be assigned to that specific branch
-        if (input.branchId) return branches.has(input.branchId)
+        const hasTableAssignment = tableBranches !== undefined && tableBranches.size > 0
+        const hasRoleAssignment  = roleBranchIds.length > 0
+
+        if (!hasTableAssignment && !hasRoleAssignment) return false
+
+        // Gate 3: if a specific branch is requested, verify assignment to it
+        if (input.branchId) {
+          const inTable = tableBranches?.has(input.branchId) ?? false
+          const inRole  = roleBranchIds.includes(input.branchId)
+          return inTable || inRole
+        }
 
         return true
       })
@@ -164,14 +189,16 @@ export async function createOrReuseBarberForUser(
  * List all barbers visible in the booking flow, optionally scoped to a branch.
  *
  * Runs 3 parallel DB queries — no auth.admin.listUsers call.
- * When branchId is provided, the barber_branches query is filtered at DB level.
+ * When branchId is provided, the barber_branches query is filtered at DB level
+ * (avoids transferring the full join table when only one branch matters).
+ *
+ * Barber visibility uses BOTH barber_branches and user_roles.branch_ids so the
+ * result is correct regardless of whether the v8 migration has been run.
  */
 export async function listVisibleBarbers(
   supabase: SupabaseClient,
   options?: { branchId?: string }
 ) {
-  // Filter barber_branches at DB level when branch filter is given — avoids
-  // pulling the entire join table just to filter in JS.
   const branchLinksQuery = options?.branchId
     ? supabase
         .from('barber_branches')
@@ -182,36 +209,40 @@ export async function listVisibleBarbers(
         .select('barber_id, branch_id, branch:branches(*)')
 
   const [
-    { data: barbers, error: barbersError },
-    { data: userRoles, error: rolesError },
+    { data: barbers,    error: barbersError },
+    { data: userRoles,  error: rolesError   },
     { data: branchLinks, error: branchError },
   ] = await Promise.all([
     supabase.from('barbers').select('*').order('created_at'),
-    supabase.from('user_roles').select('user_id, barber_id, role, active').not('barber_id', 'is', null),
+    // Include branch_ids so getVisibleBarberIds can use it as legacy fallback
+    supabase
+      .from('user_roles')
+      .select('user_id, barber_id, role, active, branch_ids')
+      .not('barber_id', 'is', null),
     branchLinksQuery,
   ])
 
   if (barbersError) throw barbersError
-  if (rolesError) throw rolesError
-  if (branchError) throw branchError
+  if (rolesError)   throw rolesError
+  if (branchError)  throw branchError
 
   const visibleBarberIds = getVisibleBarberIds({
-    userRoles: userRoles ?? [],
+    userRoles:   userRoles   ?? [],
     branchLinks: branchLinks ?? [],
     branchId: options?.branchId,
   })
 
   return {
-    barbers: (barbers ?? []).filter(barber => visibleBarberIds.has(barber.id)),
-    userRoles: userRoles ?? [],
+    barbers:     (barbers ?? []).filter(barber => visibleBarberIds.has(barber.id)),
+    userRoles:   userRoles   ?? [],
     branchLinks: branchLinks ?? [],
   }
 }
 
 /**
  * Targeted single-barber visibility check for booking POST validation.
- * Runs 3 parallel queries scoped to the specific barber — does NOT load
- * all barbers then filter.
+ * Does NOT load all barbers — scoped queries per barber.
+ * Accepts both barber_branches and user_roles.branch_ids as branch evidence.
  */
 export async function getVisibleBarberById(
   supabase: SupabaseClient,
@@ -230,18 +261,26 @@ export async function getVisibleBarberById(
         .eq('barber_id', barberId)
 
   const [
-    { data: barber },
-    { data: roleRow },
+    { data: barber   },
+    { data: roleRow  },
     { data: branchLinks },
   ] = await Promise.all([
     supabase.from('barbers').select('*').eq('id', barberId).maybeSingle(),
-    supabase.from('user_roles').select('user_id, barber_id, active').eq('barber_id', barberId).maybeSingle(),
+    supabase.from('user_roles').select('user_id, barber_id, active, branch_ids').eq('barber_id', barberId).maybeSingle(),
     branchLinksQuery,
   ])
 
   if (!barber || !roleRow) return null
   if (roleRow.active === false || !roleRow.user_id) return null
-  if ((branchLinks ?? []).length === 0) return null
+
+  // Accept branch assignment from either source
+  const hasTableBranch = (branchLinks ?? []).length > 0
+  const roleBranchIds  = sanitizeBranchIds(roleRow.branch_ids)
+  const hasRoleBranch  = options?.branchId
+    ? roleBranchIds.includes(options.branchId)
+    : roleBranchIds.length > 0
+
+  if (!hasTableBranch && !hasRoleBranch) return null
 
   return barber
 }
