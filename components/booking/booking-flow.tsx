@@ -306,30 +306,36 @@ export default function BookingFlow({
                   {/* Barbers — compact row */}
                   <div>
                     <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-slate-400">Barbero</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {barbers.map(barber => (
-                        <button
-                          key={barber.id}
-                          onClick={() => { setBarber(barber); setTime('') }}
-                          className={`flex items-center gap-3 rounded-[20px] border p-3.5 text-left transition active:scale-[0.98] ${
-                            selectedBarber?.id === barber.id
-                              ? 'border-slate-950 bg-slate-950 text-white'
-                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
-                            selectedBarber?.id === barber.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {barber.name[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <p className={`text-sm font-semibold ${selectedBarber?.id === barber.id ? 'text-white' : 'text-slate-950'}`}>
-                              {barber.name}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                    {barbers.length === 0 ? (
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                        No hay barberos disponibles en esta sucursal por ahora.
+                      </div>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {barbers.map(barber => (
+                          <button
+                            key={barber.id}
+                            onClick={() => { setBarber(barber); setTime('') }}
+                            className={`flex items-center gap-3 rounded-[20px] border p-3.5 text-left transition active:scale-[0.98] ${
+                              selectedBarber?.id === barber.id
+                                ? 'border-slate-950 bg-slate-950 text-white'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+                              selectedBarber?.id === barber.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {barber.name[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold ${selectedBarber?.id === barber.id ? 'text-white' : 'text-slate-950'}`}>
+                                {barber.name}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Dates — horizontal scroll chips */}

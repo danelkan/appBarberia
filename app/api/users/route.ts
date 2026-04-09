@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { BarberEmailConflictError, createOrReuseBarberForUser } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import {
+  type AuthRoleContext,
   forbiddenResponse,
   requireAdminAuth,
   requirePermission,
@@ -23,6 +24,56 @@ const DEFAULT_AVAILABILITY: WeeklyAvailability = {
 function sanitizeBranchIds(value: unknown) {
   if (!Array.isArray(value)) return []
   return Array.from(new Set(value.filter((item): item is string => typeof item === 'string')))
+}
+
+function isSuperadminIdentity(user: { id: string; email?: string | null }, role?: AppRole | null) {
+  if (role === 'superadmin') return true
+  if (process.env.SUPERADMIN_UUID && user.id === process.env.SUPERADMIN_UUID) return true
+  return Boolean(process.env.ADMIN_EMAIL && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase())
+}
+
+async function getCompanyScope(supabase: ReturnType<typeof createSupabaseAdmin>, auth: AuthRoleContext) {
+  if (auth.role === 'superadmin') return null
+
+  let companyId = auth.company_id ?? null
+
+  if (!companyId && auth.branch_ids.length > 0) {
+    const { data: branch } = await supabase
+      .from('branches')
+      .select('company_id')
+      .eq('id', auth.branch_ids[0])
+      .maybeSingle()
+
+    companyId = (branch?.company_id as string | null) ?? null
+  }
+
+  if (!companyId && auth.branch_ids.length === 0) {
+    const { data: companies } = await supabase
+      .from('companies')
+      .select('id')
+      .eq('active', true)
+
+    if ((companies ?? []).length === 1) {
+      companyId = companies![0].id as string
+    }
+  }
+
+  if (!companyId) {
+    return {
+      companyId: null,
+      branchIds: new Set(auth.branch_ids),
+    }
+  }
+
+  const { data: branches } = await supabase
+    .from('branches')
+    .select('id')
+    .eq('company_id', companyId)
+
+  return {
+    companyId,
+    branchIds: new Set((branches ?? []).map((branch: any) => branch.id as string)),
+  }
 }
 
 function buildUserRolePayload(input: {
@@ -53,6 +104,11 @@ async function syncBarberBranches(supabase: ReturnType<typeof createSupabaseAdmi
   }
 }
 
+function sanitizeBranchIdsForScope(branchIds: string[], scope: Awaited<ReturnType<typeof getCompanyScope>>) {
+  if (!scope) return branchIds
+  return branchIds.filter(branchId => scope.branchIds.has(branchId))
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
@@ -61,16 +117,19 @@ export async function GET(req: NextRequest) {
   if (denied) return denied
 
   const supabase = createSupabaseAdmin()
+  const scope = await getCompanyScope(supabase, auth)
   const [
     { data: authUsersData, error: authError },
     { data: roleRows },
     { data: barbers },
     { data: branches },
+    { data: branchLinks },
   ] = await Promise.all([
     supabase.auth.admin.listUsers(),
     supabase.from('user_roles').select('*'),
     supabase.from('barbers').select('id, name, email, availability'),
     supabase.from('branches').select('id, name'),
+    supabase.from('barber_branches').select('barber_id, branch_id'),
   ])
 
   if (authError) {
@@ -81,26 +140,46 @@ export async function GET(req: NextRequest) {
   const roleMap   = new Map((roleRows ?? []).map((row: any) => [row.user_id, row]))
   const barberMap = new Map((barbers ?? []).map((b: any) => [b.id, b]))
   const branchMap = new Map((branches ?? []).map((b: any) => [b.id, b]))
+  const barberBranchIds = new Map<string, string[]>()
+  for (const link of branchLinks ?? []) {
+    if (!link.barber_id || !link.branch_id) continue
+    barberBranchIds.set(link.barber_id, [...(barberBranchIds.get(link.barber_id) ?? []), link.branch_id])
+  }
 
-  const users = authUsers.map((user: any) => {
+  const users = authUsers.flatMap((user: any) => {
     const roleRow    = roleMap.get(user.id)
     const role       = (roleRow?.role ?? 'barber') as AppRole
     const branch_ids = sanitizeBranchIds(roleRow?.branch_ids)
     const permissions = getRolePermissions(role, Array.isArray(roleRow?.permissions) ? roleRow.permissions : [])
+    const barber_id = roleRow?.barber_id ?? null
+    const userCompanyId = (roleRow?.company_id as string | null) ?? null
 
-    return {
+    if (auth.role !== 'superadmin') {
+      if (isSuperadminIdentity(user, role)) return []
+
+      const scopedByCompany = scope?.companyId && userCompanyId === scope.companyId
+      const scopedByBranches = branch_ids.some(branchId => scope?.branchIds.has(branchId))
+      const scopedByBarberBranches = barber_id
+        ? (barberBranchIds.get(barber_id) ?? []).some(branchId => scope?.branchIds.has(branchId))
+        : false
+
+      if (!scopedByCompany && !scopedByBranches && !scopedByBarberBranches) return []
+    }
+
+    return [{
       id:         user.id,
       email:      user.email,
       name:       user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
       role,
-      barber_id:  roleRow?.barber_id ?? null,
+      barber_id,
+      company_id: userCompanyId,
       branch_ids,
       permissions,
       active:     roleRow?.active ?? true,
       created_at: user.created_at,
-      barber:     roleRow?.barber_id ? barberMap.get(roleRow.barber_id) ?? null : null,
+      barber:     barber_id ? barberMap.get(barber_id) ?? null : null,
       branches:   branch_ids.map((id: string) => branchMap.get(id)).filter(Boolean),
-    }
+    }]
   })
 
   return NextResponse.json({ users })
@@ -127,11 +206,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nombre, email y contraseña son requeridos' }, { status: 400 })
   }
 
-  if (role === 'superadmin' && auth.role !== 'superadmin') {
-    return forbiddenResponse('Solo el superadmin puede crear otro superadmin')
+  if (auth.role !== 'superadmin' && role === 'superadmin') {
+    return forbiddenResponse('No podés crear usuarios superadmin')
   }
 
   const supabase = createSupabaseAdmin()
+  const scope = await getCompanyScope(supabase, auth)
+  const scopedBranchIds = sanitizeBranchIdsForScope(branch_ids, scope)
+  const company_id = auth.role === 'superadmin'
+    ? (typeof body.company_id === 'string' ? body.company_id : null)
+    : scope?.companyId ?? null
+
+  if (is_barber && scopedBranchIds.length === 0) {
+    return NextResponse.json({ error: 'Seleccioná al menos una sucursal para mostrar el barbero en reservas' }, { status: 400 })
+  }
+
   const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
     email,
     password,
@@ -148,7 +237,7 @@ export async function POST(req: NextRequest) {
   // Create user_roles row (barber_id set later if needed)
   const { error: upsertError } = await supabase
     .from('user_roles')
-    .upsert({ user_id: userId, ...buildUserRolePayload({ role, permissions, active: true, branch_ids }) }, { onConflict: 'user_id' })
+    .upsert({ user_id: userId, company_id, ...buildUserRolePayload({ role, permissions, active: true, branch_ids: scopedBranchIds }) }, { onConflict: 'user_id' })
 
   if (upsertError) {
     await supabase.auth.admin.deleteUser(userId)
@@ -182,7 +271,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await syncBarberBranches(supabase, barber.id, branch_ids)
+      await syncBarberBranches(supabase, barber.id, scopedBranchIds)
     } catch (error) {
       if (!reusedBarber) await supabase.from('barbers').delete().eq('id', barber.id)
       await supabase.from('user_roles').delete().eq('user_id', userId)
@@ -191,7 +280,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ user: { id: userId, email, name, role, branch_ids } }, { status: 201 })
+  return NextResponse.json({ user: { id: userId, email, name, role, branch_ids: scopedBranchIds, company_id } }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -216,8 +305,8 @@ export async function PATCH(req: NextRequest) {
   const is_barber   = typeof body.is_barber === 'boolean' ? body.is_barber : undefined
   const availability = body.availability as WeeklyAvailability | undefined
 
-  if (role === 'superadmin' && auth.role !== 'superadmin') {
-    return forbiddenResponse('Solo el superadmin puede asignar el rol superadmin')
+  if (auth.role !== 'superadmin' && role === 'superadmin') {
+    return forbiddenResponse('No podés asignar el rol superadmin')
   }
 
   if (user_id === auth.session.user.id && active === false) {
@@ -225,9 +314,30 @@ export async function PATCH(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
+  const scope = await getCompanyScope(supabase, auth)
+
+  if (auth.role !== 'superadmin') {
+    const { data: targetRole } = await supabase
+      .from('user_roles')
+      .select('role, company_id, branch_ids, barber_id')
+      .eq('user_id', user_id)
+      .maybeSingle()
+
+    if (targetRole?.role === 'superadmin') {
+      return forbiddenResponse('No podés modificar al superadmin')
+    }
+
+    const targetBranchIds = sanitizeBranchIds(targetRole?.branch_ids)
+    const inCompany = scope?.companyId && targetRole?.company_id === scope.companyId
+    const inBranches = targetBranchIds.some(branchId => scope?.branchIds.has(branchId))
+    if (!inCompany && !inBranches) {
+      return forbiddenResponse('No podés modificar usuarios fuera de tu empresa')
+    }
+  }
 
   // Update user_roles (role, permissions, active, branches — NOT barber_id, handled below)
-  const payload = buildUserRolePayload({ role, permissions, active, branch_ids })
+  const scopedBranchIds = branch_ids ? sanitizeBranchIdsForScope(branch_ids, scope) : undefined
+  const payload = buildUserRolePayload({ role, permissions, active, branch_ids: scopedBranchIds })
   if (Object.keys(payload).length > 0) {
     const { error } = await supabase
       .from('user_roles')
@@ -276,7 +386,7 @@ export async function PATCH(req: NextRequest) {
         )
         const { error: linkError } = await supabase.from('user_roles').update({ barber_id: barber.id }).eq('user_id', user_id)
         if (linkError) return NextResponse.json({ error: linkError.message }, { status: 500 })
-        if (branch_ids) await syncBarberBranches(supabase, barber.id, branch_ids)
+        if (scopedBranchIds) await syncBarberBranches(supabase, barber.id, scopedBranchIds)
       } catch (error) {
         return NextResponse.json(
           { error: error instanceof Error ? error.message : 'Error al crear barbero' },
@@ -291,13 +401,13 @@ export async function PATCH(req: NextRequest) {
       if (Object.keys(updates).length > 0) {
         await supabase.from('barbers').update(updates).eq('id', currentBarberId)
       }
-      if (branch_ids) await syncBarberBranches(supabase, currentBarberId, branch_ids)
+      if (scopedBranchIds) await syncBarberBranches(supabase, currentBarberId, scopedBranchIds)
     } else if (!is_barber && currentBarberId) {
       // Unlink barber from user (keep barber record for appointment history)
       await supabase.from('barber_branches').delete().eq('barber_id', currentBarberId)
       await supabase.from('user_roles').update({ barber_id: null }).eq('user_id', user_id)
     }
-  } else if (branch_ids !== undefined) {
+  } else if (scopedBranchIds !== undefined) {
     // Branch sync for existing barbers even when is_barber not explicitly sent
     const { data: roleRow } = await supabase
       .from('user_roles')
@@ -306,7 +416,7 @@ export async function PATCH(req: NextRequest) {
       .single()
 
     if (roleRow?.barber_id) {
-      await syncBarberBranches(supabase, roleRow.barber_id, branch_ids)
+      await syncBarberBranches(supabase, roleRow.barber_id, scopedBranchIds)
     }
   }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { forbiddenResponse, requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
@@ -16,6 +16,27 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   const supabase = createSupabaseAdmin()
+
+  const { data: existingBranch, error: existingError } = await supabase
+    .from('branches')
+    .select('company_id')
+    .eq('id', params.id)
+    .maybeSingle()
+
+  if (existingError || !existingBranch) {
+    return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
+  }
+
+  if (auth.role !== 'superadmin') {
+    const allowedCompanyId = auth.company_id ?? null
+    const allowedByCompany = allowedCompanyId && existingBranch.company_id === allowedCompanyId
+    const allowedByBranch = auth.branch_ids.includes(params.id)
+
+    if (!allowedByCompany && !allowedByBranch) {
+      return forbiddenResponse('No podés editar sucursales fuera de tu empresa')
+    }
+  }
+
   const { data, error } = await supabase
     .from('branches')
     .update({
@@ -23,7 +44,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       address: address?.trim() || null,
       phone: phone?.trim() || null,
       active: Boolean(active),
-      company_id: company_id ?? null,
+      company_id: auth.role === 'superadmin' ? company_id ?? null : existingBranch.company_id ?? auth.company_id ?? null,
     })
     .eq('id', params.id)
     .select('*')

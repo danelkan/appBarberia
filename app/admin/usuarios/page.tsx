@@ -184,6 +184,9 @@ export default function UsuariosPage() {
   }
 
   const showPermissions = form.role === 'barber'
+  const roleOptions = (me?.role === 'superadmin'
+    ? ['barber', 'admin', 'superadmin']
+    : ['barber', 'admin']) as AppRole[]
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
@@ -327,7 +330,7 @@ export default function UsuariosPage() {
           <div>
             <label className="label">Rol</label>
             <div className="grid grid-cols-3 gap-2">
-              {(['barber', 'admin', 'superadmin'] as AppRole[]).map(role => (
+              {roleOptions.map(role => (
                 <button
                   key={role}
                   type="button"
