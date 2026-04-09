@@ -56,7 +56,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const isDuplicateEmail = error.code === '23505'
+    return NextResponse.json(
+      { error: isDuplicateEmail ? 'Ese email ya está asociado a otro barbero' : error.message },
+      { status: isDuplicateEmail ? 409 : 500 }
+    )
   }
 
   if (branch_ids) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { BarberEmailConflictError, createOrReuseBarberForUser } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import {
   forbiddenResponse,
@@ -154,32 +155,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: upsertError.message }, { status: 500 })
   }
 
-  // If marked as barber, create barber record and link it
+  // If marked as barber, create or relink a barber record for this auth user.
   if (is_barber) {
-    const { data: newBarber, error: barberError } = await supabase
-      .from('barbers')
-      .insert({ name, email, availability })
-      .select('id')
-      .single()
+    let barber
+    let reusedBarber = false
 
-    if (barberError || !newBarber) {
+    try {
+      const result = await createOrReuseBarberForUser(supabase, { name, email, availability }, userId)
+      barber = result.barber
+      reusedBarber = result.reused
+    } catch (error) {
       await supabase.from('user_roles').delete().eq('user_id', userId)
       await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json({ error: barberError?.message ?? 'Error al crear barbero' }, { status: 500 })
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Error al crear barbero' },
+        { status: error instanceof BarberEmailConflictError ? 409 : 500 }
+      )
     }
 
-    const { error: linkError } = await supabase.from('user_roles').update({ barber_id: newBarber.id }).eq('user_id', userId)
+    const { error: linkError } = await supabase.from('user_roles').update({ barber_id: barber.id }).eq('user_id', userId)
     if (linkError) {
-      await supabase.from('barbers').delete().eq('id', newBarber.id)
+      if (!reusedBarber) await supabase.from('barbers').delete().eq('id', barber.id)
       await supabase.from('user_roles').delete().eq('user_id', userId)
       await supabase.auth.admin.deleteUser(userId)
       return NextResponse.json({ error: linkError.message }, { status: 500 })
     }
 
     try {
-      await syncBarberBranches(supabase, newBarber.id, branch_ids)
+      await syncBarberBranches(supabase, barber.id, branch_ids)
     } catch (error) {
-      await supabase.from('barbers').delete().eq('id', newBarber.id)
+      if (!reusedBarber) await supabase.from('barbers').delete().eq('id', barber.id)
       await supabase.from('user_roles').delete().eq('user_id', userId)
       await supabase.auth.admin.deleteUser(userId)
       return NextResponse.json({ error: error instanceof Error ? error.message : 'Error asignando sucursales' }, { status: 500 })
@@ -254,20 +259,29 @@ export async function PATCH(req: NextRequest) {
     const currentBarberId = roleRow?.barber_id as string | null
 
     if (is_barber && !currentBarberId) {
-      // Create barber record for this user
+      // Create or relink a barber record for this user
       const { data: authUser } = await supabase.auth.admin.getUserById(user_id)
       const barberName  = authUser?.user?.user_metadata?.full_name ?? authUser?.user?.email ?? name ?? ''
       const barberEmail = authUser?.user?.email ?? ''
 
-      const { data: newBarber, error: barberError } = await supabase
-        .from('barbers')
-        .insert({ name: barberName, email: barberEmail, availability: availability ?? DEFAULT_AVAILABILITY })
-        .select('id')
-        .single()
+      if (!barberEmail) {
+        return NextResponse.json({ error: 'El usuario no tiene email para crear perfil de barbero' }, { status: 400 })
+      }
 
-      if (!barberError && newBarber) {
-        await supabase.from('user_roles').update({ barber_id: newBarber.id }).eq('user_id', user_id)
-        if (branch_ids) await syncBarberBranches(supabase, newBarber.id, branch_ids)
+      try {
+        const { barber } = await createOrReuseBarberForUser(
+          supabase,
+          { name: barberName, email: barberEmail, availability: availability ?? DEFAULT_AVAILABILITY },
+          user_id
+        )
+        const { error: linkError } = await supabase.from('user_roles').update({ barber_id: barber.id }).eq('user_id', user_id)
+        if (linkError) return NextResponse.json({ error: linkError.message }, { status: 500 })
+        if (branch_ids) await syncBarberBranches(supabase, barber.id, branch_ids)
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : 'Error al crear barbero' },
+          { status: error instanceof BarberEmailConflictError ? 409 : 500 }
+        )
       }
     } else if (is_barber && currentBarberId) {
       // Update existing barber record
