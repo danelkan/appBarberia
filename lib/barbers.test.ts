@@ -81,4 +81,19 @@ describe('getVisibleBarberIds', () => {
 
     expect(Array.from(visible)).toEqual(['felito-barber'])
   })
+
+  it('supports legacy barber users that were linked before branch_ids existed on user_roles', () => {
+    const visible = getVisibleBarberIds({
+      authUsers: [{ id: 'legacy-user', email: 'legacy@felito.test' }],
+      userRoles: [
+        { user_id: 'legacy-user', barber_id: 'legacy-barber', active: true, branch_ids: [] },
+      ],
+      branchLinks: [
+        { barber_id: 'legacy-barber', branch_id: 'branch-a' },
+      ],
+      branchId: 'branch-a',
+    })
+
+    expect(Array.from(visible)).toEqual(['legacy-barber'])
+  })
 })

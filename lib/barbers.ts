@@ -78,12 +78,15 @@ export function getVisibleBarberIds(input: {
 
       const userBranchIds = sanitizeBranchIds(role.branch_ids)
       const agendaBranchIds = agendaBranchIdsByBarberId.get(role.barber_id) ?? new Set<string>()
+      const effectiveBranchIds = userBranchIds.length > 0
+        ? userBranchIds
+        : Array.from(agendaBranchIds)
 
       if (input.branchId) {
-        return userBranchIds.includes(input.branchId) && agendaBranchIds.has(input.branchId)
+        return effectiveBranchIds.includes(input.branchId) && agendaBranchIds.has(input.branchId)
       }
 
-      return userBranchIds.some(branchId => agendaBranchIds.has(branchId))
+      return effectiveBranchIds.some(branchId => agendaBranchIds.has(branchId))
     })
     .map(role => role.barber_id as string)
 
