@@ -41,7 +41,7 @@ function StepDot({ n, current }: { n: number; current: number }) {
         {done ? '✓' : n}
       </div>
       {n < 3 && (
-        <div className={`mx-2 h-0.5 w-8 transition-all ${done ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+        <div className={`mx-2 h-0.5 w-8 flex-shrink-0 transition-all ${done ? 'bg-emerald-400' : 'bg-slate-200'}`} />
       )}
     </div>
   )
@@ -224,11 +224,11 @@ export default function BookingFlow({
             <span className="hidden sm:inline">Volver</span>
           </Link>
 
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-950 text-white">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
               <Scissors className="h-3.5 w-3.5" />
             </div>
-            <span className="text-sm font-semibold text-slate-950">{branch.name}</span>
+            <span className="truncate text-sm font-semibold text-slate-950">{branch.name}</span>
           </div>
 
           {/* Step indicator */}
@@ -244,7 +244,10 @@ export default function BookingFlow({
           <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-6">
 
             {/* ── Step content ───────────────────────────────── */}
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:rounded-[32px]">
+            {/* min-w-0 is critical: without it, a grid/flex child expands to fit
+                its content instead of clipping — causes page-level horizontal scroll
+                when the dates overflow-x-auto container is inside */}
+            <div className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:rounded-[32px]">
 
               {/* Step 1 — Service */}
               {step === 1 && (
@@ -254,7 +257,7 @@ export default function BookingFlow({
                     <h2 className="mt-1.5 text-xl font-semibold text-slate-950 sm:text-2xl">Elegí el servicio</h2>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
                     {services.map(service => (
                       <button
                         key={service.id}
@@ -327,6 +330,9 @@ export default function BookingFlow({
                   {selectedBarber && (
                     <div ref={datesRef}>
                       <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-slate-400">Fecha</p>
+                      {/* relative + after = fade hint on the right indicating more dates to scroll */}
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-white to-transparent" />
                       <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         {availableDates.slice(0, 21).map(date => {
                           const d = new Date(`${date}T00:00:00`)
@@ -350,6 +356,7 @@ export default function BookingFlow({
                           )
                         })}
                       </div>
+                      </div>{/* end scroll wrapper */}
                     </div>
                   )}
 
@@ -366,7 +373,7 @@ export default function BookingFlow({
                           No hay horarios disponibles para esta fecha.
                         </div>
                       ) : (
-                        <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
                           {slots.filter(s => s.available).map(slot => (
                             <button
                               key={slot.time}
