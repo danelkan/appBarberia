@@ -334,7 +334,7 @@ export default function UsuariosPage() {
                 <button
                   key={role}
                   type="button"
-                  onClick={() => setForm(f => ({ ...f, role }))}
+                  onClick={() => setForm(f => ({ ...f, role, is_barber: role === 'barber' }))}
                   className={cn(
                     'rounded-2xl border px-3 py-3 text-left transition',
                     form.role === role

@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
   const role        = (body.role ?? 'barber') as AppRole
   const permissions = Array.isArray(body.permissions) ? body.permissions as Permission[] : []
   const branch_ids  = sanitizeBranchIds(body.branch_ids)
-  const is_barber   = body.is_barber === true
+  const is_barber   = role === 'barber' && body.is_barber === true
   const availability = (body.availability as WeeklyAvailability | undefined) ?? DEFAULT_AVAILABILITY
 
   if (!name || !email || !password) {
@@ -302,7 +302,9 @@ export async function PATCH(req: NextRequest) {
   const active      = typeof body.active === 'boolean' ? body.active : undefined
   const name        = typeof body.name === 'string' ? body.name.trim() : undefined
   const branch_ids  = body.branch_ids !== undefined ? sanitizeBranchIds(body.branch_ids) : undefined
-  const is_barber   = typeof body.is_barber === 'boolean' ? body.is_barber : undefined
+  const is_barber   = typeof body.is_barber === 'boolean'
+    ? (role && role !== 'barber' ? false : body.is_barber)
+    : undefined
   const availability = body.availability as WeeklyAvailability | undefined
 
   if (auth.role !== 'superadmin' && role === 'superadmin') {
