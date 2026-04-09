@@ -9,6 +9,7 @@ import {
   Calendar,
   ChevronDown,
   Clock3,
+  Crown,
   DollarSign,
   LayoutDashboard,
   LogOut,
@@ -61,6 +62,7 @@ const NAV_ITEMS = [
   { href: '/admin/servicios',  label: 'Servicios',  icon: Clock3,      permission: 'manage_services' as Permission },
   { href: '/admin/sucursales', label: 'Sucursales', icon: Store,       permission: 'manage_branches' as Permission },
   { href: '/admin/usuarios',   label: 'Usuarios',   icon: UserSquare2, permission: 'manage_users'    as Permission },
+  { href: '/admin/master',     label: 'Panel Maestro', icon: Crown,    superadminOnly: true },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -164,7 +166,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [can, pathname, router, user])
 
-  const visibleNav = NAV_ITEMS.filter(item => !item.permission || can(item.permission))
+  const visibleNav = NAV_ITEMS.filter(item => {
+    if ((item as any).superadminOnly) return user?.role === 'superadmin'
+    return !item.permission || can(item.permission)
+  })
 
   async function handleLogout() {
     await supabase.auth.signOut()

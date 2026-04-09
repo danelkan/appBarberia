@@ -50,6 +50,43 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ company: data })
 }
 
+// PATCH: master-admin-only plan update
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireAdminAuth(req)
+  if (!auth) return unauthorizedResponse()
+
+  // Only superadmin can change plan/limits — this is the master-admin gate
+  if (auth.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Solo el superadmin puede cambiar el plan' }, { status: 403 })
+  }
+
+  const body = await req.json()
+  const { plan_tier, max_branches, max_barbers, whatsapp_enabled, billing_email } = body
+
+  const validTiers = ['starter', 'pro', 'enterprise']
+  if (plan_tier && !validTiers.includes(plan_tier)) {
+    return NextResponse.json({ error: 'Plan inválido' }, { status: 400 })
+  }
+
+  const update: Record<string, unknown> = {}
+  if (plan_tier        !== undefined) update.plan_tier        = plan_tier
+  if (max_branches     !== undefined) update.max_branches     = Number(max_branches)
+  if (max_barbers      !== undefined) update.max_barbers      = Number(max_barbers)
+  if (whatsapp_enabled !== undefined) update.whatsapp_enabled = Boolean(whatsapp_enabled)
+  if (billing_email    !== undefined) update.billing_email    = billing_email?.trim() || null
+
+  const supabase = createSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('companies')
+    .update(update)
+    .eq('id', params.id)
+    .select('*')
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ company: data })
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()

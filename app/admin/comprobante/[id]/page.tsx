@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Scissors, Printer, ArrowLeft, CheckCircle, MapPin, Clock } from 'lucide-react'
+import { Scissors, Printer, ArrowLeft, CheckCircle, MapPin, Clock, Share2, Download } from 'lucide-react'
 import { formatPrice } from '@/lib/utils'
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ICONS, type Payment, type PaymentMethod } from '@/types'
 import { Spinner } from '@/components/ui'
@@ -28,6 +28,7 @@ export default function ComprobantePage() {
   const [payment, setPayment] = useState<FullPayment | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     fetch(`/api/payments/${id}`)
@@ -35,6 +36,39 @@ export default function ComprobantePage() {
       .then(d => { setPayment(d.payment); setLoading(false) })
       .catch(() => { setError('No se pudo cargar el comprobante'); setLoading(false) })
   }, [id])
+
+  async function handleShare() {
+    if (!payment) return
+    const appt = payment.appointment
+    const shareData = {
+      title: `Comprobante Felito · ${payment.receipt_number}`,
+      text: `Pago de ${formatPrice(payment.amount)} por ${appt.service.name} — ${appt.client.first_name} ${appt.client.last_name}`,
+      url: window.location.href,
+    }
+
+    if (navigator.share && navigator.canShare?.(shareData)) {
+      try {
+        setSharing(true)
+        await navigator.share(shareData)
+      } catch {
+        // User cancelled or not supported
+      } finally {
+        setSharing(false)
+      }
+    } else {
+      // Fallback: copy URL to clipboard
+      try {
+        await navigator.clipboard.writeText(window.location.href)
+        alert('Enlace copiado al portapapeles')
+      } catch {
+        alert(window.location.href)
+      }
+    }
+  }
+
+  function handleDownload() {
+    window.print()
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-page flex items-center justify-center">
@@ -64,19 +98,43 @@ export default function ComprobantePage() {
     <div className="min-h-screen bg-page py-8 px-4 print:bg-white print:p-0 print:py-0">
 
       {/* Actions — hidden when printing */}
-      <div className="print:hidden max-w-md mx-auto mb-5 flex items-center justify-between">
+      <div className="print:hidden max-w-md mx-auto mb-5 flex items-center justify-between gap-2">
         <button
           onClick={() => router.back()}
           className="flex items-center gap-1.5 text-sm text-cream/45 hover:text-cream transition-colors font-medium"
         >
           <ArrowLeft className="w-4 h-4" /> Volver
         </button>
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-white shadow-card text-cream/70 text-sm hover:text-cream hover:shadow-card-hover transition-all font-semibold"
-        >
-          <Printer className="w-4 h-4" /> Imprimir
-        </button>
+
+        <div className="flex items-center gap-2">
+          {/* Share button — Web Share API with clipboard fallback */}
+          <button
+            onClick={handleShare}
+            disabled={sharing}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-white shadow-card text-cream/70 text-sm hover:text-cream hover:shadow-card-hover transition-all font-semibold disabled:opacity-60"
+          >
+            <Share2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Compartir</span>
+          </button>
+
+          {/* Download / print-to-PDF */}
+          <button
+            onClick={handleDownload}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-white shadow-card text-cream/70 text-sm hover:text-cream hover:shadow-card-hover transition-all font-semibold"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Descargar</span>
+          </button>
+
+          {/* Print */}
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-white shadow-card text-cream/70 text-sm hover:text-cream hover:shadow-card-hover transition-all font-semibold"
+          >
+            <Printer className="w-4 h-4" />
+            <span className="hidden sm:inline">Imprimir</span>
+          </button>
+        </div>
       </div>
 
       {/* Receipt card */}

@@ -88,7 +88,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AppRole, Permission[]> = {
     'edit_appointments',
     'create_appointments',
   ],
-  barber: ['view_clients', 'cancel_appointments'],
+  barber: ['cash.view', 'cash.add_movement', 'view_clients', 'cancel_appointments'],
 }
 
 export interface Company {
@@ -333,4 +333,28 @@ export const CASH_MOVEMENT_PAYMENT_LABELS: Record<CashMovementPaymentMethod, str
   card: 'Tarjeta',
   transfer: 'Transferencia',
   other: 'Otro',
+}
+
+// ─── Master Admin / Multi-tenant Plan Architecture ────────────────
+export type PlanTier = 'starter' | 'pro' | 'enterprise'
+
+export interface PlanLimits {
+  max_branches: number
+  max_barbers: number
+  whatsapp_enabled: boolean
+  custom_domain: boolean
+  analytics_enabled: boolean
+  priority_support: boolean
+}
+
+export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
+  starter:    { max_branches: 1,  max_barbers: 3,  whatsapp_enabled: false, custom_domain: false, analytics_enabled: false, priority_support: false },
+  pro:        { max_branches: 3,  max_barbers: 10, whatsapp_enabled: true,  custom_domain: true,  analytics_enabled: true,  priority_support: false },
+  enterprise: { max_branches: 99, max_barbers: 99, whatsapp_enabled: true,  custom_domain: true,  analytics_enabled: true,  priority_support: true  },
+}
+
+export const PLAN_LABELS: Record<PlanTier, string> = {
+  starter:    'Starter (1 sucursal)',
+  pro:        'Pro (hasta 3 sucursales)',
+  enterprise: 'Enterprise (ilimitado)',
 }

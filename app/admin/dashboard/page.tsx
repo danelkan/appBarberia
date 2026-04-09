@@ -53,7 +53,10 @@ export default function DashboardPage() {
         fetch(`/api/appointments?from=${todayStr}&to=${todayStr}${barberParam}${branchParam ? '&' + branchParam : ''}`),
       ])
 
-      const [summaryData, apptData] = await Promise.all([summaryRes.json(), apptRes.json()])
+      const [summaryData, apptData] = await Promise.all([
+        summaryRes.ok ? summaryRes.json() : Promise.resolve({ summary: null }),
+        apptRes.json(),
+      ])
       if (!mounted) return
 
       const appts: any[] = apptData.appointments ?? []

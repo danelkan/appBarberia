@@ -21,6 +21,9 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Enables "Add to Home Screen" on Android Chrome (standard) and iOS Safari
+  // mobile-web-app-capable covers both; apple-mobile-web-app-capable is the legacy iOS form
+  viewportFit: 'cover',
 }
 
 export const metadata: Metadata = {
@@ -49,6 +52,10 @@ export const metadata: Metadata = {
     capable:         true,
     title:           'Felito',
     statusBarStyle:  'default',
+  },
+  other: {
+    // Standard W3C meta tag for PWA "add to home screen" — covers Chrome Android + others
+    'mobile-web-app-capable': 'yes',
   },
   robots: { index: true, follow: true },
   formatDetection: { telephone: false },

@@ -10,9 +10,15 @@ export async function GET(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
   const { searchParams } = new URL(req.url)
-  const withBranches = searchParams.get('branches') === '1'
+  const withBranches   = searchParams.get('branches')      === '1'
+  const includeStats   = searchParams.get('include_stats') === '1'
 
-  const selectQuery = withBranches
+  // include_stats adds branch/barber counts — superadmin only (master panel)
+  if (includeStats && auth.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Solo el superadmin puede ver estadísticas globales' }, { status: 403 })
+  }
+
+  const selectQuery = (withBranches || includeStats)
     ? '*, branches(id, name, address, active)'
     : '*'
 
@@ -22,7 +28,36 @@ export async function GET(req: NextRequest) {
     .order('name')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ companies: data ?? [] })
+
+  let companies = data ?? []
+
+  if (includeStats) {
+    // Count active branches and barbers per company
+    const [{ data: barberRows }] = await Promise.all([
+      supabase
+        .from('barber_branches')
+        .select('barber_id, branch_id, branch:branches(company_id)')
+    ])
+
+    companies = companies.map((c: any) => {
+      const activeBranches = (c.branches ?? []).filter((b: any) => b.active)
+      const barberCount = (barberRows ?? []).filter(
+        (bb: any) => bb.branch?.company_id === c.id
+      ).length
+
+      return {
+        ...c,
+        plan_tier: c.plan_tier ?? 'starter',
+        max_branches: c.max_branches ?? 1,
+        max_barbers: c.max_barbers ?? 3,
+        whatsapp_enabled: c.whatsapp_enabled ?? false,
+        branch_count: activeBranches.length,
+        barber_count: barberCount,
+      }
+    })
+  }
+
+  return NextResponse.json({ companies })
 }
 
 export async function POST(req: NextRequest) {

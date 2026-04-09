@@ -1,11 +1,12 @@
 import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 import { format, parse, addMinutes, isAfter, isBefore, startOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { Appointment, WeeklyAvailability, TimeSlot } from '@/types'
 
 // ─── Class merging ────────────────────────────────────────────────
 export function cn(...inputs: ClassValue[]) {
-  return clsx(inputs)
+  return twMerge(clsx(inputs))
 }
 
 // ─── Date formatting ──────────────────────────────────────────────
@@ -67,8 +68,8 @@ export function generateTimeSlots(
     const timeStr = format(current, 'HH:mm')
     const slotDateTime = parse(timeStr, 'HH:mm', d)
 
-    // Skip past times for today
-    const isPast = isToday && isBefore(slotDateTime, addMinutes(now, 15))
+    // Skip past times for today — allow booking up to 5 min before slot
+    const isPast = isToday && isBefore(slotDateTime, addMinutes(now, 5))
 
     // Check overlap with existing appointments
     const hasOverlap = existingAppointments
