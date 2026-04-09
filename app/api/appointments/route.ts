@@ -3,7 +3,7 @@ import { getVisibleBarberById } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { calcEndTime } from '@/lib/utils'
 import { sendBookingEmails } from '@/lib/emails'
-import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { applyAuthCookies, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   const queryResult = appointmentQuerySchema.safeParse(queryParams)
   if (!queryResult.success) {
-    return NextResponse.json({ error: queryResult.error.flatten() }, { status: 400 })
+    return applyAuthCookies(NextResponse.json({ error: queryResult.error.flatten() }, { status: 400 }), auth)
   }
 
   const { from, to } = queryResult.data
@@ -54,12 +54,14 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    return applyAuthCookies(NextResponse.json({ error: error.message }, { status: 500 }), auth)
+  }
 
   const response = NextResponse.json({ appointments: data ?? [] })
   const headers = getRateLimitHeaders(rateLimit)
   Object.entries(headers).forEach(([k, v]) => response.headers.set(k, v))
-  return response
+  return applyAuthCookies(response, auth)
 }
 
 export async function POST(req: NextRequest) {

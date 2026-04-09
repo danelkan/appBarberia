@@ -12,12 +12,17 @@ export function createSupabaseServerClient() {
     config.anonKey,
     {
       cookies: {
-        get(name: string) { return cookieStore.get(name)?.value },
-        set(name: string, value: string, options: any) {
-          try { cookieStore.set({ name, value, ...options }) } catch {}
+        getAll() {
+          return cookieStore.getAll()
         },
-        remove(name: string, options: any) {
-          try { cookieStore.set({ name, value: '', ...options }) } catch {}
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            try {
+              cookieStore.set(name, value, options)
+            } catch {
+              // Server Components cannot always write cookies; middleware/API routes handle refreshes.
+            }
+          })
         },
       },
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
+import { applyAuthCookies } from '@/lib/api-auth'
 import { weeklyAvailabilitySchema } from '@/lib/validations'
 
 async function getSession(req: NextRequest) {
@@ -11,25 +12,29 @@ async function getSession(req: NextRequest) {
     config.anonKey,
     {
       cookies: {
-        get(name: string) { return req.cookies.get(name)?.value },
-        set(name: string, value: string, options: CookieOptions) {
-          req.cookies.set({ name, value, ...options })
-          response = NextResponse.next({ request: req })
-          response.cookies.set({ name, value, ...options })
+        getAll() {
+          return req.cookies.getAll()
         },
-        remove(name: string, options: CookieOptions) {
-          req.cookies.set({ name, value: '', ...options })
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            req.cookies.set(name, value)
+          })
           response = NextResponse.next({ request: req })
-          response.cookies.set({ name, value: '', ...options })
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
         },
       },
     }
   )
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
+  const { data: { user }, error } = await supabase.auth.getUser()
+  return { session: error || !user ? null : { user }, response }
 }
 
-async function findBarber(admin: ReturnType<typeof createSupabaseAdmin>, session: NonNullable<Awaited<ReturnType<typeof getSession>>>) {
+type SessionContext = NonNullable<Awaited<ReturnType<typeof getSession>>>
+type Session = NonNullable<SessionContext['session']>
+
+async function findBarber(admin: ReturnType<typeof createSupabaseAdmin>, session: Session) {
   // Try by user_roles.barber_id first (supports superadmin-as-barber)
   const { data: userRole } = await admin
     .from('user_roles')
@@ -49,37 +54,41 @@ async function findBarber(admin: ReturnType<typeof createSupabaseAdmin>, session
 
 // GET /api/barbers/me — returns the logged-in barber's own record
 export async function GET(req: NextRequest) {
-  const session = await getSession(req)
-  if (!session) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  const auth = await getSession(req)
+  if (!auth.session) {
+    return applyAuthCookies(NextResponse.json({ error: 'No autenticado' }, { status: 401 }), auth)
+  }
 
   const admin = createSupabaseAdmin()
-  const barber = await findBarber(admin, session)
+  const barber = await findBarber(admin, auth.session)
 
-  if (!barber) return NextResponse.json({ error: 'No sos un barbero registrado' }, { status: 403 })
+  if (!barber) {
+    return applyAuthCookies(NextResponse.json({ error: 'No sos un barbero registrado' }, { status: 403 }), auth)
+  }
 
-  return NextResponse.json({ barber })
+  return applyAuthCookies(NextResponse.json({ barber }), auth)
 }
 
 // PUT /api/barbers/me — el barbero actualiza su propia disponibilidad
 export async function PUT(req: NextRequest) {
-  const session = await getSession(req)
-  if (!session) {
-    return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  const auth = await getSession(req)
+  if (!auth.session) {
+    return applyAuthCookies(NextResponse.json({ error: 'No autenticado' }, { status: 401 }), auth)
   }
 
   const admin = createSupabaseAdmin()
-  const barber = await findBarber(admin, session)
+  const barber = await findBarber(admin, auth.session)
 
   if (!barber) {
-    return NextResponse.json({ error: 'No sos un barbero registrado' }, { status: 403 })
+    return applyAuthCookies(NextResponse.json({ error: 'No sos un barbero registrado' }, { status: 403 }), auth)
   }
 
   const body = await req.json().catch(() => null)
-  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
+  if (!body) return applyAuthCookies(NextResponse.json({ error: 'Body inválido' }, { status: 400 }), auth)
 
   const parsed = weeklyAvailabilitySchema.safeParse(body.availability)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Disponibilidad inválida' }, { status: 400 })
+    return applyAuthCookies(NextResponse.json({ error: 'Disponibilidad inválida' }, { status: 400 }), auth)
   }
 
   const { data, error } = await admin
@@ -89,7 +98,7 @@ export async function PUT(req: NextRequest) {
     .select('*')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return applyAuthCookies(NextResponse.json({ error: error.message }, { status: 500 }), auth)
 
-  return NextResponse.json({ barber: data })
+  return applyAuthCookies(NextResponse.json({ barber: data }), auth)
 }

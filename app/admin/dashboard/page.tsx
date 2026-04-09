@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -35,6 +36,7 @@ interface DashboardData {
 
 export default function DashboardPage() {
   const { user, activeBranch } = useAdmin()
+  const router = useRouter()
   const [data,    setData]    = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const today = new Date()
@@ -44,7 +46,7 @@ export default function DashboardPage() {
     let mounted = true
 
     async function load() {
-      const todayStr    = format(today, 'yyyy-MM-dd')
+      const todayStr    = format(new Date(), 'yyyy-MM-dd')
       const branchParam = activeBranch ? `branch_id=${activeBranch.id}` : ''
       const barberParam = user?.role === 'barber' && user.barber_id ? `&barber_id=${user.barber_id}` : ''
 
@@ -53,9 +55,14 @@ export default function DashboardPage() {
         fetch(`/api/appointments?from=${todayStr}&to=${todayStr}${barberParam}${branchParam ? '&' + branchParam : ''}`),
       ])
 
+      if (summaryRes.status === 401 || apptRes.status === 401) {
+        router.replace('/login')
+        return
+      }
+
       const [summaryData, apptData] = await Promise.all([
         summaryRes.ok ? summaryRes.json() : Promise.resolve({ summary: null }),
-        apptRes.json(),
+        apptRes.ok ? apptRes.json() : Promise.resolve({ appointments: [] }),
       ])
       if (!mounted) return
 
@@ -75,8 +82,7 @@ export default function DashboardPage() {
 
     load()
     return () => { mounted = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeBranch])
+  }, [user, activeBranch, router])
 
   const firstName = user?.name ? user.name.split(' ')[0] : null
 

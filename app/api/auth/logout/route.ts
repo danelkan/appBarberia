@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { getSupabasePublicConfig } from '@/lib/supabase'
+import { applyAuthCookies } from '@/lib/api-auth'
 
 export async function POST(req: NextRequest) {
   let response = NextResponse.next({ request: req })
@@ -11,16 +12,17 @@ export async function POST(req: NextRequest) {
     config.anonKey,
     {
       cookies: {
-        get(name: string) { return req.cookies.get(name)?.value },
-        set(name: string, value: string, options: CookieOptions) {
-          req.cookies.set({ name, value, ...options })
-          response = NextResponse.next({ request: req })
-          response.cookies.set({ name, value, ...options })
+        getAll() {
+          return req.cookies.getAll()
         },
-        remove(name: string, options: CookieOptions) {
-          req.cookies.set({ name, value: '', ...options })
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            req.cookies.set(name, value)
+          })
           response = NextResponse.next({ request: req })
-          response.cookies.set({ name, value: '', ...options })
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
         },
       },
     }
@@ -28,5 +30,5 @@ export async function POST(req: NextRequest) {
 
   await supabase.auth.signOut()
 
-  return NextResponse.json({ success: true })
+  return applyAuthCookies(NextResponse.json({ success: true }), { response })
 }

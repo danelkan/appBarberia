@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { addDays, format, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -46,6 +47,7 @@ interface InstantForm {
 
 export default function AgendaPage() {
   const { user, activeBranch, can } = useAdmin()
+  const router = useRouter()
   const [view, setView]             = useState<ViewMode>('day')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [appointments, setAppointments] = useState<Appointment[]>([])
@@ -106,6 +108,11 @@ export default function AgendaPage() {
 
     try {
       const res = await fetch(url, { cache: 'no-store' })
+      if (res.status === 401) {
+        router.replace('/login')
+        return
+      }
+      if (!res.ok) throw new Error('No se pudieron cargar los turnos')
       const data = await res.json()
       setAppointments(data.appointments ?? [])
     } catch {
@@ -113,7 +120,7 @@ export default function AgendaPage() {
     } finally {
       setLoading(false)
     }
-  }, [activeBranch, currentDate, isBarber, user, view])
+  }, [activeBranch, currentDate, isBarber, router, user, view])
 
   useEffect(() => { void fetchAppointments() }, [fetchAppointments])
 

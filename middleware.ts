@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { formatSupabaseError, getOptionalSupabasePublicConfig } from '@/lib/supabase'
 
@@ -27,31 +27,39 @@ export async function middleware(request: NextRequest) {
 
   const supabase = createServerClient(supabaseConfig.url, supabaseConfig.anonKey, {
     cookies: {
-      get(name: string) { return request.cookies.get(name)?.value },
-      set(name: string, value: string, options: CookieOptions) {
-        request.cookies.set({ name, value, ...options })
-        response = NextResponse.next({ request })
-        response.cookies.set({ name, value, ...options })
+      getAll() {
+        return request.cookies.getAll()
       },
-      remove(name: string, options: CookieOptions) {
-        request.cookies.set({ name, value: '', ...options })
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => {
+          request.cookies.set(name, value)
+        })
         response = NextResponse.next({ request })
-        response.cookies.set({ name, value: '', ...options })
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options)
+        })
       },
     },
   })
 
+  function withAuthCookies(nextResponse: NextResponse) {
+    response.cookies.getAll().forEach(({ name, value, ...options }) => {
+      nextResponse.cookies.set(name, value, options)
+    })
+    return nextResponse
+  }
+
   try {
-    const { data: { session } } = await supabase.auth.getSession()
+    const { data: { user } } = await supabase.auth.getUser()
 
     // Redirect unauthenticated users away from staff routes
-    if (isStaffRoute && !session) {
-      return NextResponse.redirect(new URL('/login', request.url))
+    if (isStaffRoute && !user) {
+      return withAuthCookies(NextResponse.redirect(new URL('/login', request.url)))
     }
 
     // Redirect authenticated users away from login
-    if (isLoginPage && session) {
-      return NextResponse.redirect(new URL('/admin/agenda', request.url))
+    if (isLoginPage && user) {
+      return withAuthCookies(NextResponse.redirect(new URL('/admin/agenda', request.url)))
     }
 
     return response

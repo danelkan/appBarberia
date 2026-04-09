@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
 import { type AppRole, type Permission } from '@/types'
@@ -51,18 +51,17 @@ function createSupabaseServerAuthClient(req: NextRequest) {
 
   const supabase = createServerClient(config.url, config.anonKey, {
     cookies: {
-      get(name: string) {
-        return req.cookies.get(name)?.value
+      getAll() {
+        return req.cookies.getAll()
       },
-      set(name: string, value: string, options: CookieOptions) {
-        req.cookies.set({ name, value, ...options })
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => {
+          req.cookies.set(name, value)
+        })
         response = NextResponse.next({ request: req })
-        response.cookies.set({ name, value, ...options })
-      },
-      remove(name: string, options: CookieOptions) {
-        req.cookies.set({ name, value: '', ...options })
-        response = NextResponse.next({ request: req })
-        response.cookies.set({ name, value: '', ...options })
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options)
+        })
       },
     },
   })
@@ -70,17 +69,28 @@ function createSupabaseServerAuthClient(req: NextRequest) {
   return { supabase, response }
 }
 
+export function applyAuthCookies(
+  response: NextResponse,
+  auth: { response?: NextResponse } | null | undefined
+) {
+  auth?.response?.cookies.getAll().forEach(({ name, value, ...options }) => {
+    response.cookies.set(name, value, options)
+  })
+  return response
+}
+
 async function getAuthSession(req: NextRequest): Promise<AuthContext | null> {
   const { supabase, response } = createSupabaseServerAuthClient(req)
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
 
-  if (!session) {
+  if (error || !user) {
     return null
   }
 
-  return { session, response }
+  return { session: { user }, response }
 }
 
 async function getBranchIdsForBarber(admin: SupabaseClient, barberId?: string) {

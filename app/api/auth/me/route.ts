@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
-import { resolveUserRole } from '@/lib/api-auth'
+import { applyAuthCookies, resolveUserRole } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest) {
   let response = NextResponse.next({ request: req })
@@ -12,33 +12,41 @@ export async function GET(req: NextRequest) {
     config.anonKey,
     {
       cookies: {
-        get(name: string) { return req.cookies.get(name)?.value },
-        set(name: string, value: string, options: CookieOptions) {
-          req.cookies.set({ name, value, ...options })
-          response = NextResponse.next({ request: req })
-          response.cookies.set({ name, value, ...options })
+        getAll() {
+          return req.cookies.getAll()
         },
-        remove(name: string, options: CookieOptions) {
-          req.cookies.set({ name, value: '', ...options })
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            req.cookies.set(name, value)
+          })
           response = NextResponse.next({ request: req })
-          response.cookies.set({ name, value: '', ...options })
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
         },
       },
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user }, error } = await supabase.auth.getUser()
 
-  if (!session) {
-    return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  if (error || !user) {
+    return applyAuthCookies(NextResponse.json({ error: 'No autenticado' }, { status: 401 }), { response })
   }
 
   const admin = createSupabaseAdmin()
   const { role, barber_id, branch_ids, company_id, permissions, active } = await resolveUserRole(
     admin,
-    session.user.id,
-    session.user.email ?? undefined
+    user.id,
+    user.email ?? undefined
   )
+
+  if (!active) {
+    return applyAuthCookies(
+      NextResponse.json({ error: 'Usuario inactivo' }, { status: 401 }),
+      { response }
+    )
+  }
 
   const branchList = branch_ids.length > 0
     ? await admin
@@ -56,19 +64,22 @@ export async function GET(req: NextRequest) {
         .maybeSingle()
     : { data: null }
 
-  return NextResponse.json({
-    user: {
-      id: session.user.id,
-      email: session.user.email,
-      name: session.user.user_metadata?.full_name ?? session.user.user_metadata?.name ?? null,
-      role,
-      barber_id,
-      company_id,
-      branch_ids,
-      permissions,
-      active,
-      company: company.data ?? null,
-      branches: branchList.data ?? [],
-    }
-  })
+  return applyAuthCookies(
+    NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+        role,
+        barber_id,
+        company_id,
+        branch_ids,
+        permissions,
+        active,
+        company: company.data ?? null,
+        branches: branchList.data ?? [],
+      }
+    }),
+    { response }
+  )
 }
