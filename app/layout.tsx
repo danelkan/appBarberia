@@ -1,4 +1,4 @@
-import type { Metadata, Viewport } from 'next'
+import type { Metadata } from 'next'
 import { DM_Sans, DM_Serif_Display } from 'next/font/google'
 import './globals.css'
 
@@ -15,50 +15,38 @@ const dmSerif = DM_Serif_Display({
   display: 'swap',
 })
 
-export const viewport: Viewport = {
-  themeColor: '#0f172a',
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  // Enables "Add to Home Screen" on Android Chrome (standard) and iOS Safari
-  // mobile-web-app-capable covers both; apple-mobile-web-app-capable is the legacy iOS form
-  viewportFit: 'cover',
-}
-
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://caballerosmvd.com'),
   title: {
-    default: 'Felito Barber Studio',
-    template: '%s · Felito',
+    default: 'Caballeros MVD | Barberia y reservas online en Montevideo',
+    template: '%s | Caballeros MVD',
   },
-  description: 'Felito Barber Studio — Cordón y Punta Carretas, Montevideo. Reservá tu turno online.',
-  keywords: ['barbería montevideo', 'corte pelo montevideo', 'felito barber', 'barbería cordón'],
-  applicationName: 'Felito Barber Studio',
+  description:
+    'Caballeros MVD en Montevideo. Elegí sucursal, servicio y horario para reservar online con una experiencia simple y premium.',
+  keywords: [
+    'barbería montevideo',
+    'barbería pocitos',
+    'caballeros mvd',
+    'charles oribe',
+    'reservas barbería',
+    'barberia hombre montevideo',
+  ],
   openGraph: {
-    title: 'Felito Barber Studio',
-    description: 'Reservá tu turno online — Cordón y Punta Carretas.',
+    title: 'Caballeros MVD',
+    description: 'Barbería en Montevideo con reservas online, estilo clásico y atención personalizada.',
     type: 'website',
     locale: 'es_UY',
-    siteName: 'Felito Barber Studio',
+    siteName: 'Caballeros MVD',
   },
-  icons: {
-    icon:     [{ url: '/favicon.svg', type: 'image/svg+xml' }],
-    shortcut: '/favicon.svg',
-    apple:    [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Caballeros MVD',
+    description: 'Reservas online para barbería en Montevideo.',
   },
-  manifest: '/site.webmanifest',
-  appleWebApp: {
-    capable:         true,
-    title:           'Felito',
-    statusBarStyle:  'default',
+  robots: {
+    index: true,
+    follow: true,
   },
-  other: {
-    // Standard W3C meta tag for PWA "add to home screen" — covers Chrome Android + others
-    'mobile-web-app-capable': 'yes',
-  },
-  robots: { index: true, follow: true },
-  formatDetection: { telephone: false },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
