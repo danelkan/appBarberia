@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getVisibleBarberById } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { calcEndTime } from '@/lib/utils'
 import { sendBookingEmails } from '@/lib/emails'
@@ -81,9 +82,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
     }
 
-    const { data: barber, error: barberError } = await supabase
-      .from('barbers').select('*').eq('id', barberId).single()
-    if (barberError || !barber) {
+    const barber = await getVisibleBarberById(supabase, barberId, { branchId })
+    if (!barber) {
       return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
     }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getVisibleBarberById } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { generateTimeSlots } from '@/lib/utils'
 import { slotsQuerySchema } from '@/lib/validations'
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const queryParams = {
     barberId: searchParams.get('barberId'),
+    branchId: searchParams.get('branchId'),
     date: searchParams.get('date'),
     duration: searchParams.get('duration'),
   }
@@ -24,18 +26,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
   }
 
-  const { barberId, date, duration } = result.data
+  const { barberId, branchId, date, duration } = result.data
 
   const supabase = createSupabaseAdmin()
 
-  // Fetch barber availability
-  const { data: barber, error: barberError } = await supabase
-    .from('barbers')
-    .select('availability')
-    .eq('id', barberId)
-    .single()
+  const barber = await getVisibleBarberById(supabase, barberId, { branchId })
 
-  if (barberError || !barber) {
+  if (!barber) {
     return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
   }
 

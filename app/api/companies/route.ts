@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
@@ -32,25 +33,23 @@ export async function GET(req: NextRequest) {
   let companies = data ?? []
 
   if (includeStats) {
-    // Count active branches and barbers per company
-    const [{ data: barberRows }] = await Promise.all([
-      supabase
-        .from('barber_branches')
-        .select('barber_id, branch_id, branch:branches(company_id)')
-    ])
+    const { barbers: visibleBarbers, branchLinks } = await listVisibleBarbers(supabase)
+    const visibleBarberIds = new Set(visibleBarbers.map((barber: any) => barber.id))
 
     companies = companies.map((c: any) => {
       const activeBranches = (c.branches ?? []).filter((b: any) => b.active)
-      const barberCount = (barberRows ?? []).filter(
-        (bb: any) => bb.branch?.company_id === c.id
-      ).length
+      const activeBranchIds = new Set(activeBranches.map((branch: any) => branch.id))
+      const barberCount = new Set(
+        (branchLinks ?? [])
+          .filter((link: any) => visibleBarberIds.has(link.barber_id) && activeBranchIds.has(link.branch?.id))
+          .map((link: any) => link.barber_id)
+      ).size
 
       return {
         ...c,
         plan_tier: c.plan_tier ?? 'starter',
         max_branches: c.max_branches ?? 1,
         max_barbers: c.max_barbers ?? 3,
-        whatsapp_enabled: c.whatsapp_enabled ?? false,
         branch_count: activeBranches.length,
         barber_count: barberCount,
       }

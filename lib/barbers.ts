@@ -11,44 +11,24 @@ interface UserRoleLike {
   active?: boolean | null
 }
 
-interface BarberLike {
-  id: string
-  email?: string | null
-}
-
-function normalizeEmail(email?: string | null) {
-  return typeof email === 'string' ? email.trim().toLowerCase() : ''
-}
-
 export function getVisibleBarberIds(input: {
   authUsers: AuthUserLike[]
   userRoles: UserRoleLike[]
-  barbers: BarberLike[]
 }) {
-  const validAuthIds = new Set(input.authUsers.map(user => user.id))
-  const validAuthEmails = new Set(
-    input.authUsers
-      .map(user => normalizeEmail(user.email))
-      .filter(Boolean)
+  const activeAuthIds = new Set(
+    input.authUsers.map(user => user.id)
   )
 
-  const roleLinkedBarberIds = input.userRoles
+  const activeLinkedBarberIds = input.userRoles
     .filter(role =>
       role.active !== false &&
       role.barber_id &&
       role.user_id &&
-      validAuthIds.has(role.user_id)
+      activeAuthIds.has(role.user_id)
     )
     .map(role => role.barber_id as string)
 
-  const emailMatchedBarberIds = input.barbers
-    .filter(barber => {
-      const email = normalizeEmail(barber.email)
-      return email && validAuthEmails.has(email)
-    })
-    .map(barber => barber.id)
-
-  return new Set([...roleLinkedBarberIds, ...emailMatchedBarberIds])
+  return new Set(activeLinkedBarberIds)
 }
 
 export async function listVisibleBarbers(
@@ -81,7 +61,6 @@ export async function listVisibleBarbers(
   const visibleBarberIds = getVisibleBarberIds({
     authUsers: authUsersData?.users ?? [],
     userRoles: userRoles ?? [],
-    barbers: barbers ?? [],
   })
 
   const branchLinksList = branchLinks ?? []
@@ -96,4 +75,17 @@ export async function listVisibleBarbers(
     userRoles: userRoles ?? [],
     branchLinks: branchLinksList,
   }
+}
+
+export async function getVisibleBarberById(
+  supabase: SupabaseClient,
+  barberId: string,
+  options?: { branchId?: string | null }
+) {
+  const { barbers } = await listVisibleBarbers(
+    supabase,
+    options?.branchId ? { branchId: options.branchId } : undefined
+  )
+
+  return barbers.find(barber => barber.id === barberId) ?? null
 }

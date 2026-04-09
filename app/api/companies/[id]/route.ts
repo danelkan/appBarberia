@@ -61,7 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const body = await req.json()
-  const { plan_tier, max_branches, max_barbers, whatsapp_enabled, billing_email } = body
+  const { plan_tier, max_branches, max_barbers, billing_email } = body
 
   const validTiers = ['starter', 'pro', 'enterprise']
   if (plan_tier && !validTiers.includes(plan_tier)) {
@@ -72,7 +72,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (plan_tier        !== undefined) update.plan_tier        = plan_tier
   if (max_branches     !== undefined) update.max_branches     = Number(max_branches)
   if (max_barbers      !== undefined) update.max_barbers      = Number(max_barbers)
-  if (whatsapp_enabled !== undefined) update.whatsapp_enabled = Boolean(whatsapp_enabled)
   if (billing_email    !== undefined) update.billing_email    = billing_email?.trim() || null
 
   const supabase = createSupabaseAdmin()

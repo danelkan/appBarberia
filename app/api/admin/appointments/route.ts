@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getVisibleBarberById } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { calcEndTime } from '@/lib/utils'
 import { requireAdminAuth, unauthorizedResponse } from '@/lib/api-auth'
@@ -34,14 +35,13 @@ export async function POST(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
 
-  // Fetch service and barber
-  const [{ data: service, error: serviceError }, { data: barber, error: barberError }] = await Promise.all([
+  const [{ data: service, error: serviceError }, barber] = await Promise.all([
     supabase.from('services').select('*').eq('id', service_id).single(),
-    supabase.from('barbers').select('*').eq('id', barber_id).single(),
+    getVisibleBarberById(supabase, barber_id, { branchId: branch_id }),
   ])
 
   if (serviceError || !service) return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
-  if (barberError || !barber) return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
+  if (!barber) return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
 
   const end_time = calcEndTime(start_time, service.duration_minutes)
 

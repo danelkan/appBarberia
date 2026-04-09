@@ -98,6 +98,7 @@ export const updateServiceSchema = z.object({
 // ─── Slots Query Schema ────────────────────────────────────────────
 export const slotsQuerySchema = z.object({
   barberId: uuidSchema,
+  branchId: uuidSchema.optional().nullable(),
   date: dateSchema,
   duration: z.coerce.number().int().positive().max(480).optional().default(30),
 })

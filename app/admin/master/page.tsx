@@ -5,17 +5,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Building2,
-  CheckCircle2,
   Crown,
-  DollarSign,
   Lock,
   Settings,
   Store,
   Users,
-  XCircle,
 } from 'lucide-react'
 import { Button, PageHeader, Spinner } from '@/components/ui'
-import { formatPrice } from '@/lib/utils'
 import { useAdmin } from '../layout'
 import { PLAN_LABELS, PLAN_LIMITS, type PlanTier, type Company } from '@/types'
 
@@ -23,7 +19,6 @@ interface CompanyWithStats extends Company {
   plan_tier: PlanTier
   max_branches: number
   max_barbers: number
-  whatsapp_enabled: boolean
   owner_user_id?: string | null
   billing_email?: string | null
   plan_expires_at?: string | null
@@ -63,13 +58,12 @@ export default function MasterAdminPage() {
         plan_tier: tier,
         max_branches: limits.max_branches,
         max_barbers: limits.max_barbers,
-        whatsapp_enabled: limits.whatsapp_enabled,
       }),
     })
     setSaving(null)
     if (res.ok) {
       setCompanies(prev => prev.map(c => c.id === companyId
-        ? { ...c, plan_tier: tier, max_branches: limits.max_branches, max_barbers: limits.max_barbers, whatsapp_enabled: limits.whatsapp_enabled }
+        ? { ...c, plan_tier: tier, max_branches: limits.max_branches, max_barbers: limits.max_barbers }
         : c
       ))
     }
@@ -157,11 +151,6 @@ export default function MasterAdminPage() {
                       label="barberos"
                       warn={(company.barber_count ?? 0) >= company.max_barbers}
                     />
-                    <StatChip
-                      icon={company.whatsapp_enabled ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <XCircle className="h-3.5 w-3.5 text-slate-400" />}
-                      value={company.whatsapp_enabled ? 'Activo' : 'Inactivo'}
-                      label="WhatsApp"
-                    />
                   </div>
                 </div>
 
@@ -183,8 +172,7 @@ export default function MasterAdminPage() {
                   </div>
                   <p className="mt-2 text-xs text-slate-400">
                     Plan actual: máx. {company.max_branches} sucursal{company.max_branches !== 1 ? 'es' : ''} ·
-                    máx. {company.max_barbers} barbero{company.max_barbers !== 1 ? 's' : ''} ·
-                    WhatsApp: {company.whatsapp_enabled ? 'sí' : 'no'}
+                    máx. {company.max_barbers} barbero{company.max_barbers !== 1 ? 's' : ''}
                   </p>
                 </div>
               </div>
@@ -202,7 +190,6 @@ export default function MasterAdminPage() {
             <p>• Tu acceso maestro está protegido por <code className="rounded bg-slate-200 px-1 text-xs">SUPERADMIN_UUID</code> en las variables de entorno del servidor.</p>
             <p>• Los admins de cada barbería no pueden ver este panel ni modificar sus propios límites de plan.</p>
             <p>• Para agregar una nueva barbería cliente: crear empresa → asignar plan → crear sucursales dentro del límite.</p>
-            <p>• Migrá <code className="rounded bg-slate-200 px-1 text-xs">supabase-migration-v6.sql</code> para activar las columnas de plan y la cola de WhatsApp.</p>
           </div>
         </div>
       </div>

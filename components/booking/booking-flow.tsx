@@ -116,12 +116,18 @@ export default function BookingFlow({
     if (!selectedBarber || !selectedService || !selectedDate) { setSlots([]); return }
     startLoadingSlots(async () => {
       setError('')
-      const res  = await fetch(`/api/appointments/slots?barberId=${selectedBarber.id}&date=${selectedDate}&duration=${selectedService.duration_minutes}`, { cache: 'no-store' })
+      const params = new URLSearchParams({
+        barberId: selectedBarber.id,
+        branchId: branch.id,
+        date: selectedDate,
+        duration: String(selectedService.duration_minutes),
+      })
+      const res  = await fetch(`/api/appointments/slots?${params.toString()}`, { cache: 'no-store' })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'No se pudieron cargar los horarios'); setSlots([]); return }
       setSlots(data.slots ?? [])
     })
-  }, [selectedBarber, selectedDate, selectedService])
+  }, [branch.id, selectedBarber, selectedDate, selectedService])
 
   // Scroll to slots when they load
   useEffect(() => {

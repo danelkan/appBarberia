@@ -341,16 +341,15 @@ export type PlanTier = 'starter' | 'pro' | 'enterprise'
 export interface PlanLimits {
   max_branches: number
   max_barbers: number
-  whatsapp_enabled: boolean
   custom_domain: boolean
   analytics_enabled: boolean
   priority_support: boolean
 }
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
-  starter:    { max_branches: 1,  max_barbers: 3,  whatsapp_enabled: false, custom_domain: false, analytics_enabled: false, priority_support: false },
-  pro:        { max_branches: 3,  max_barbers: 10, whatsapp_enabled: true,  custom_domain: true,  analytics_enabled: true,  priority_support: false },
-  enterprise: { max_branches: 99, max_barbers: 99, whatsapp_enabled: true,  custom_domain: true,  analytics_enabled: true,  priority_support: true  },
+  starter:    { max_branches: 1,  max_barbers: 3,  custom_domain: false, analytics_enabled: false, priority_support: false },
+  pro:        { max_branches: 3,  max_barbers: 10, custom_domain: true,  analytics_enabled: true,  priority_support: false },
+  enterprise: { max_branches: 99, max_barbers: 99, custom_domain: true,  analytics_enabled: true,  priority_support: true  },
 }
 
 export const PLAN_LABELS: Record<PlanTier, string> = {

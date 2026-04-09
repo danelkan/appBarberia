@@ -43,9 +43,12 @@ function buildUserRolePayload(input: {
 }
 
 async function syncBarberBranches(supabase: ReturnType<typeof createSupabaseAdmin>, barberId: string, branchIds: string[]) {
-  await supabase.from('barber_branches').delete().eq('barber_id', barberId)
+  const { error: deleteError } = await supabase.from('barber_branches').delete().eq('barber_id', barberId)
+  if (deleteError) throw deleteError
+
   if (branchIds.length > 0) {
-    await supabase.from('barber_branches').insert(branchIds.map(bid => ({ barber_id: barberId, branch_id: bid })))
+    const { error: insertError } = await supabase.from('barber_branches').insert(branchIds.map(bid => ({ barber_id: barberId, branch_id: bid })))
+    if (insertError) throw insertError
   }
 }
 
@@ -159,9 +162,27 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single()
 
-    if (!barberError && newBarber) {
-      await supabase.from('user_roles').update({ barber_id: newBarber.id }).eq('user_id', userId)
+    if (barberError || !newBarber) {
+      await supabase.from('user_roles').delete().eq('user_id', userId)
+      await supabase.auth.admin.deleteUser(userId)
+      return NextResponse.json({ error: barberError?.message ?? 'Error al crear barbero' }, { status: 500 })
+    }
+
+    const { error: linkError } = await supabase.from('user_roles').update({ barber_id: newBarber.id }).eq('user_id', userId)
+    if (linkError) {
+      await supabase.from('barbers').delete().eq('id', newBarber.id)
+      await supabase.from('user_roles').delete().eq('user_id', userId)
+      await supabase.auth.admin.deleteUser(userId)
+      return NextResponse.json({ error: linkError.message }, { status: 500 })
+    }
+
+    try {
       await syncBarberBranches(supabase, newBarber.id, branch_ids)
+    } catch (error) {
+      await supabase.from('barbers').delete().eq('id', newBarber.id)
+      await supabase.from('user_roles').delete().eq('user_id', userId)
+      await supabase.auth.admin.deleteUser(userId)
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Error asignando sucursales' }, { status: 500 })
     }
   }
 
@@ -259,6 +280,7 @@ export async function PATCH(req: NextRequest) {
       if (branch_ids) await syncBarberBranches(supabase, currentBarberId, branch_ids)
     } else if (!is_barber && currentBarberId) {
       // Unlink barber from user (keep barber record for appointment history)
+      await supabase.from('barber_branches').delete().eq('barber_id', currentBarberId)
       await supabase.from('user_roles').update({ barber_id: null }).eq('user_id', user_id)
     }
   } else if (branch_ids !== undefined) {
@@ -300,11 +322,31 @@ export async function DELETE(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
+
+  // 1. Resolve any linked barber record before wiping the role row
+  const { data: roleRow } = await supabase
+    .from('user_roles')
+    .select('barber_id')
+    .eq('user_id', user_id)
+    .maybeSingle()
+
+  const barberId = (roleRow?.barber_id as string | null) ?? null
+
+  // Delete the auth user first. If this fails, keep user_roles intact so the
+  // user does not fall into an implicit/default role state.
   const { error } = await supabase.auth.admin.deleteUser(user_id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  if (barberId) {
+    await supabase.from('barber_branches').delete().eq('barber_id', barberId)
+    // Keep the barbers row for appointment history. Visibility is driven only
+    // by active user_roles rows linked to existing auth users.
+  }
+
+  await supabase.from('user_roles').delete().eq('user_id', user_id)
 
   return NextResponse.json({ success: true })
 }
