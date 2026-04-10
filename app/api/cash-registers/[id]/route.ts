@@ -3,11 +3,19 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { getCashRegisterSummary, hydrateCashRegister, createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
+export const dynamic = 'force-dynamic'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.view')
   if (denied) return denied
+
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
 
   const supabase = createSupabaseAdmin()
   const register = await hydrateCashRegister(supabase, params.id)
@@ -29,7 +37,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const denied = requirePermission(auth, 'cash.edit_closed')
   if (denied) return denied
 
-  const body = await req.json()
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const supabase = createSupabaseAdmin()
   const { data: current } = await supabase
     .from('cash_registers')

@@ -4,13 +4,22 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { createCashAuditLog, getCashRegisterSummary } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
+export const dynamic = 'force-dynamic'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.close')
   if (denied) return denied
 
-  const body = await req.json()
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const result = closeCashRegisterSchema.safeParse(body)
   if (!result.success) {
     return NextResponse.json({ error: result.error.flatten() }, { status: 400 })

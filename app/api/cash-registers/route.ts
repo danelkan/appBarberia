@@ -4,6 +4,8 @@ import { buildCashSummary, createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { cashRegisterQuerySchema, openCashRegisterSchema } from '@/lib/validations'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
@@ -97,7 +99,8 @@ export async function POST(req: NextRequest) {
   const denied = requirePermission(auth, 'cash.open')
   if (denied) return denied
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const result = openCashRegisterSchema.safeParse(body)
   if (!result.success) {
     return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
