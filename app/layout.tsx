@@ -16,32 +16,31 @@ const dmSerif = DM_Serif_Display({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://caballerosmvd.com'),
+  metadataBase: new URL('https://felito-barber-studio.vercel.app'),
   title: {
-    default: 'Caballeros MVD | Barberia y reservas online en Montevideo',
-    template: '%s | Caballeros MVD',
+    default: 'Felito Barber Studio | Reservas online en Montevideo',
+    template: '%s | Felito Barber Studio',
   },
   description:
-    'Caballeros MVD en Montevideo. Elegí sucursal, servicio y horario para reservar online con una experiencia simple y premium.',
+    'Felito Barber Studio en Montevideo. Elegí sede y reservá online en Cordón o Punta Carretas.',
   keywords: [
     'barbería montevideo',
-    'barbería pocitos',
-    'caballeros mvd',
-    'charles oribe',
+    'barbería cordón',
+    'barbería punta carretas',
+    'felito barber studio',
     'reservas barbería',
-    'barberia hombre montevideo',
   ],
   openGraph: {
-    title: 'Caballeros MVD',
-    description: 'Barbería en Montevideo con reservas online, estilo clásico y atención personalizada.',
+    title: 'Felito Barber Studio',
+    description: 'Reservas online para Cordón y Punta Carretas.',
     type: 'website',
     locale: 'es_UY',
-    siteName: 'Caballeros MVD',
+    siteName: 'Felito Barber Studio',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Caballeros MVD',
-    description: 'Reservas online para barbería en Montevideo.',
+    title: 'Felito Barber Studio',
+    description: 'Reservas online para Cordón y Punta Carretas.',
   },
   robots: {
     index: true,
@@ -52,7 +51,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className={`${dmSans.variable} ${dmSerif.variable}`}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="bg-black text-cream font-sans antialiased">{children}</body>
     </html>
   )
 }
