@@ -136,9 +136,9 @@ export const RateLimitConfigs = {
 /**
  * Create rate limit headers for response
  */
-export function getRateLimitHeaders(result: RateLimitResult): Record<string, string> {
+export function getRateLimitHeaders(result: RateLimitResult, config?: RateLimitConfig): Record<string, string> {
   return {
-    'X-RateLimit-Limit': String(result.resetTime - Date.now() + 60000),
+    'X-RateLimit-Limit': config ? String(config.maxRequests) : String(DEFAULT_CONFIG.maxRequests),
     'X-RateLimit-Remaining': String(result.remaining),
     'X-RateLimit-Reset': String(Math.ceil(result.resetTime / 1000)),
   }
