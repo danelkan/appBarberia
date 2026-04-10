@@ -5,6 +5,8 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import {
   Check,
+  CalendarCheck,
+  EyeOff,
   Pencil,
   Plus,
   Power,
@@ -110,13 +112,17 @@ export default function UsuariosPage() {
 
   function openEdit(user: UserWithRole) {
     setIsCreating(false); setError('')
+    // Filter branch_ids to only real branches known to this admin.
+    // Fake or out-of-scope UUIDs (e.g. from stale data) are excluded so they
+    // don't silently pass the scope filter on save and trigger a 400 error.
+    const realBranchIds = (user.branch_ids ?? []).filter(id => branches.some(b => b.id === id))
     setForm({
       user_id:      user.id,
       name:         user.name ?? '',
       email:        user.email,
       password:     '',
       role:         user.role,
-      branch_ids:   user.branch_ids ?? [],
+      branch_ids:   realBranchIds,
       permissions:  user.permissions ?? [],
       active:       user.active,
       is_barber:    user.is_barber ?? !!user.barber_id,
@@ -241,6 +247,18 @@ export default function UsuariosPage() {
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
                         <Scissors className="h-3 w-3" />
                         Barbero
+                      </span>
+                    )}
+                    {user.barber_id && user.appears_in_agenda && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        <CalendarCheck className="h-3 w-3" />
+                        En agenda
+                      </span>
+                    )}
+                    {user.barber_id && !user.appears_in_agenda && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                        <EyeOff className="h-3 w-3" />
+                        Oculto en agenda
                       </span>
                     )}
                     {!user.active && (

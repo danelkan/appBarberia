@@ -94,7 +94,10 @@ export function getVisibleBarberIds(input: {
       .map(r => r.barber_id as string)
   )
 
-  // Barbers that have a user_roles entry (linked to an auth user)
+  // Barbers that have a user_roles entry (regardless of user_id) — used to
+  // determine Path B eligibility. Barbers with an orphaned role row (user_id=null)
+  // are intentionally excluded from Path B; they fail Path A's user_id check and
+  // stay hidden until the orphaned row is cleaned up.
   const barbersWithRoles = new Set(
     input.userRoles.filter(r => r.barber_id).map(r => r.barber_id as string)
   )

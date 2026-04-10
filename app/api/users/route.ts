@@ -103,11 +103,19 @@ function buildUserRolePayload(input: {
 }
 
 async function syncBarberBranches(supabase: ReturnType<typeof createSupabaseAdmin>, barberId: string, branchIds: string[]) {
+  // Validate that branch IDs actually exist in the branches table before inserting.
+  // This prevents stale or fake UUIDs from polluting barber_branches.
+  let validIds = branchIds
+  if (branchIds.length > 0) {
+    const { data: found } = await supabase.from('branches').select('id').in('id', branchIds)
+    validIds = (found ?? []).map((b: any) => b.id as string)
+  }
+
   const { error: deleteError } = await supabase.from('barber_branches').delete().eq('barber_id', barberId)
   if (deleteError) throw deleteError
 
-  if (branchIds.length > 0) {
-    const { error: insertError } = await supabase.from('barber_branches').insert(branchIds.map(bid => ({ barber_id: barberId, branch_id: bid })))
+  if (validIds.length > 0) {
+    const { error: insertError } = await supabase.from('barber_branches').insert(validIds.map(bid => ({ barber_id: barberId, branch_id: bid })))
     if (insertError) throw insertError
   }
 }
