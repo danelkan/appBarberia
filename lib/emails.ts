@@ -12,7 +12,7 @@ function normalizeEmail(email: string | null | undefined): string {
 function getResend() {
   const key = process.env.RESEND_API_KEY
   if (!key) {
-    console.warn('[emails] RESEND_API_KEY is not set — emails will not be sent')
+    console.warn('[emails] RESEND_API_KEY is not set — emails will not be sent')  // eslint-disable-line no-console
   }
   return new Resend(key)
 }
@@ -23,7 +23,7 @@ const FROM = process.env.RESEND_FROM_EMAIL ?? 'Felito Barber Studio <onboarding@
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'
 
 if (!process.env.RESEND_FROM_EMAIL) {
-  console.warn('[emails] RESEND_FROM_EMAIL not set — using test sender. Client emails will only reach the Resend account owner.')
+  console.warn('[emails] RESEND_FROM_EMAIL not set — using test sender. Client emails will only reach the Resend account owner.')  // eslint-disable-line no-console
 }
 
 const BRAND = {
@@ -129,7 +129,7 @@ export async function sendConfirmationEmail(
   const toEmail = normalizeEmail(client.email)
   if (!toEmail) {
     // Client has no email — skip confirmation
-    console.log('[emails] sendConfirmationEmail skipped — client has no email')
+    console.log('[emails] sendConfirmationEmail skipped — client has no email')  // eslint-disable-line no-console
     return null
   }
 
@@ -163,9 +163,9 @@ export async function sendConfirmationEmail(
   })
 
   if (result.error) {
-    console.error('[emails] sendConfirmationEmail failed', { to: toEmail, error: result.error })
+    console.error('[emails] sendConfirmationEmail failed', { to: toEmail, error: result.error })  // eslint-disable-line no-console
   } else {
-    console.log('[emails] sendConfirmationEmail sent', { to: toEmail, id: result.data?.id })
+    console.log('[emails] sendConfirmationEmail sent', { to: toEmail, id: result.data?.id })  // eslint-disable-line no-console
   }
 
   return result
@@ -179,7 +179,7 @@ export async function sendBarberNotification(
 ) {
   const toEmail = normalizeEmail(barber.email)
   if (!toEmail) {
-    console.warn('[emails] sendBarberNotification skipped — barber has no email')
+    console.warn('[emails] sendBarberNotification skipped — barber has no email')  // eslint-disable-line no-console
     return null
   }
 
@@ -209,9 +209,9 @@ export async function sendBarberNotification(
   })
 
   if (result.error) {
-    console.error('[emails] sendBarberNotification failed', { to: toEmail, error: result.error })
+    console.error('[emails] sendBarberNotification failed', { to: toEmail, error: result.error })  // eslint-disable-line no-console
   } else {
-    console.log('[emails] sendBarberNotification sent', { to: toEmail, id: result.data?.id })
+    console.log('[emails] sendBarberNotification sent', { to: toEmail, id: result.data?.id })  // eslint-disable-line no-console
   }
 
   return result
@@ -252,9 +252,9 @@ export async function sendCancellationEmail(
   })
 
   if (result.error) {
-    console.error('[emails] sendCancellationEmail failed', { to: toEmail, error: result.error })
+    console.error('[emails] sendCancellationEmail failed', { to: toEmail, error: result.error })  // eslint-disable-line no-console
   } else {
-    console.log('[emails] sendCancellationEmail sent', { to: toEmail, id: result.data?.id })
+    console.log('[emails] sendCancellationEmail sent', { to: toEmail, id: result.data?.id })  // eslint-disable-line no-console
   }
 
   return result
@@ -273,7 +273,7 @@ export async function sendBookingEmails(
 
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
-      console.error(
+      console.error(  // eslint-disable-line no-console
         index === 0 ? '[emails] Client confirmation rejected' : '[emails] Barber notification rejected',
         result.reason
       )
