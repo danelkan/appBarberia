@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
+export const dynamic = 'force-dynamic'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'manage_companies')
   if (denied) return denied
+
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
 
   const supabase = createSupabaseAdmin()
   const { data, error } = await supabase
@@ -25,7 +33,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const denied = requirePermission(auth, 'manage_companies')
   if (denied) return denied
 
-  const body = await req.json()
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const { name, email, phone, address, active } = body
 
   if (!name?.trim()) {
@@ -60,7 +73,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Solo el superadmin puede cambiar el plan' }, { status: 403 })
   }
 
-  const body = await req.json()
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const { plan_tier, max_branches, max_barbers, billing_email } = body
 
   const validTiers = ['starter', 'pro', 'enterprise']

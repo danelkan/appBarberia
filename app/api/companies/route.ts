@@ -3,6 +3,8 @@ import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
@@ -65,7 +67,8 @@ export async function POST(req: NextRequest) {
   const denied = requirePermission(auth, 'manage_companies')
   if (denied) return denied
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const { name, email, phone, address, active } = body
 
   if (!name?.trim()) {

@@ -4,6 +4,8 @@ import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib
 import { createServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   // Rate limiting
   const rateLimit = checkRateLimit(req, 'services:read', RateLimitConfigs.read)
@@ -46,7 +48,8 @@ export async function POST(req: NextRequest) {
   if (denied) return denied
 
   // Parse and validate body
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const result = createServiceSchema.safeParse(body)
 
   if (!result.success) {

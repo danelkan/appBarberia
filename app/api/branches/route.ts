@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { type AuthRoleContext, requireAuth, requireAdminAuth, requirePermission, unauthorizedResponse, hasPermission } from '@/lib/api-auth'
 
+export const dynamic = 'force-dynamic'
+
 async function getCompanyIdForAuth(supabase: ReturnType<typeof createSupabaseAdmin>, auth: AuthRoleContext) {
   if (auth.role === 'superadmin') return auth.company_id ?? null
   if (auth.company_id) return auth.company_id
@@ -79,7 +81,8 @@ export async function POST(req: NextRequest) {
   const denied = requirePermission(auth, 'manage_branches')
   if (denied) return denied
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const { name, address, phone, active, company_id } = body
   if (!name?.trim()) return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
 

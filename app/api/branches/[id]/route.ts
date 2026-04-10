@@ -2,13 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { forbiddenResponse, requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
+export const dynamic = 'force-dynamic'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'manage_branches')
   if (denied) return denied
 
-  const body = await req.json()
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const { name, address, phone, active, company_id } = body
 
   if (!name?.trim()) {

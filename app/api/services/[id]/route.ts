@@ -4,6 +4,8 @@ import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib
 import { updateServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
+
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   // Rate limiting
   const rateLimit = checkRateLimit(req, 'services:write', RateLimitConfigs.write)
@@ -28,7 +30,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   // Parse and validate body
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const result = updateServiceSchema.safeParse(body)
 
   if (!result.success) {
