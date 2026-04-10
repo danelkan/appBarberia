@@ -3,6 +3,8 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 
+export const dynamic = 'force-dynamic'
+
 function calcTotals(payments: any[]): {
   efectivo: number; mercado_pago: number; debito: number; transferencia: number; total: number; count: number
 } {
