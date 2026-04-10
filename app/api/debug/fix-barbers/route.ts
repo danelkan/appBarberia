@@ -13,23 +13,33 @@ export async function POST() {
   const cordonId        = '11111111-1111-1111-1111-111111111111'
   const puntaCarretasId = '22222222-2222-2222-2222-222222222222'
 
-  const { error: insertError } = await supabase
-    .from('barber_branches')
-    .upsert([
-      { barber_id: kikeId,   branch_id: cordonId        },
-      { barber_id: kikeId,   branch_id: puntaCarretasId },
-      { barber_id: felitoId, branch_id: cordonId        },
-      { barber_id: felitoId, branch_id: puntaCarretasId },
-    ], { onConflict: 'barber_id,branch_id', ignoreDuplicates: true })
+  const rows = [
+    { barber_id: kikeId,   branch_id: cordonId        },
+    { barber_id: kikeId,   branch_id: puntaCarretasId },
+    { barber_id: felitoId, branch_id: cordonId        },
+    { barber_id: felitoId, branch_id: puntaCarretasId },
+  ]
 
-  const { error: deleteError } = await supabase
+  const insertResults = await Promise.all(
+    rows.map(row =>
+      supabase.from('barber_branches').insert(row).select()
+    )
+  )
+
+  const insertErrors = insertResults
+    .map((r, i) => r.error ? { row: rows[i], error: r.error.message } : null)
+    .filter(Boolean)
+
+  const { error: deleteError, data: deleteData } = await supabase
     .from('barbers')
     .delete()
     .eq('id', duplicateFelitoId)
+    .select()
 
-  if (insertError || deleteError) {
-    return NextResponse.json({ error: { insertError, deleteError } }, { status: 500 })
-  }
-
-  return NextResponse.json({ ok: true, message: 'Kike y Felito asignados a ambas sedes. Duplicado eliminado.' })
+  return NextResponse.json({
+    insert_errors: insertErrors,
+    insert_ok: insertResults.filter(r => !r.error).length,
+    delete_error: deleteError?.message ?? null,
+    deleted_rows: deleteData,
+  })
 }
