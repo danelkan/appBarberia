@@ -7,6 +7,8 @@ import { applyAuthCookies, requireAuth, unauthorizedResponse } from '@/lib/api-a
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const rateLimit = checkRateLimit(req, 'appointments:read', RateLimitConfigs.read)
   if (!rateLimit.allowed) return rateLimitResponse(rateLimit)!
@@ -31,6 +33,11 @@ export async function GET(req: NextRequest) {
   const branchId = searchParams.get('branch_id') ?? undefined
   const status   = searchParams.get('status')    ?? undefined
 
+  // Barbers may only see their own appointments
+  const effectiveBarberId = auth.role === 'barber'
+    ? (auth.barber_id ?? barberId)
+    : barberId
+
   const supabase = createSupabaseAdmin()
 
   let query = supabase
@@ -46,11 +53,11 @@ export async function GET(req: NextRequest) {
     .order('date', { ascending: false })
     .order('start_time', { ascending: false })
 
-  if (from)     query = query.gte('date', from)
-  if (to)       query = query.lte('date', to)
-  if (barberId) query = query.eq('barber_id', barberId)
-  if (branchId) query = query.eq('branch_id', branchId)
-  if (status)   query = query.eq('status', status)
+  if (from)               query = query.gte('date', from)
+  if (to)                 query = query.lte('date', to)
+  if (effectiveBarberId)  query = query.eq('barber_id', effectiveBarberId)
+  if (branchId)           query = query.eq('branch_id', branchId)
+  if (status)             query = query.eq('status', status)
 
   const { data, error } = await query
 
