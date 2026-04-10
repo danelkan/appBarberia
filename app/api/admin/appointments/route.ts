@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getVisibleBarberById } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { calcEndTime } from '@/lib/utils'
-import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+
+export const dynamic = 'force-dynamic'
 
 // POST /api/admin/appointments
 // Staff booking (admin + barbers): email is optional, no public rate limit
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
+  const denied = requirePermission(auth, 'create_appointments')
+  if (denied) return denied
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
