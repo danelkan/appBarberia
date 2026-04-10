@@ -83,6 +83,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AppRole, Permission[]> = {
     'manage_services',
     'manage_branches',
     'manage_schedules',
+    'manage_users',
     'view_clients',
     'cancel_appointments',
     'edit_appointments',
