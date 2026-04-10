@@ -118,6 +118,36 @@ export function getVisibleBarberIds(input: {
   )
 }
 
+export function getAssignedBranchIdsByBarber(input: {
+  userRoles: UserRoleLike[]
+  branchLinks: BarberBranchLike[]
+}) {
+  const branchIdsByBarber = new Map<string, Set<string>>()
+
+  for (const role of input.userRoles) {
+    if (!role.barber_id) continue
+    const set = branchIdsByBarber.get(role.barber_id) ?? new Set<string>()
+    for (const branchId of sanitizeBranchIds(role.branch_ids)) {
+      set.add(branchId)
+    }
+    branchIdsByBarber.set(role.barber_id, set)
+  }
+
+  for (const link of input.branchLinks) {
+    if (!link.barber_id || !link.branch_id) continue
+    const set = branchIdsByBarber.get(link.barber_id) ?? new Set<string>()
+    set.add(link.branch_id)
+    branchIdsByBarber.set(link.barber_id, set)
+  }
+
+  return new Map(
+    Array.from(branchIdsByBarber.entries()).map(([barberId, branchIds]) => [
+      barberId,
+      Array.from(branchIds),
+    ])
+  )
+}
+
 // ─── Barber CRUD helpers ──────────────────────────────────────────
 
 async function hasExistingAuthUser(supabase: SupabaseClient, userId: string) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listVisibleBarbers } from '@/lib/barbers'
+import { getAssignedBranchIdsByBarber, listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -18,6 +18,19 @@ export async function GET(req: NextRequest) {
     supabase,
     branchId ? { branchId } : undefined
   )
+  const assignedBranchIdsByBarber = getAssignedBranchIdsByBarber({
+    userRoles: activeRoles ?? [],
+    branchLinks: branchLinks ?? [],
+  })
+  const allAssignedBranchIds = Array.from(
+    new Set(
+      Array.from(assignedBranchIdsByBarber.values()).flatMap(branchIds => branchIds)
+    )
+  )
+  const { data: assignedBranches } = allAssignedBranchIds.length > 0
+    ? await supabase.from('branches').select('*').in('id', allAssignedBranchIds)
+    : { data: [] }
+  const branchesById = new Map((assignedBranches ?? []).map((branch: any) => [branch.id, branch]))
 
   const rolesByBarberId = new Map(
     (activeRoles ?? [])
@@ -26,16 +39,17 @@ export async function GET(req: NextRequest) {
   )
 
   const barbers = (data ?? []).map((barber) => {
-    const branches = (branchLinks ?? [])
-      .filter((link: any) => link.barber_id === barber.id && (!branchId || link.branch_id === branchId))
-      .map((link: any) => link.branch)
+    const assignedBranchIds = (assignedBranchIdsByBarber.get(barber.id) ?? [])
+      .filter(id => !branchId || id === branchId)
+    const branches = assignedBranchIds
+      .map(branchId => branchesById.get(branchId))
       .filter(Boolean)
 
     return {
       ...barber,
       role: rolesByBarberId.get(barber.id) ?? 'barber',
       branches,
-      branch_ids: branches.map((branch: { id: string }) => branch.id),
+      branch_ids: assignedBranchIds,
     }
   })
 

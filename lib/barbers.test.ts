@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getVisibleBarberIds } from '@/lib/barbers'
+import { getAssignedBranchIdsByBarber, getVisibleBarberIds } from '@/lib/barbers'
 
 // ─── Contract: getVisibleBarberIds ────────────────────────────────
 //
@@ -132,5 +132,28 @@ describe('getVisibleBarberIds', () => {
   it('returns empty set when no barbers exist', () => {
     const visible = getVisibleBarberIds({ userRoles: [], branchLinks: [] })
     expect(visible.size).toBe(0)
+  })
+})
+
+describe('getAssignedBranchIdsByBarber', () => {
+  it('merges barber_branches and user_roles.branch_ids without duplicates', () => {
+    const assigned = getAssignedBranchIdsByBarber({
+      userRoles: [{ user_id: 'u1', barber_id: 'b1', active: true, branch_ids: ['br-a', 'br-b'] }],
+      branchLinks: [
+        { barber_id: 'b1', branch_id: 'br-b' },
+        { barber_id: 'b1', branch_id: 'br-c' },
+      ],
+    })
+
+    expect(assigned.get('b1')).toEqual(['br-a', 'br-b', 'br-c'])
+  })
+
+  it('returns role branch_ids for legacy barbers without barber_branches rows', () => {
+    const assigned = getAssignedBranchIdsByBarber({
+      userRoles: [{ user_id: 'u1', barber_id: 'legacy-barber', active: true, branch_ids: ['br-a'] }],
+      branchLinks: [],
+    })
+
+    expect(assigned.get('legacy-barber')).toEqual(['br-a'])
   })
 })

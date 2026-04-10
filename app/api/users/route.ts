@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { BarberEmailConflictError, createOrReuseBarberForUser } from '@/lib/barbers'
+import { BarberEmailConflictError, createOrReuseBarberForUser, getAssignedBranchIdsByBarber } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import {
   type AuthRoleContext,
@@ -148,11 +148,10 @@ export async function GET(req: NextRequest) {
   const roleMap   = new Map((roleRows ?? []).map((row: any) => [row.user_id, row]))
   const barberMap = new Map((barbers ?? []).map((b: any) => [b.id, b]))
   const branchMap = new Map((branches ?? []).map((b: any) => [b.id, b]))
-  const barberBranchIds = new Map<string, string[]>()
-  for (const link of branchLinks ?? []) {
-    if (!link.barber_id || !link.branch_id) continue
-    barberBranchIds.set(link.barber_id, [...(barberBranchIds.get(link.barber_id) ?? []), link.branch_id])
-  }
+  const barberBranchIds = getAssignedBranchIdsByBarber({
+    userRoles: roleRows ?? [],
+    branchLinks: branchLinks ?? [],
+  })
 
   const users = authUsers.flatMap((user: any) => {
     const roleRow    = roleMap.get(user.id)
@@ -434,7 +433,7 @@ export async function PATCH(req: NextRequest) {
     // Keep hidden barbers hidden instead of re-exposing them by branch edits alone.
     const { data: roleRow } = await supabase
       .from('user_roles')
-      .select('barber_id')
+      .select('barber_id, branch_ids')
       .eq('user_id', user_id)
       .single()
 
@@ -444,7 +443,9 @@ export async function PATCH(req: NextRequest) {
         .select('branch_id')
         .eq('barber_id', roleRow.barber_id)
 
-      const isVisibleInAgenda = (branchLinks ?? []).length > 0
+      const isVisibleInAgenda =
+        (branchLinks ?? []).length > 0 ||
+        sanitizeBranchIds(roleRow.branch_ids).length > 0
       await syncBarberBranches(supabase, roleRow.barber_id, isVisibleInAgenda ? scopedBranchIds : [])
     }
   }
