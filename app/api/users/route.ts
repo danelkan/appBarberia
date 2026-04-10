@@ -11,6 +11,8 @@ import {
 import { getRolePermissions } from '@/lib/permissions'
 import type { AppRole, Permission, WeeklyAvailability } from '@/types'
 
+export const dynamic = 'force-dynamic'
+
 const DEFAULT_AVAILABILITY: WeeklyAvailability = {
   monday:    { enabled: true,  start: '09:00', end: '19:00' },
   tuesday:   { enabled: true,  start: '09:00', end: '19:00' },
@@ -86,7 +88,13 @@ function buildUserRolePayload(input: {
   const payload: Record<string, unknown> = {}
 
   if (input.role) payload.role = input.role
-  if (input.permissions) payload.permissions = getRolePermissions(input.role ?? 'barber', input.permissions)
+  // Only recalculate permissions when role is explicitly provided to avoid falling
+  // back to 'barber' defaults when only updating permissions on an existing role.
+  if (input.permissions !== undefined && input.role) {
+    payload.permissions = getRolePermissions(input.role, input.permissions)
+  } else if (input.permissions !== undefined) {
+    payload.permissions = input.permissions
+  }
   if (typeof input.active === 'boolean') payload.active = input.active
   if (input.barber_id !== undefined) payload.barber_id = input.barber_id
   if (input.branch_ids !== undefined) payload.branch_ids = sanitizeBranchIds(input.branch_ids)
