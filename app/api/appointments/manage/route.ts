@@ -4,6 +4,8 @@ import { sendCancellationEmail } from '@/lib/emails'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 import { z } from 'zod'
 
+export const dynamic = 'force-dynamic'
+
 const lookupSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(6).max(30),
@@ -114,10 +116,14 @@ export async function PATCH(req: NextRequest) {
     }, { status: 400 })
   }
 
-  await supabase
+  const { error: updateError } = await supabase
     .from('appointments')
     .update({ status: 'cancelada' })
     .eq('id', appt.id)
+
+  if (updateError) {
+    return NextResponse.json({ error: 'No se pudo cancelar el turno' }, { status: 500 })
+  }
 
   if (appt.client) {
     sendCancellationEmail(appt.client, appt.barber, appt.service, appt).catch(console.error)
