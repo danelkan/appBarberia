@@ -147,12 +147,18 @@ export default function AgendaPage() {
   }
 
   async function cancelAppointment(appointment: Appointment) {
-    await fetch(`/api/appointments/${appointment.id}`, {
+    const res = await fetch(`/api/appointments/${appointment.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'cancelada' }),
     })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setPayError(data.error ?? 'No se pudo cancelar el turno')
+      return
+    }
     setSelected(null)
+    setPayError('')
     await fetchAppointments()
   }
 
@@ -412,6 +418,10 @@ export default function AgendaPage() {
                 <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">Cobrado</Badge>
               )}
             </div>
+
+            {payError && !paymentModal && (
+              <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{payError}</p>
+            )}
 
             <div className="flex gap-3">
               {!selected.payment && selected.status !== 'cancelada' && can('cash.add_movement') && (
