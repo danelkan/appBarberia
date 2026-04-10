@@ -87,35 +87,54 @@ export function getVisibleBarberIds(input: {
     tableSourceBranches.set(link.barber_id, set)
   }
 
-  return new Set(
+  // Barbers explicitly deactivated via user_roles
+  const deactivated = new Set(
     input.userRoles
-      .filter(role => {
-        // Gate 1: must have a linked auth user and be active
-        if (role.active === false) return false
-        if (!role.barber_id || !role.user_id) return false
-
-        // Gate 2: must be assigned to at least one branch
-        // Source A — barber_branches table
-        const tableBranches = tableSourceBranches.get(role.barber_id)
-        // Source B — user_roles.branch_ids (legacy / not-yet-migrated data)
-        const roleBranchIds = sanitizeBranchIds(role.branch_ids)
-
-        const hasTableAssignment = tableBranches !== undefined && tableBranches.size > 0
-        const hasRoleAssignment  = roleBranchIds.length > 0
-
-        if (!hasTableAssignment && !hasRoleAssignment) return false
-
-        // Gate 3: if a specific branch is requested, verify assignment to it
-        if (input.branchId) {
-          const inTable = tableBranches?.has(input.branchId) ?? false
-          const inRole  = roleBranchIds.includes(input.branchId)
-          return inTable || inRole
-        }
-
-        return true
-      })
-      .map(role => role.barber_id as string)
+      .filter(r => r.active === false && r.barber_id)
+      .map(r => r.barber_id as string)
   )
+
+  // Barbers that have a user_roles entry (linked to an auth user)
+  const barbersWithRoles = new Set(
+    input.userRoles.filter(r => r.barber_id).map(r => r.barber_id as string)
+  )
+
+  // Path A — barbers WITH user_roles: require active + user_id + branch assignment
+  const visibleViaRoles = input.userRoles
+    .filter(role => {
+      if (role.active === false) return false
+      if (!role.barber_id || !role.user_id) return false
+
+      const tableBranches = tableSourceBranches.get(role.barber_id)
+      const roleBranchIds = sanitizeBranchIds(role.branch_ids)
+      const hasTableAssignment = tableBranches !== undefined && tableBranches.size > 0
+      const hasRoleAssignment  = roleBranchIds.length > 0
+
+      if (!hasTableAssignment && !hasRoleAssignment) return false
+
+      if (input.branchId) {
+        const inTable = tableBranches?.has(input.branchId) ?? false
+        const inRole  = roleBranchIds.includes(input.branchId)
+        return inTable || inRole
+      }
+
+      return true
+    })
+    .map(role => role.barber_id as string)
+
+  // Path B — barbers WITHOUT user_roles (created directly in DB, no auth account):
+  // visible as long as they have barber_branches entries and are not deactivated
+  const visibleViaDirectAssignment = Array.from(tableSourceBranches.entries())
+    .filter(([barberId, branches]) => {
+      if (barbersWithRoles.has(barberId)) return false  // handled by Path A
+      if (deactivated.has(barberId)) return false
+      if (branches.size === 0) return false
+      if (input.branchId) return branches.has(input.branchId)
+      return true
+    })
+    .map(([barberId]) => barberId)
+
+  return new Set([...visibleViaRoles, ...visibleViaDirectAssignment])
 }
 
 export function getAssignedBranchIdsByBarber(input: {
@@ -300,15 +319,19 @@ export async function getVisibleBarberById(
     branchLinksQuery,
   ])
 
-  if (!barber || !roleRow) return null
-  if (roleRow.active === false || !roleRow.user_id) return null
+  if (!barber) return null
 
-  // Accept branch assignment from either source
+  // If explicitly deactivated, block immediately
+  if (roleRow?.active === false) return null
+
   const hasTableBranch = (branchLinks ?? []).length > 0
-  const roleBranchIds  = sanitizeBranchIds(roleRow.branch_ids)
+  const roleBranchIds  = sanitizeBranchIds(roleRow?.branch_ids)
   const hasRoleBranch  = options?.branchId
     ? roleBranchIds.includes(options.branchId)
     : roleBranchIds.length > 0
+
+  // Barbers with user_roles also require a linked auth user
+  if (roleRow && !roleRow.user_id && !hasTableBranch) return null
 
   if (!hasTableBranch && !hasRoleBranch) return null
 
