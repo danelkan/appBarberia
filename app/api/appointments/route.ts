@@ -3,11 +3,32 @@ import { getVisibleBarberById } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { calcEndTime } from '@/lib/utils'
 import { sendBookingEmails } from '@/lib/emails'
-import { applyAuthCookies, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { applyAuthCookies, type AuthRoleContext, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
+
+async function resolveCompanyBranchIds(
+  supabase: ReturnType<typeof createSupabaseAdmin>,
+  auth: AuthRoleContext
+): Promise<string[]> {
+  // Use branch_ids from token if available
+  if (auth.branch_ids.length > 0) return auth.branch_ids
+
+  let companyId = auth.company_id ?? null
+
+  if (!companyId) {
+    // Derive company from a single active company (single-tenant default)
+    const { data: companies } = await supabase.from('companies').select('id').eq('active', true)
+    if ((companies ?? []).length === 1) companyId = companies![0].id as string
+  }
+
+  if (!companyId) return []
+
+  const { data: branches } = await supabase.from('branches').select('id').eq('company_id', companyId)
+  return (branches ?? []).map((b: any) => b.id as string)
+}
 
 export async function GET(req: NextRequest) {
   const rateLimit = checkRateLimit(req, 'appointments:read', RateLimitConfigs.read)
@@ -40,6 +61,17 @@ export async function GET(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
 
+  // Resolve which branch IDs this caller is allowed to see
+  // Superadmin sees everything; everyone else is scoped to their company
+  let allowedBranchIds: string[] | null = null
+  if (auth.role !== 'superadmin') {
+    if (branchId) {
+      allowedBranchIds = [branchId]
+    } else {
+      allowedBranchIds = await resolveCompanyBranchIds(supabase, auth)
+    }
+  }
+
   let query = supabase
     .from('appointments')
     .select(`
@@ -53,11 +85,12 @@ export async function GET(req: NextRequest) {
     .order('date', { ascending: false })
     .order('start_time', { ascending: false })
 
-  if (from)               query = query.gte('date', from)
-  if (to)                 query = query.lte('date', to)
-  if (effectiveBarberId)  query = query.eq('barber_id', effectiveBarberId)
-  if (branchId)           query = query.eq('branch_id', branchId)
-  if (status)             query = query.eq('status', status)
+  if (from)                      query = query.gte('date', from)
+  if (to)                        query = query.lte('date', to)
+  if (effectiveBarberId)         query = query.eq('barber_id', effectiveBarberId)
+  if (allowedBranchIds)          query = query.in('branch_id', allowedBranchIds)
+  else if (branchId)             query = query.eq('branch_id', branchId)
+  if (status)                    query = query.eq('status', status)
 
   const { data, error } = await query
 
