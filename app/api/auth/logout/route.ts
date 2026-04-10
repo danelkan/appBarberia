@@ -3,6 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 import { getSupabasePublicConfig } from '@/lib/supabase'
 import { applyAuthCookies } from '@/lib/api-auth'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   let response = NextResponse.next({ request: req })
   const config = getSupabasePublicConfig()

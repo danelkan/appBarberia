@@ -5,6 +5,8 @@ import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib
 import { updateAppointmentStatusSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -50,7 +52,12 @@ export async function PATCH(
     .select('*, client:clients(*), barber:barbers(*), service:services(*)')
     .single()
 
-  if (error || !appointment) {
+  if (error) {
+    // PGRST116 = no rows found (single() with no result)
+    const status = (error as { code?: string }).code === 'PGRST116' ? 404 : 500
+    return NextResponse.json({ error: status === 404 ? 'Turno no encontrado' : error.message }, { status })
+  }
+  if (!appointment) {
     return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
   }
 

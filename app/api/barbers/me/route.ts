@@ -4,6 +4,8 @@ import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
 import { applyAuthCookies } from '@/lib/api-auth'
 import { weeklyAvailabilitySchema } from '@/lib/validations'
 
+export const dynamic = 'force-dynamic'
+
 async function getSession(req: NextRequest) {
   let response = NextResponse.next({ request: req })
   const config = getSupabasePublicConfig()

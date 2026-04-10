@@ -4,6 +4,8 @@ import { requireAdminAuth, requireAuth, requirePermission, unauthorizedResponse 
 import { clientQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   // Rate limiting
   const rateLimit = checkRateLimit(req, 'clients:read', RateLimitConfigs.read)

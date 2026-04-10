@@ -5,6 +5,8 @@ import { generateTimeSlots } from '@/lib/utils'
 import { slotsQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   // Rate limiting - public endpoint but rate limited
   const rateLimit = checkRateLimit(req, 'slots:read', RateLimitConfigs.read)

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 function legacyRouteResponse() {
   return NextResponse.json(
     { error: 'La gestión de barberos se centralizó en /api/users' },

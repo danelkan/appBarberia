@@ -3,6 +3,8 @@ import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   // Rate limiting
   const rateLimit = checkRateLimit(req, 'barbers:read', RateLimitConfigs.read)
