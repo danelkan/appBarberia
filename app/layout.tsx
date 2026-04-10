@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { DM_Sans, DM_Serif_Display } from 'next/font/google'
 import './globals.css'
 
@@ -15,43 +15,49 @@ const dmSerif = DM_Serif_Display({
   display: 'swap',
 })
 
+export const viewport: Viewport = {
+  themeColor: '#0f172a',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+}
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://felito-barber-studio.vercel.app'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'),
   title: {
-    default: 'Felito Barber Studio | Reservas online en Montevideo',
-    template: '%s | Felito Barber Studio',
+    default: 'Felito Barber Studio',
+    template: '%s · Felito',
   },
-  description:
-    'Felito Barber Studio en Montevideo. Elegí sede y reservá online en Cordón o Punta Carretas.',
-  keywords: [
-    'barbería montevideo',
-    'barbería cordón',
-    'barbería punta carretas',
-    'felito barber studio',
-    'reservas barbería',
-  ],
+  description: 'Felito Barber Studio — Cordón y Punta Carretas, Montevideo. Reservá tu turno online.',
+  keywords: ['barbería montevideo', 'corte pelo montevideo', 'felito barber', 'barbería cordón'],
+  applicationName: 'Felito Barber Studio',
   openGraph: {
     title: 'Felito Barber Studio',
-    description: 'Reservas online para Cordón y Punta Carretas.',
+    description: 'Reservá tu turno online — Cordón y Punta Carretas.',
     type: 'website',
     locale: 'es_UY',
     siteName: 'Felito Barber Studio',
   },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Felito Barber Studio',
-    description: 'Reservas online para Cordón y Punta Carretas.',
+  icons: {
+    icon:     [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    shortcut: '/favicon.svg',
+    apple:    [{ url: '/favicon.svg', type: 'image/svg+xml' }],
   },
-  robots: {
-    index: true,
-    follow: true,
+  manifest: '/site.webmanifest',
+  appleWebApp: {
+    capable:         true,
+    title:           'Felito',
+    statusBarStyle:  'default',
   },
+  robots: { index: true, follow: true },
+  formatDetection: { telephone: false },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className={`${dmSans.variable} ${dmSerif.variable}`}>
-      <body className="bg-black text-cream font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   )
 }
