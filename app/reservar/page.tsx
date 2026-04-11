@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin, formatSupabaseError } from '@/lib/supabase'
@@ -10,8 +11,11 @@ interface BookingPageProps {
 }
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function BookingPage({ searchParams }: BookingPageProps) {
+  noStore()
+
   const supabase = createSupabaseAdmin()
   const branchId = searchParams.branch
 
@@ -54,6 +58,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
 
   return (
     <BookingFlow
+      key={selectedBranch.id}
       branch={selectedBranch}
       services={services ?? []}
       barbers={barbersForBranch}

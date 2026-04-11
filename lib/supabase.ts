@@ -94,6 +94,16 @@ export function formatSupabaseError(error: unknown) {
   return String(error)
 }
 
+export function supabaseNoStoreFetch(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1]
+) {
+  return fetch(input, {
+    ...init,
+    cache: 'no-store',
+  })
+}
+
 /**
  * Creates a Supabase client for browser/client-side use.
  * Uses the public anon key - subject to RLS policies.
@@ -140,6 +150,9 @@ export function createSupabaseServerReadClient(): SupabaseClient {
       autoRefreshToken: false,
       persistSession: false,
     },
+    global: {
+      fetch: supabaseNoStoreFetch,
+    },
   })
 }
 
@@ -161,6 +174,9 @@ export function createSupabaseAdmin(): SupabaseClient {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
+    },
+    global: {
+      fetch: supabaseNoStoreFetch,
     },
   })
 }

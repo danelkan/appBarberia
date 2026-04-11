@@ -1,7 +1,7 @@
 'server-only'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { getSupabasePublicConfig } from '@/lib/supabase'
+import { getSupabasePublicConfig, supabaseNoStoreFetch } from '@/lib/supabase'
 
 export function createSupabaseServerClient() {
   const cookieStore = cookies()
@@ -11,6 +11,9 @@ export function createSupabaseServerClient() {
     config.url,
     config.anonKey,
     {
+      global: {
+        fetch: supabaseNoStoreFetch,
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll()
