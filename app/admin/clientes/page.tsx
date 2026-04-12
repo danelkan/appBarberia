@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Calendar, Cake, ChevronDown, ChevronRight, Phone, Search, Users } from 'lucide-react'
 import { Badge, EmptyState, Input, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
@@ -19,12 +19,37 @@ function formatBirthday(birthday: string | null | undefined): string {
   return `${day}/${month}`
 }
 
+type BirthdayFilter = '' | 'this_week' | 'next_week' | 'this_month'
+
+function getBirthdayFilterRange(filter: BirthdayFilter): { startMD: string; endMD: string; wrap: boolean } | null {
+  if (!filter) return null
+  const today = new Date()
+
+  if (filter === 'this_month') {
+    const m = String(today.getMonth() + 1).padStart(2, '0')
+    return { startMD: `${m}-01`, endMD: `${m}-31`, wrap: false }
+  }
+
+  // Week: Sunday-based
+  const dayOfWeek = today.getDay()
+  const start = new Date(today)
+  start.setDate(today.getDate() - dayOfWeek + (filter === 'next_week' ? 7 : 0))
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const startMD = `${pad(start.getMonth() + 1)}-${pad(start.getDate())}`
+  const endMD   = `${pad(end.getMonth() + 1)}-${pad(end.getDate())}`
+  return { startMD, endMD, wrap: startMD > endMD }
+}
+
 export default function ClientesPage() {
   const { activeBranch, user } = useAdmin()
-  const [clients,  setClients]  = useState<ClientWithHistory[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [q,        setQ]        = useState('')
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [clients,       setClients]       = useState<ClientWithHistory[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [q,             setQ]             = useState('')
+  const [expanded,      setExpanded]      = useState<string | null>(null)
+  const [birthdayFilter, setBirthdayFilter] = useState<BirthdayFilter>('')
 
   const fetchClients = useCallback(async (query: string) => {
     setLoading(true)
@@ -53,41 +78,86 @@ export default function ClientesPage() {
 
   const scopeLabel = activeBranch?.name ?? (user?.role === 'barber' ? 'tu sucursal' : 'todas las sucursales')
 
+  const filteredClients = useMemo(() => {
+    if (!birthdayFilter) return clients
+    const range = getBirthdayFilterRange(birthdayFilter)
+    if (!range) return clients
+    return clients.filter(c => {
+      if (!c.birthday) return false
+      const md = c.birthday.slice(5) // MM-DD from YYYY-MM-DD
+      if (range.wrap) {
+        return md >= range.startMD || md <= range.endMD
+      }
+      return md >= range.startMD && md <= range.endMD
+    })
+  }, [clients, birthdayFilter])
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-950">Clientes</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            {clients.length} registrado{clients.length !== 1 ? 's' : ''} · {scopeLabel}
-          </p>
+      <div className="mb-6 flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-950">Clientes</h1>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {filteredClients.length}{birthdayFilter ? ` de ${clients.length}` : ''} registrado{clients.length !== 1 ? 's' : ''} · {scopeLabel}
+            </p>
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className="input pl-9 w-full"
+              placeholder="Buscar por nombre o email..."
+              value={q}
+              onChange={e => setQ(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            className="input pl-9 w-full"
-            placeholder="Buscar por nombre o email..."
-            value={q}
-            onChange={e => setQ(e.target.value)}
-          />
+
+        {/* Birthday filter */}
+        <div className="flex flex-wrap gap-2">
+          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 self-center">
+            <Cake className="h-3.5 w-3.5" />
+            Cumpleaños:
+          </span>
+          {([
+            { value: '',           label: 'Todos' },
+            { value: 'this_week',  label: 'Esta semana' },
+            { value: 'next_week',  label: 'Próxima semana' },
+            { value: 'this_month', label: 'Este mes' },
+          ] as { value: BirthdayFilter; label: string }[]).map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setBirthdayFilter(opt.value)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                birthdayFilter === opt.value
+                  ? 'border-slate-950 bg-slate-950 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-20"><Spinner /></div>
-      ) : clients.length === 0 ? (
+      ) : filteredClients.length === 0 ? (
         <EmptyState
-          icon={<Users className="h-6 w-6" />}
-          title={q ? 'Sin resultados' : 'Sin clientes aún'}
+          icon={birthdayFilter ? <Cake className="h-6 w-6" /> : <Users className="h-6 w-6" />}
+          title={q ? 'Sin resultados' : birthdayFilter ? 'Sin cumpleaños en ese período' : 'Sin clientes aún'}
           description={q
             ? `No hay clientes que coincidan con "${q}"`
-            : 'Los clientes aparecen cuando hacen una reserva o son cargados manualmente.'
+            : birthdayFilter
+              ? 'No hay clientes con cumpleaños en el período seleccionado.'
+              : 'Los clientes aparecen cuando hacen una reserva o son cargados manualmente.'
           }
         />
       ) : (
         <div className="space-y-2">
-          {clients.map(client => {
+          {filteredClients.map(client => {
             const isOpen      = expanded === client.id
             const total       = client.appointments?.length ?? 0
             const completadas = client.appointments?.filter(a => a.status === 'completada').length ?? 0

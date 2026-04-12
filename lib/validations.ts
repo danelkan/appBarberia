@@ -19,6 +19,7 @@ export const createAppointmentSchema = z.object({
     last_name: z.string().max(100, 'Last name too long').optional().default(''),
     email: z.string().email('Invalid email format').max(255),
     phone: z.string().min(1, 'Phone is required').max(50, 'Phone too long'),
+    birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   }),
 })
 

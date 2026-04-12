@@ -322,6 +322,7 @@ export async function PATCH(req: NextRequest) {
   const permissions = Array.isArray(body.permissions) ? body.permissions as Permission[] : undefined
   const active      = typeof body.active === 'boolean' ? body.active : undefined
   const name        = typeof body.name === 'string' ? body.name.trim() : undefined
+  const password    = typeof body.password === 'string' && body.password.trim() ? body.password.trim() : undefined
   const branch_ids  = body.branch_ids !== undefined ? sanitizeBranchIds(body.branch_ids) : undefined
   const is_barber   = typeof body.is_barber === 'boolean' ? body.is_barber : undefined
   const appears_in_agenda = typeof body.appears_in_agenda === 'boolean' ? body.appears_in_agenda : undefined
@@ -373,11 +374,12 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  // Update auth user name if changed
-  if (name) {
-    const { error: updateUserError } = await supabase.auth.admin.updateUserById(user_id, {
-      user_metadata: { full_name: name, name },
-    })
+  // Update auth user name and/or password if changed
+  if (name || password) {
+    const authUpdate: Record<string, unknown> = {}
+    if (name)     authUpdate.user_metadata = { full_name: name, name }
+    if (password) authUpdate.password = password
+    const { error: updateUserError } = await supabase.auth.admin.updateUserById(user_id, authUpdate)
     if (updateUserError) {
       return NextResponse.json({ error: updateUserError.message }, { status: 500 })
     }

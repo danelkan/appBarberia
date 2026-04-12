@@ -22,9 +22,10 @@ interface ClientForm {
   last_name:  string
   email:      string
   phone:      string
+  birthday:   string
 }
 
-const INITIAL_CLIENT: ClientForm = { first_name: '', last_name: '', email: '', phone: '' }
+const INITIAL_CLIENT: ClientForm = { first_name: '', last_name: '', email: '', phone: '', birthday: '' }
 
 // ── Sub-components ──────────────────────────────────────────────────
 
@@ -169,7 +170,10 @@ export default function BookingFlow({
           branchId:  branch.id,
           date:      selectedDate,
           startTime: selectedTime,
-          client,
+          client: {
+            ...client,
+            birthday: client.birthday || null,
+          },
         }),
       })
       const data = await res.json()
@@ -481,6 +485,14 @@ export default function BookingFlow({
                       onChange={e => setClient(c => ({ ...c, phone: e.target.value }))}
                       placeholder="09X XXX XXX"
                     />
+                    <div className="sm:col-span-2">
+                      <Input
+                        label="Fecha de cumpleaños (opcional)"
+                        type="date"
+                        value={client.birthday}
+                        onChange={e => setClient(c => ({ ...c, birthday: e.target.value }))}
+                      />
+                    </div>
                   </div>
 
                   {error && (

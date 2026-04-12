@@ -156,6 +156,7 @@ export async function POST(req: NextRequest) {
           last_name: clientData.last_name || '',
           email: clientData.email,
           phone: clientData.phone,
+          birthday: clientData.birthday ?? null,
         })
         .select('id').single()
       if (clientError || !newClient) {

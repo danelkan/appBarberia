@@ -345,15 +345,13 @@ export default function UsuariosPage() {
             />
           </div>
 
-          {isCreating && (
-            <Input
-              label="Contraseña"
-              type="password"
-              value={form.password}
-              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-              placeholder="Mínimo 6 caracteres"
-            />
-          )}
+          <Input
+            label={isCreating ? 'Contraseña' : 'Nueva contraseña (opcional)'}
+            type="password"
+            value={form.password}
+            onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+            placeholder={isCreating ? 'Mínimo 6 caracteres' : 'Dejá vacío para mantener la actual'}
+          />
 
           {/* Role */}
           <div>
