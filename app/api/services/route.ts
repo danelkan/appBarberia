@@ -14,8 +14,14 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
-  const { data, error } = await supabase
-    .from('services').select('*').eq('active', true).order('price')
+  const { searchParams } = new URL(req.url)
+  const companyId = searchParams.get('company_id') ?? undefined
+
+  let query = supabase.from('services').select('*').eq('active', true).order('price')
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+  const { data, error } = await query
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

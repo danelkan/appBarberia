@@ -51,16 +51,18 @@ const ROUTE_PERMISSIONS: Partial<Record<string, Permission>> = {
   '/admin/horarios':   'manage_schedules',
   '/admin/sucursales': 'manage_branches',
   '/admin/usuarios':   'manage_users',
+  '/admin/empresas':   'manage_companies',
 }
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard',  label: 'Resumen',    icon: LayoutDashboard },
   { href: '/admin/agenda',     label: 'Agenda',     icon: Calendar },
-  { href: '/admin/caja',       label: 'Caja',       icon: DollarSign,  permission: 'cash.view'       as Permission },
-  { href: '/admin/clientes',   label: 'Clientes',   icon: Users,       permission: 'view_clients'    as Permission },
-  { href: '/admin/servicios',  label: 'Servicios',  icon: Clock3,      permission: 'manage_services' as Permission },
-  { href: '/admin/sucursales', label: 'Sucursales', icon: Store,       permission: 'manage_branches' as Permission },
-  { href: '/admin/usuarios',   label: 'Usuarios',   icon: UserSquare2, permission: 'manage_users'    as Permission },
+  { href: '/admin/caja',       label: 'Caja',       icon: DollarSign,  permission: 'cash.view'         as Permission },
+  { href: '/admin/clientes',   label: 'Clientes',   icon: Users,       permission: 'view_clients'      as Permission },
+  { href: '/admin/servicios',  label: 'Servicios',  icon: Clock3,      permission: 'manage_services'   as Permission },
+  { href: '/admin/sucursales', label: 'Sucursales', icon: Store,       permission: 'manage_branches'   as Permission },
+  { href: '/admin/usuarios',   label: 'Usuarios',   icon: UserSquare2, permission: 'manage_users'      as Permission },
+  { href: '/admin/empresas',   label: 'Plataforma', icon: ShieldCheck, permission: 'manage_companies'  as Permission },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -122,7 +124,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setUser(nextUser ?? null)
         setBranches(allowedBranches)
 
-        const storedBranchId = window.localStorage.getItem('felito.activeBranch')
+        const storedBranchId = window.localStorage.getItem('app.activeBranch')
         const restoredBranch = allowedBranches.find(branch => branch.id === storedBranchId) ?? null
         const nextActiveBranch = nextUser?.role === 'barber'
           ? allowedBranches[0] ?? null
@@ -153,7 +155,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (activeBranch) {
-      window.localStorage.setItem('felito.activeBranch', activeBranch.id)
+      window.localStorage.setItem('app.activeBranch', activeBranch.id)
     }
   }, [activeBranch])
 
@@ -194,7 +196,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Scissors className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-950">Felito Barber Studio</p>
+            <p className="text-sm font-semibold text-slate-950">{process.env.NEXT_PUBLIC_APP_NAME ?? 'Barber Studio'}</p>
             <p className="text-xs text-slate-500">Backoffice operativo</p>
           </div>
         </div>
@@ -301,7 +303,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="lg:hidden">
           <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
             <div>
-              <p className="text-sm font-semibold text-slate-950">Felito Barber Studio</p>
+              <p className="text-sm font-semibold text-slate-950">{process.env.NEXT_PUBLIC_APP_NAME ?? 'Barber Studio'}</p>
               <p className="text-xs text-slate-500">{activeBranch?.name ?? 'Panel administrativo'}</p>
             </div>
             <button

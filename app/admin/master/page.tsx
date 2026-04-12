@@ -1,7 +1,2 @@
 import { redirect } from 'next/navigation'
-
-export const dynamic = 'force-dynamic'
-
-export default function MasterAdminPage() {
-  redirect('/admin/dashboard')
-}
+export default function MasterPage() { redirect('/admin/empresas') }

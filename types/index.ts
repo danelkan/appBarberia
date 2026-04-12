@@ -102,6 +102,9 @@ export interface Company {
   active: boolean
   created_at: string
   branches?: Branch[]
+  plan_tier?: string | null
+  max_branches?: number | null
+  max_barbers?: number | null
 }
 
 export interface Branch {

@@ -2,6 +2,7 @@ import { Resend } from 'resend'
 import type { Appointment, Barber, Client, Service } from '@/types'
 import { formatDate, formatPrice } from './utils'
 import { sanitize, sanitizePhone, sanitizeTime } from './sanitize'
+import { appConfig } from './config'
 
 // Raw email normalizer for use in Resend `to:` fields — must NOT HTML-escape
 function normalizeEmail(email: string | null | undefined): string {
@@ -19,8 +20,7 @@ function getResend() {
 
 // Must be a verified sender domain in Resend. Falls back to test address (only
 // delivers to account owner in sandbox mode; set RESEND_FROM_EMAIL in production).
-const FROM = process.env.RESEND_FROM_EMAIL ?? 'Felito Barber Studio <onboarding@resend.dev>'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'
+const FROM = process.env.RESEND_FROM_EMAIL ?? `${appConfig.name} <onboarding@resend.dev>`
 
 if (!process.env.RESEND_FROM_EMAIL) {
   console.warn('[emails] RESEND_FROM_EMAIL not set — using test sender. Client emails will only reach the Resend account owner.')  // eslint-disable-line no-console
@@ -51,7 +51,7 @@ function emailShell({
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Felito Barber Studio</title>
+  <title>${appConfig.name}</title>
 </head>
 <body style="margin:0;padding:0;background:${BRAND.bg};font-family:Inter,Arial,sans-serif;color:${BRAND.ink};">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.bg};padding:32px 16px;">
@@ -67,9 +67,9 @@ function emailShell({
                       <tr>
                         <td>
                           <div style="display:inline-flex;align-items:center;gap:12px;">
-                            <div style="width:48px;height:48px;border-radius:16px;background:${BRAND.accent};color:#ffffff;font-size:24px;line-height:48px;text-align:center;font-weight:700;">F</div>
+                            <div style="width:48px;height:48px;border-radius:16px;background:${BRAND.accent};color:#ffffff;font-size:24px;line-height:48px;text-align:center;font-weight:700;">${appConfig.logoInitial}</div>
                             <div>
-                              <p style="margin:0;font-size:18px;font-weight:700;color:${BRAND.ink};">Felito Barber Studio</p>
+                              <p style="margin:0;font-size:18px;font-weight:700;color:${BRAND.ink};">${appConfig.name}</p>
                               <p style="margin:4px 0 0;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:${BRAND.muted};">${eyebrow}</p>
                             </div>
                           </div>
@@ -89,7 +89,7 @@ function emailShell({
                   <td style="padding:0 32px 32px;">
                     <div style="border-radius:22px;background:${BRAND.bg};border:1px solid ${BRAND.line};padding:18px 20px;">
                       <p style="margin:0;font-size:13px;line-height:1.6;color:${BRAND.muted};">
-                        Felito Barber Studio · Montevideo, Uruguay
+                        ${appConfig.name}${appConfig.location ? ' · ' + appConfig.location : ''}
                       </p>
                     </div>
                   </td>
@@ -156,7 +156,7 @@ export async function sendConfirmationEmail(
           { label: 'Hora',     value: safeTime },
         ])}
         <div style="margin-top:28px;">
-          ${ctaButton('Ver o cancelar turno', `${APP_URL}/mis-turnos`)}
+          ${ctaButton('Ver o cancelar turno', `${appConfig.url}/mis-turnos`)}
         </div>
       `,
     }),
@@ -202,7 +202,7 @@ export async function sendBarberNotification(
           { label: 'Fecha y hora', value: `${safeDate} · ${safeTime}` },
         ])}
         <div style="margin-top:28px;">
-          ${ctaButton('Abrir agenda', `${APP_URL}/admin/agenda`)}
+          ${ctaButton('Abrir agenda', `${appConfig.url}/admin/agenda`)}
         </div>
       `,
     }),
@@ -245,7 +245,7 @@ export async function sendCancellationEmail(
           { label: 'Hora',     value: safeTime },
         ])}
         <div style="margin-top:28px;">
-          ${ctaButton('Reservar nuevo turno', `${APP_URL}/`)}
+          ${ctaButton('Reservar nuevo turno', `${appConfig.url}/`)}
         </div>
       `,
     }),
