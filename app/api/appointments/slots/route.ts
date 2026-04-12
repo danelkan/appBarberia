@@ -49,8 +49,11 @@ export async function GET(req: NextRequest) {
   const slots = generateTimeSlots(date, barber.availability, duration, appointments as any)
 
   const response = NextResponse.json({ slots })
-  
-  // Add rate limit headers
+
+  // Short cache: slots are valid for ~15s. Stale responses revalidate in bg for 30s.
+  // This reduces duplicate network hits when users rapidly switch dates/barbers.
+  response.headers.set('Cache-Control', 'public, max-age=15, stale-while-revalidate=30')
+
   const headers = getRateLimitHeaders(rateLimit)
   Object.entries(headers).forEach(([key, value]) => {
     response.headers.set(key, value)

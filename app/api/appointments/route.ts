@@ -118,13 +118,15 @@ export async function POST(req: NextRequest) {
     const { serviceId, barberId, branchId, date, startTime, client: clientData } = result.data
     const supabase = createSupabaseAdmin()
 
-    const { data: service, error: serviceError } = await supabase
-      .from('services').select('*').eq('id', serviceId).single()
+    // Parallelize service + barber lookup — saves ~100ms vs sequential
+    const [serviceResult, barber] = await Promise.all([
+      supabase.from('services').select('*').eq('id', serviceId).single(),
+      getVisibleBarberById(supabase, barberId, { branchId }),
+    ])
+    const { data: service, error: serviceError } = serviceResult
     if (serviceError || !service) {
       return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
     }
-
-    const barber = await getVisibleBarberById(supabase, barberId, { branchId })
     if (!barber) {
       return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
     }

@@ -89,9 +89,10 @@ export default function BookingFlow({
   const [loadingSlots, startLoadingSlots] = useTransition()
   const [submitting,   startSubmitting]   = useTransition()
 
-  // Ref for auto-scrolling to slots on mobile
-  const slotsRef = useRef<HTMLDivElement>(null)
-  const datesRef = useRef<HTMLDivElement>(null)
+  // Refs
+  const slotsRef      = useRef<HTMLDivElement>(null)
+  const datesRef      = useRef<HTMLDivElement>(null)
+  const slotDebounce  = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const availableDates = useMemo(
     () => (selectedBarber ? getAvailableDates(selectedBarber.availability ?? {}, 21) : []),
@@ -111,22 +112,31 @@ export default function BookingFlow({
     }
   }, [selectedBarber])
 
-  // Fetch slots when barber+service+date are all set
+  // Fetch slots when barber+service+date are all set — debounced 200ms to
+  // avoid a network request on every intermediate selection change.
   useEffect(() => {
     if (!selectedBarber || !selectedService || !selectedDate) { setSlots([]); return }
-    startLoadingSlots(async () => {
-      setError('')
-      const params = new URLSearchParams({
-        barberId: selectedBarber.id,
-        branchId: branch.id,
-        date: selectedDate,
-        duration: String(selectedService.duration_minutes),
+
+    if (slotDebounce.current) clearTimeout(slotDebounce.current)
+    slotDebounce.current = setTimeout(() => {
+      startLoadingSlots(async () => {
+        setError('')
+        const params = new URLSearchParams({
+          barberId: selectedBarber.id,
+          branchId: branch.id,
+          date: selectedDate,
+          duration: String(selectedService.duration_minutes),
+        })
+        const res  = await fetch(`/api/appointments/slots?${params.toString()}`)
+        const data = await res.json()
+        if (!res.ok) { setError(data.error ?? 'No se pudieron cargar los horarios'); setSlots([]); return }
+        setSlots(data.slots ?? [])
       })
-      const res  = await fetch(`/api/appointments/slots?${params.toString()}`, { cache: 'no-store' })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'No se pudieron cargar los horarios'); setSlots([]); return }
-      setSlots(data.slots ?? [])
-    })
+    }, 200)
+
+    return () => {
+      if (slotDebounce.current) clearTimeout(slotDebounce.current)
+    }
   }, [branch.id, selectedBarber, selectedDate, selectedService])
 
   // Scroll to slots when they load
@@ -220,7 +230,7 @@ export default function BookingFlow({
     <div className="flex min-h-screen flex-col">
 
       {/* ── Sticky header ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+      <header className="safe-area-pt sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <Link
             href="/"
@@ -342,9 +352,9 @@ export default function BookingFlow({
                   {selectedBarber && (
                     <div ref={datesRef}>
                       <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-slate-400">Fecha</p>
-                      {/* relative + after = fade hint on the right indicating more dates to scroll */}
+                      {/* Fade hint on right indicates more dates to scroll */}
                       <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-white to-transparent" />
+                        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-white to-transparent" />
                       <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         {availableDates.slice(0, 21).map(date => {
                           const d = new Date(`${date}T00:00:00`)

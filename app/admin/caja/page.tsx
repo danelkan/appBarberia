@@ -43,7 +43,9 @@ export default function CajaPage() {
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [activeRegisterDetails, setActiveRegisterDetails] = useState<CashRegister | null>(null)
   const [loading, setLoading] = useState(true)
-  const [branchFilter, setBranchFilter] = useState('')
+  // Admin layout only renders children after bootstrap, so activeBranch is already
+  // set on first render — initialize directly to avoid a wasted first fetch.
+  const [branchFilter, setBranchFilter] = useState(activeBranch?.id ?? '')
   const [statusFilter, setStatusFilter] = useState<'' | 'open' | 'closed'>('')
 
   const [openModal,     setOpenModal]     = useState(false)
@@ -52,7 +54,7 @@ export default function CajaPage() {
   const [saving,        setSaving]        = useState(false)
   const [error,         setError]         = useState('')
 
-  const [openForm, setOpenForm] = useState({ branch_id: '', opening_amount: '0', opening_notes: '' })
+  const [openForm, setOpenForm] = useState({ branch_id: activeBranch?.id ?? '', opening_amount: '0', opening_notes: '' })
   const [movementForm, setMovementForm] = useState({
     type: 'income_extra' as CashMovementType,
     payment_method: 'cash' as CashMovementPaymentMethod,
@@ -60,14 +62,6 @@ export default function CajaPage() {
     description: '',
   })
   const [closeForm, setCloseForm] = useState({ counted_cash_amount: '', closing_notes: '' })
-
-  // Keep branchFilter in sync with activeBranch
-  useEffect(() => {
-    if (activeBranch && !branchFilter) {
-      setBranchFilter(activeBranch.id)
-      setOpenForm(f => ({ ...f, branch_id: activeBranch.id }))
-    }
-  }, [activeBranch, branchFilter])
 
   const loadRegisters = useCallback(async () => {
     setLoading(true)

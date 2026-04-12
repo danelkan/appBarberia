@@ -27,13 +27,6 @@ export function formatDate(date: string | Date): string {
   return format(d, "EEEE d 'de' MMMM", { locale: es })
 }
 
-export function formatDateShort(date: string | Date): string {
-  const d = typeof date === 'string'
-    ? new Date(date.includes('T') ? date : date + 'T00:00:00')
-    : date
-  return format(d, 'dd/MM/yyyy')
-}
-
 export function formatPrice(price: number): string {
   return new Intl.NumberFormat('es-UY', {
     style: 'currency', currency: 'UYU', minimumFractionDigits: 0, maximumFractionDigits: 0,
