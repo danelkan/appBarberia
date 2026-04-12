@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { type AuthRoleContext, requireAuth, requireAdminAuth, requirePermission, unauthorizedResponse, hasPermission } from '@/lib/api-auth'
+import { type AuthRoleContext, requireAuth, requireAdminAuth, requirePermission, unauthorizedResponse, forbiddenResponse, hasPermission } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,10 +76,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Only superadmin can create branches. Admins can only edit existing ones.
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
-  const denied = requirePermission(auth, 'manage_branches')
-  if (denied) return denied
+  if (auth.role !== 'superadmin') {
+    return forbiddenResponse('Solo el superadmin puede crear sucursales')
+  }
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })

@@ -76,6 +76,7 @@ export const slotsQuerySchema = z.object({
 // ─── Client Schemas ────────────────────────────────────────────────
 export const clientQuerySchema = z.object({
   q: z.string().max(100).optional(),
+  branch_id: z.string().uuid().optional(),
 })
 
 // ─── Cash Schemas ─────────────────────────────────────────────────

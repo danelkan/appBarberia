@@ -21,6 +21,7 @@ import { useAdmin } from '../layout'
 import {
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
+  ROLE_DEFAULT_PERMISSIONS,
   type AppRole,
   type Branch,
   type DaySchedule,
@@ -53,13 +54,20 @@ interface UserFormState {
   availability: WeeklyAvailability
 }
 
+// Pre-tick the default permissions shown in the UI for new barbers so admins
+// can see what the barber will have (and deselect anything they don't want).
+const BARBER_DEFAULT_FORM_PERMISSIONS: Permission[] = [
+  'cash.view', 'cash.open', 'cash.close', 'cash.add_movement',
+  'view_clients', 'cancel_appointments',
+]
+
 const EMPTY_FORM: UserFormState = {
   name:         '',
   email:        '',
   password:     '',
   role:         'barber',
   branch_ids:   [],
-  permissions:  [],
+  permissions:  BARBER_DEFAULT_FORM_PERMISSIONS,
   active:       true,
   is_barber:    true,
   appears_in_agenda: true,
@@ -360,6 +368,10 @@ export default function UsuariosPage() {
                     role,
                     is_barber: role === 'barber' ? true : f.is_barber,
                     appears_in_agenda: role === 'barber' ? true : f.appears_in_agenda,
+                    // Reset to role defaults when switching roles on a new user
+                    permissions: isCreating
+                      ? (role === 'barber' ? BARBER_DEFAULT_FORM_PERMISSIONS : [])
+                      : f.permissions,
                   }))}
                   className={cn(
                     'rounded-2xl border px-3 py-3 text-left transition',

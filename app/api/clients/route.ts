@@ -1,66 +1,89 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { clientQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  // Rate limiting
   const rateLimit = checkRateLimit(req, 'clients:read', RateLimitConfigs.read)
-  if (!rateLimit.allowed) {
-    return rateLimitResponse(rateLimit)!
-  }
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit)!
 
-  // Authentication required - only admins can view all clients
-  const auth = await requireAdminAuth(req)
-  if (!auth) {
-    return unauthorizedResponse()
-  }
+  // Barbers and admins can access this endpoint — barbers see their branch's clients
+  const auth = await requireAuth(req)
+  if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'view_clients')
   if (denied) return denied
 
   const { searchParams } = new URL(req.url)
   const queryParams = {
     q: searchParams.get('q') ?? undefined,
+    branch_id: searchParams.get('branch_id') ?? undefined,
   }
 
-  // Validate query params
   const result = clientQuerySchema.safeParse(queryParams)
   if (!result.success) {
     return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
   }
 
-  const { q } = result.data
+  const { q, branch_id } = result.data
 
   const supabase = createSupabaseAdmin()
+
+  // Determine which branch(es) to filter by.
+  // Barbers are always scoped to their own branches regardless of query param.
+  // Admins can optionally filter by branch_id param.
+  const filterBranchIds: string[] | null =
+    auth.role === 'barber'
+      ? auth.branch_ids.length > 0 ? auth.branch_ids : null
+      : branch_id ? [branch_id] : null
+
+  // If a branch filter is active, resolve client IDs that have appointments there
+  let allowedClientIds: string[] | null = null
+  if (filterBranchIds !== null) {
+    if (filterBranchIds.length === 0) {
+      // Barber with no branches assigned → no clients visible
+      return NextResponse.json({ clients: [] })
+    }
+
+    const { data: appts } = await supabase
+      .from('appointments')
+      .select('client_id')
+      .in('branch_id', filterBranchIds)
+
+    const allIds = (appts ?? [])
+      .map((a: { client_id: string | null }) => a.client_id)
+      .filter((id): id is string => Boolean(id))
+    allowedClientIds = Array.from(new Set(allIds))
+
+    if (allowedClientIds.length === 0) {
+      return NextResponse.json({ clients: [] })
+    }
+  }
 
   let query = supabase
     .from('clients')
     .select('*, appointments(*, barber:barbers(name), service:services(name,price))')
     .order('created_at', { ascending: false })
 
+  if (allowedClientIds !== null) {
+    query = query.in('id', allowedClientIds)
+  }
+
   if (q) {
-    // Sanitize search query to prevent injection
     const sanitizedQ = q.replace(/[%_]/g, '\\$&')
     query = query.or(`first_name.ilike.%${sanitizedQ}%,last_name.ilike.%${sanitizedQ}%,email.ilike.%${sanitizedQ}%`)
   }
 
   const { data, error } = await query
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const response = NextResponse.json({ clients: data })
-  
-  // Add rate limit headers
   const headers = getRateLimitHeaders(rateLimit)
   Object.entries(headers).forEach(([key, value]) => {
     response.headers.set(key, value)
   })
-
   return response
 }
 
@@ -75,10 +98,18 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
 
-  const { first_name, last_name, email, phone } = body
+  const { first_name, last_name, email, phone, birthday } = body
 
   if (!first_name?.trim()) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+  }
+
+  // Validate birthday format if provided
+  if (birthday !== undefined && birthday !== null && birthday !== '') {
+    const bdRe = /^\d{4}-\d{2}-\d{2}$/
+    if (!bdRe.test(birthday)) {
+      return NextResponse.json({ error: 'Formato de fecha de cumpleaños inválido (YYYY-MM-DD)' }, { status: 400 })
+    }
   }
 
   const supabase = createSupabaseAdmin()
@@ -103,6 +134,7 @@ export async function POST(req: NextRequest) {
       last_name: last_name?.trim() ?? '',
       email: email?.trim().toLowerCase() ?? null,
       phone: phone?.trim() ?? null,
+      birthday: (birthday?.trim() ?? null) || null,
     })
     .select('*')
     .single()

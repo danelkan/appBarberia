@@ -58,7 +58,7 @@ export default function AgendaPage() {
 
   // Quick client creation
   const [clientModal,   setClientModal]   = useState(false)
-  const [clientForm,    setClientForm]    = useState({ first_name: '', phone: '', email: '' })
+  const [clientForm,    setClientForm]    = useState({ first_name: '', phone: '', email: '', birthday: '' })
   const [clientSaving,  setClientSaving]  = useState(false)
   const [clientError,   setClientError]   = useState('')
   const [clientCreated, setClientCreated] = useState<Client | null>(null)
@@ -163,7 +163,7 @@ export default function AgendaPage() {
   }
 
   function openClientModal() {
-    setClientForm({ first_name: '', phone: '', email: '' })
+    setClientForm({ first_name: '', phone: '', email: '', birthday: '' })
     setClientError('')
     setClientCreated(null)
     setClientModal(true)
@@ -175,7 +175,10 @@ export default function AgendaPage() {
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(clientForm),
+      body: JSON.stringify({
+        ...clientForm,
+        birthday: clientForm.birthday || null,
+      }),
     })
     const data = await res.json()
     setClientSaving(false)
@@ -553,6 +556,12 @@ export default function AgendaPage() {
               value={clientForm.email}
               onChange={e => setClientForm(f => ({ ...f, email: e.target.value }))}
               placeholder="juan@email.com"
+            />
+            <Input
+              label="Cumpleaños (opcional)"
+              type="date"
+              value={clientForm.birthday}
+              onChange={e => setClientForm(f => ({ ...f, birthday: e.target.value }))}
             />
             {clientError && (
               <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

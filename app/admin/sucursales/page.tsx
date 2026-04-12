@@ -25,6 +25,8 @@ export default function SucursalesPage() {
   const [editing,   setEditing]   = useState<Partial<Branch>>(EMPTY_BRANCH)
 
   const isSuperadmin = me?.role === 'superadmin'
+  // Admins can edit branches but cannot create or delete them
+  const canEdit = isSuperadmin || me?.role === 'admin'
 
   useEffect(() => { void loadData() }, [])
 
@@ -101,12 +103,15 @@ export default function SucursalesPage() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => openEdit(branch)}
-                  className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => openEdit(branch)}
+                    className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+                    title="Editar sucursal"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
               </div>
 
               <div className="mt-4 space-y-2 text-sm text-slate-600">
@@ -132,6 +137,7 @@ export default function SucursalesPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing.id ? 'Editar sucursal' : 'Nueva sucursal'}
+        // Only superadmin should ever reach the "new" branch modal
       >
         <div className="space-y-4">
           <Input

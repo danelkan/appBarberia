@@ -2,16 +2,25 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Calendar, ChevronDown, ChevronRight, Phone, Search, Users } from 'lucide-react'
+import { Calendar, Cake, ChevronDown, ChevronRight, Phone, Search, Users } from 'lucide-react'
 import { Badge, EmptyState, Input, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
+import { useAdmin } from '../layout'
 import type { Client, Appointment } from '@/types'
 
 interface ClientWithHistory extends Client {
   appointments: (Appointment & { barber: { name: string }; service: { name: string; price: number } })[]
 }
 
+function formatBirthday(birthday: string | null | undefined): string {
+  if (!birthday) return ''
+  // birthday is YYYY-MM-DD, format as DD/MM
+  const [, month, day] = birthday.split('-')
+  return `${day}/${month}`
+}
+
 export default function ClientesPage() {
+  const { activeBranch, user } = useAdmin()
   const [clients,  setClients]  = useState<ClientWithHistory[]>([])
   const [loading,  setLoading]  = useState(true)
   const [q,        setQ]        = useState('')
@@ -20,7 +29,14 @@ export default function ClientesPage() {
   const fetchClients = useCallback(async (query: string) => {
     setLoading(true)
     try {
-      const res  = await fetch(`/api/clients${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+      const params = new URLSearchParams()
+      if (query) params.set('q', query)
+      // Pass active branch for admins so they can filter per-branch too.
+      // Barbers are auto-filtered on the backend by their own branch_ids.
+      if (activeBranch && user?.role !== 'barber') {
+        params.set('branch_id', activeBranch.id)
+      }
+      const res  = await fetch(`/api/clients?${params.toString()}`)
       const data = await res.json()
       setClients(data.clients ?? [])
     } catch {
@@ -28,12 +44,14 @@ export default function ClientesPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeBranch, user?.role])
 
   useEffect(() => {
     const t = setTimeout(() => fetchClients(q), 300)
     return () => clearTimeout(t)
   }, [q, fetchClients])
+
+  const scopeLabel = activeBranch?.name ?? (user?.role === 'barber' ? 'tu sucursal' : 'todas las sucursales')
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
@@ -42,7 +60,7 @@ export default function ClientesPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-950">Clientes</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            {clients.length} registrado{clients.length !== 1 ? 's' : ''}
+            {clients.length} registrado{clients.length !== 1 ? 's' : ''} · {scopeLabel}
           </p>
         </div>
         <div className="relative w-full sm:w-72">
@@ -97,6 +115,12 @@ export default function ClientesPage() {
 
                   {/* Stats */}
                   <div className="flex items-center gap-3 flex-shrink-0">
+                    {client.birthday && (
+                      <span className="hidden sm:inline-flex items-center gap-1 text-xs text-slate-400">
+                        <Cake className="h-3.5 w-3.5" />
+                        {formatBirthday(client.birthday)}
+                      </span>
+                    )}
                     <div className="hidden text-right sm:block">
                       <p className="text-xs font-semibold text-slate-500">
                         {total} turno{total !== 1 ? 's' : ''}
@@ -122,6 +146,17 @@ export default function ClientesPage() {
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Teléfono</p>
                             <p className="text-sm font-medium text-slate-950">{client.phone}</p>
+                          </div>
+                        </div>
+                      )}
+                      {client.birthday && (
+                        <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3">
+                          <Cake className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Cumpleaños</p>
+                            <p className="text-sm font-medium text-slate-950">
+                              {new Date(client.birthday + 'T00:00:00').toLocaleDateString('es-UY', { day: 'numeric', month: 'long' })}
+                            </p>
                           </div>
                         </div>
                       )}
