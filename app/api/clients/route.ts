@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { clientQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -62,6 +63,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // When no branch filter is active (admin listing all clients), scope to
+  // the caller's company so admins from different tenants can't see each other's data.
+  const companyId = filterBranchIds === null
+    ? await resolveCompanyId(auth, supabase)
+    : null
+
   let query = supabase
     .from('clients')
     .select('*, appointments(*, barber:barbers(name), service:services(name,price))')
@@ -69,6 +76,10 @@ export async function GET(req: NextRequest) {
 
   if (allowedClientIds !== null) {
     query = query.in('id', allowedClientIds)
+  }
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
   }
 
   if (q) {
@@ -94,6 +105,7 @@ export async function POST(req: NextRequest) {
 
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
+  const supabase = createSupabaseAdmin()
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
@@ -112,7 +124,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const supabase = createSupabaseAdmin()
+  const companyId = await resolveCompanyId(auth, supabase)
 
   // Check for existing client by email (if provided)
   if (email?.trim()) {
@@ -135,6 +147,7 @@ export async function POST(req: NextRequest) {
       email: email?.trim().toLowerCase() ?? null,
       phone: phone?.trim() ?? null,
       birthday: (birthday?.trim() ?? null) || null,
+      ...(companyId ? { company_id: companyId } : {}),
     })
     .select('*')
     .single()

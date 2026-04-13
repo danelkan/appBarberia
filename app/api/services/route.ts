@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { createServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -15,11 +16,12 @@ export async function GET(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
   const { searchParams } = new URL(req.url)
-  const companyId = searchParams.get('company_id') ?? undefined
+  // Prefer explicit param (public booking flow); fall back to auth context if present
+  const companyIdParam = searchParams.get('company_id') ?? undefined
 
   let query = supabase.from('services').select('*').eq('active', true).order('price')
-  if (companyId) {
-    query = query.eq('company_id', companyId)
+  if (companyIdParam) {
+    query = query.eq('company_id', companyIdParam)
   }
   const { data, error } = await query
 
@@ -63,8 +65,13 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
+  const companyId = await resolveCompanyId(auth, supabase)
+
   const { data, error } = await supabase
-    .from('services').insert(result.data).select('*').single()
+    .from('services')
+    .insert({ ...result.data, ...(companyId ? { company_id: companyId } : {}) })
+    .select('*')
+    .single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

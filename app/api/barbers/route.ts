@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAssignedBranchIdsByBarber, listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { requireAuth } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -13,10 +15,19 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
-  const branchId = new URL(req.url).searchParams.get('branch_id') ?? undefined
+  const { searchParams } = new URL(req.url)
+  const branchId = searchParams.get('branch_id') ?? undefined
+  const companyIdParam = searchParams.get('company_id') ?? undefined
+
+  // If an authenticated admin/barber is calling, scope by their company.
+  // For public booking flow (unauthenticated), use the company_id query param.
+  const auth = await requireAuth(req).catch(() => null)
+  const companyId = companyIdParam
+    ?? (auth ? (await resolveCompanyId(auth, supabase)) ?? undefined : undefined)
+
   const { barbers: data, userRoles: activeRoles, branchLinks } = await listVisibleBarbers(
     supabase,
-    branchId ? { branchId } : undefined
+    { branchId, companyId }
   )
   const assignedBranchIdsByBarber = getAssignedBranchIdsByBarber({
     userRoles: activeRoles ?? [],

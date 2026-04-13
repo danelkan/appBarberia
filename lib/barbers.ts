@@ -200,7 +200,7 @@ export async function createOrReuseBarberForUser(
  */
 export async function listVisibleBarbers(
   supabase: SupabaseClient,
-  options?: { branchId?: string }
+  options?: { branchId?: string; companyId?: string }
 ) {
   const branchLinksQuery = options?.branchId
     ? supabase
@@ -211,13 +211,18 @@ export async function listVisibleBarbers(
         .from('barber_branches')
         .select('barber_id, branch_id, branch:branches(*)')
 
+  let barbersQuery = supabase.from('barbers').select('*').order('created_at')
+  if (options?.companyId) {
+    barbersQuery = barbersQuery.eq('company_id', options.companyId)
+  }
+
   const [
     { data: barbers,    error: barbersError },
     { data: userRoles,  error: rolesError   },
     { data: branchLinks, error: branchError },
     { data: authUsersData, error: authUsersError },
   ] = await Promise.all([
-    supabase.from('barbers').select('*').order('created_at'),
+    barbersQuery,
     supabase
       .from('user_roles')
       .select('user_id, barber_id, role, active, branch_ids')

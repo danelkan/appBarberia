@@ -3,6 +3,7 @@ import { getVisibleBarberById } from '@/lib/barbers'
 import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,6 +75,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El horario ya está ocupado. Elegí otro horario.' }, { status: 409 })
   }
 
+  const companyId = await resolveCompanyId(auth, supabase)
+
   // Resolve client
   let clientId: string
 
@@ -100,6 +103,7 @@ export async function POST(req: NextRequest) {
             last_name:  '',
             email:      emailNorm,
             phone:      client_phone?.trim() ?? null,
+            ...(companyId ? { company_id: companyId } : {}),
           })
           .select('id')
           .single()
@@ -116,6 +120,7 @@ export async function POST(req: NextRequest) {
           last_name:  '',
           email:      null,
           phone:      client_phone?.trim() ?? null,
+          ...(companyId ? { company_id: companyId } : {}),
         })
         .select('id')
         .single()
@@ -133,6 +138,7 @@ export async function POST(req: NextRequest) {
       barber_id,
       service_id,
       branch_id:  branch_id ?? null,
+      company_id: companyId,
       date,
       start_time,
       end_time,

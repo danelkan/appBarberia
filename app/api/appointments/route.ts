@@ -4,6 +4,7 @@ import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendBookingEmails } from '@/lib/emails'
 import { applyAuthCookies, type AuthRoleContext, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyIdFromBranch } from '@/lib/tenant'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -156,6 +157,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El horario ya no está disponible. Por favor elegí otro.' }, { status: 409 })
     }
 
+    const companyId = await resolveCompanyIdFromBranch(supabase, branchId)
+
     const { data: existingClient } = await supabase
       .from('clients').select('id').eq('email', clientData.email).single()
 
@@ -171,6 +174,7 @@ export async function POST(req: NextRequest) {
           email: clientData.email,
           phone: clientData.phone,
           birthday: clientData.birthday ?? null,
+          ...(companyId ? { company_id: companyId } : {}),
         })
         .select('id').single()
       if (clientError || !newClient) {
@@ -181,7 +185,17 @@ export async function POST(req: NextRequest) {
 
     const { data: appointment, error: apptError } = await supabase
       .from('appointments')
-      .insert({ client_id: clientId, barber_id: barberId, service_id: serviceId, branch_id: branchId ?? null, date, start_time: startTime, end_time: endTime, status: 'pendiente' })
+      .insert({
+        client_id: clientId,
+        barber_id: barberId,
+        service_id: serviceId,
+        branch_id: branchId ?? null,
+        company_id: companyId,
+        date,
+        start_time: startTime,
+        end_time: endTime,
+        status: 'pendiente',
+      })
       .select('*').single()
 
     if (apptError || !appointment) {
