@@ -97,7 +97,8 @@ export default function CajaPage() {
       .then(data => { if (!cancelled) setActiveRegisterDetails(data.cash_register ?? null) })
       .catch(() => { if (!cancelled) setActiveRegisterDetails(null) })
     return () => { cancelled = true }
-  }, [currentOpenRegister])
+  // Depend on .id, not the object reference — avoids refetch on unrelated state changes
+  }, [currentOpenRegister?.id])
 
   async function handleOpenRegister() {
     setSaving(true); setError('')

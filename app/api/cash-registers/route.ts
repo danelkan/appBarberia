@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { buildCashSummary, createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { cashRegisterQuerySchema, openCashRegisterSchema } from '@/lib/validations'
 
 export const dynamic = 'force-dynamic'
@@ -28,6 +29,12 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
+
+  // Enforce company scope at DB level — never rely on post-filter for isolation
+  const resolvedCompanyId = auth.role === 'superadmin'
+    ? null
+    : await resolveCompanyId(auth, supabase)
+
   let query = supabase
     .from('cash_registers')
     .select(`
@@ -39,9 +46,16 @@ export async function GET(req: NextRequest) {
 
   const { status, branch_id, company_id, opened_by_user_id, from, to } = result.data
 
+  // Company scope: explicit param (superadmin) or resolved from auth (everyone else)
+  const effectiveCompanyId = resolvedCompanyId ?? company_id ?? null
+  if (effectiveCompanyId) query = query.eq('company_id', effectiveCompanyId)
+
   if (status) query = query.eq('status', status)
   if (branch_id) query = query.eq('branch_id', branch_id)
-  if (company_id) query = query.eq('company_id', company_id)
+  // Barbers: scope to their branches at DB level — no in-memory post-filter
+  if (auth.role === 'barber' && auth.branch_ids.length > 0) {
+    query = query.in('branch_id', auth.branch_ids)
+  }
   if (opened_by_user_id) query = query.eq('opened_by_user_id', opened_by_user_id)
   if (from) query = query.gte('opened_at', `${from}T00:00:00`)
   if (to) query = query.lte('opened_at', `${to}T23:59:59`)
@@ -49,20 +63,44 @@ export async function GET(req: NextRequest) {
   const { data: registers, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const filteredRegisters = auth.role === 'barber'
-    ? (registers ?? []).filter((register: any) => auth.branch_ids.includes(register.branch_id))
-    : registers ?? []
+  const registerIds = (registers ?? []).map((register: any) => register.id)
 
-  const registerIds = filteredRegisters.map((register: any) => register.id)
-  const [{ data: movements }, { data: usersData }] = await Promise.all([
+  // Resolve user names from user_roles (fast, company-scoped) — avoids listUsers()
+  const allUserIds = Array.from(new Set(
+    (registers ?? []).flatMap((r: any) => [r.opened_by_user_id, r.closed_by_user_id].filter(Boolean))
+  ))
+
+  const [{ data: movements }, { data: userRoleRows }] = await Promise.all([
     registerIds.length > 0
       ? supabase
           .from('cash_movements')
           .select('cash_register_id, type, payment_method, amount')
           .in('cash_register_id', registerIds)
       : Promise.resolve({ data: [] }),
-    supabase.auth.admin.listUsers(),
+    allUserIds.length > 0
+      ? supabase
+          .from('user_roles')
+          .select('user_id, display_name:user_id')
+          .in('user_id', allUserIds)
+      : Promise.resolve({ data: [] }),
   ])
+
+  // Build user name map from auth metadata via targeted getUserById calls (parallel, small set)
+  const userMap = new Map<string, { id: string; email: string; name: string }>()
+  if (allUserIds.length > 0) {
+    const authResults = await Promise.all(
+      allUserIds.map(uid => supabase.auth.admin.getUserById(uid as string))
+    )
+    authResults.forEach(({ data }) => {
+      if (data?.user) {
+        userMap.set(data.user.id, {
+          id: data.user.id,
+          email: data.user.email ?? '',
+          name: data.user.user_metadata?.full_name ?? data.user.user_metadata?.name ?? data.user.email ?? '',
+        })
+      }
+    })
+  }
 
   const movementMap = new Map<string, any[]>()
   ;(movements ?? []).forEach((movement: any) => {
@@ -71,19 +109,7 @@ export async function GET(req: NextRequest) {
     movementMap.set(movement.cash_register_id, current)
   })
 
-  const users = usersData?.users ?? []
-  const userMap = new Map(
-    users.map(user => [
-      user.id,
-      {
-        id: user.id,
-        email: user.email ?? '',
-        name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email ?? '',
-      },
-    ])
-  )
-
-  const hydrated = filteredRegisters.map((register: any) => ({
+  const hydrated = (registers ?? []).map((register: any) => ({
     ...register,
     opened_by_user: register.opened_by_user_id ? userMap.get(register.opened_by_user_id) ?? null : null,
     closed_by_user: register.closed_by_user_id ? userMap.get(register.closed_by_user_id) ?? null : null,

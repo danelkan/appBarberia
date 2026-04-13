@@ -71,8 +71,9 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('clients')
-    .select('*, appointments(*, barber:barbers(name), service:services(name,price))')
+    .select('id, first_name, last_name, email, phone, birthday, created_at')
     .order('created_at', { ascending: false })
+    .limit(200)
 
   if (allowedClientIds !== null) {
     query = query.in('id', allowedClientIds)

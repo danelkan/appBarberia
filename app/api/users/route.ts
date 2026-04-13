@@ -134,25 +134,50 @@ export async function GET(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
   const scope = await getCompanyScope(supabase, auth)
-  const [
-    { data: authUsersData, error: authError },
-    { data: roleRows },
-    { data: barbers },
-    { data: branches },
-    { data: branchLinks },
-  ] = await Promise.all([
-    supabase.auth.admin.listUsers(),
-    supabase.from('user_roles').select('*'),
-    supabase.from('barbers').select('id, name, email, availability'),
-    supabase.from('branches').select('id, name'),
-    supabase.from('barber_branches').select('barber_id, branch_id'),
-  ])
 
-  if (authError) {
-    return NextResponse.json({ error: authError.message }, { status: 500 })
+  // For non-superadmin: scope all DB queries by company to avoid loading
+  // every user/barber/branch from every tenant into memory.
+  const companyFilter = scope?.companyId ?? null
+
+  let rolesQuery = supabase.from('user_roles').select('*')
+  let barbersQuery = supabase.from('barbers').select('id, name, email, availability')
+  let branchesQuery = supabase.from('branches').select('id, name')
+  let branchLinksQuery = supabase.from('barber_branches').select('barber_id, branch_id')
+
+  if (companyFilter) {
+    rolesQuery    = rolesQuery.eq('company_id', companyFilter)
+    barbersQuery  = barbersQuery.eq('company_id', companyFilter)
+    branchesQuery = branchesQuery.eq('company_id', companyFilter)
+    // barber_branches: filter by barbers in this company via a join-style in() after we have barber ids
   }
 
-  const authUsers = authUsersData?.users ?? []
+  const [{ data: roleRows }, { data: barbers }, { data: branches }] = await Promise.all([
+    rolesQuery,
+    barbersQuery,
+    branchesQuery,
+  ])
+
+  // Scope barber_branches to barbers within this company
+  const barberIdsInScope = (barbers ?? []).map((b: any) => b.id as string)
+  const { data: branchLinks } = barberIdsInScope.length > 0
+    ? await supabase.from('barber_branches').select('barber_id, branch_id').in('barber_id', barberIdsInScope)
+    : { data: [] }
+
+  // Load auth users only for the user_ids we know belong to this company
+  const userIdsInScope = (roleRows ?? []).map((r: any) => r.user_id as string).filter(Boolean)
+  let authUsers: any[] = []
+  if (auth.role === 'superadmin') {
+    const { data: allUsers, error: authError } = await supabase.auth.admin.listUsers()
+    if (authError) return NextResponse.json({ error: authError.message }, { status: 500 })
+    authUsers = allUsers?.users ?? []
+  } else if (userIdsInScope.length > 0) {
+    // Parallel targeted lookups — O(company_users), not O(total_users)
+    const results = await Promise.all(
+      userIdsInScope.map(uid => supabase.auth.admin.getUserById(uid))
+    )
+    authUsers = results.flatMap(({ data }) => (data?.user ? [data.user] : []))
+  }
+
   const roleMap   = new Map((roleRows ?? []).map((row: any) => [row.user_id, row]))
   const barberMap = new Map((barbers ?? []).map((b: any) => [b.id, b]))
   const branchMap = new Map((branches ?? []).map((b: any) => [b.id, b]))

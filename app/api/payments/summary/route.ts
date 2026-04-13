@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 
 export const dynamic = 'force-dynamic'
@@ -36,19 +37,27 @@ export async function GET(req: NextRequest) {
     year:  [format(startOfYear(now), "yyyy-MM-dd'T'00:00:00"), format(endOfYear(now), "yyyy-MM-dd'T'23:59:59")],
   }
 
-  // Single query — fetch entire year (covers all ranges) to avoid 4 round-trips
-  const query = supabase
+  // Scope to caller's company — prevents revenue leakage across tenants
+  const companyId = auth.role === 'superadmin'
+    ? null
+    : await resolveCompanyId(auth, supabase)
+
+  // Single query — fetch entire year (covers all ranges) to avoid 4 round-trips.
+  // company_id filter at DB level replaces the in-memory cross-tenant post-filter.
+  let query = supabase
     .from('payments')
     .select('amount, method, created_at, appointment:appointments(branch_id, barber_id)')
     .gte('created_at', ranges.year[0])
     .lte('created_at', ranges.year[1])
 
+  if (companyId) query = query.eq('company_id', companyId)
+
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Apply role/branch filter
   let rows = data ?? []
 
+  // Barbers: further scope to own branch/appointments (within company)
   if (auth.role === 'barber') {
     rows = rows.filter((p: any) => {
       const appt = p.appointment

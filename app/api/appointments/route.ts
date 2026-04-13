@@ -159,8 +159,11 @@ export async function POST(req: NextRequest) {
 
     const companyId = await resolveCompanyIdFromBranch(supabase, branchId)
 
-    const { data: existingClient } = await supabase
-      .from('clients').select('id').eq('email', clientData.email).single()
+    // Scope client lookup to this company — prevents merging histories across tenants
+    let existingClientQuery = supabase
+      .from('clients').select('id').eq('email', clientData.email)
+    if (companyId) existingClientQuery = existingClientQuery.eq('company_id', companyId)
+    const { data: existingClient } = await existingClientQuery.maybeSingle()
 
     let clientId: string
     if (existingClient) {

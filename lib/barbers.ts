@@ -216,34 +216,34 @@ export async function listVisibleBarbers(
     barbersQuery = barbersQuery.eq('company_id', options.companyId)
   }
 
+  let rolesQuery = supabase
+    .from('user_roles')
+    .select('user_id, barber_id, role, active, branch_ids, company_id')
+    .not('barber_id', 'is', null)
+  if (options?.companyId) {
+    rolesQuery = rolesQuery.eq('company_id', options.companyId)
+  }
+
   const [
     { data: barbers,    error: barbersError },
     { data: userRoles,  error: rolesError   },
     { data: branchLinks, error: branchError },
-    { data: authUsersData, error: authUsersError },
   ] = await Promise.all([
     barbersQuery,
-    supabase
-      .from('user_roles')
-      .select('user_id, barber_id, role, active, branch_ids')
-      .not('barber_id', 'is', null),
+    rolesQuery,
     branchLinksQuery,
-    supabase.auth.admin.listUsers({ perPage: 1000 }),
   ])
 
   if (barbersError) throw barbersError
   if (rolesError)   throw rolesError
   if (branchError)  throw branchError
-  if (authUsersError) throw authUsersError
 
-  const validAuthUserIds = new Set(
-    (authUsersData?.users ?? []).map((user: any) => user.id as string)
-  )
-
+  // We trust user_roles.active as the source of truth for barber status.
+  // Skipping auth.admin.listUsers() removes a global O(N_all_users) call from
+  // every barber listing request. Orphaned rows are cleaned up on user deletion.
   const visibleBarberIds = getVisibleBarberIds({
     userRoles:   userRoles   ?? [],
     branchLinks: branchLinks ?? [],
-    validAuthUserIds,
     branchId: options?.branchId,
   })
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { createCashAuditLog, getOpenCashRegister, mapPaymentMethodToCashMethod } from '@/lib/cash'
 
 export const dynamic = 'force-dynamic'
@@ -146,12 +147,17 @@ export async function GET(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
 
+  // Scope to caller's company at DB level — no cross-tenant leakage
+  const companyId = auth.role === 'superadmin'
+    ? null
+    : await resolveCompanyId(auth, supabase)
+
   let query = supabase
     .from('payments')
     .select(`
-      *,
+      id, amount, method, receipt_number, created_at,
       appointment:appointments(
-        id, date, start_time, branch_id,
+        id, date, start_time, branch_id, barber_id,
         client:clients(first_name, last_name),
         barber:barbers(id, name),
         service:services(name, price),
@@ -159,23 +165,25 @@ export async function GET(req: NextRequest) {
       )
     `)
     .order('created_at', { ascending: false })
+    .limit(500)
 
+  if (companyId) query = query.eq('company_id', companyId)
   if (date_from) query = query.gte('created_at', date_from)
   if (date_to)   query = query.lte('created_at', date_to.includes('T') ? date_to : date_to + 'T23:59:59')
-  if (branch_id) query = query.eq('appointment.branch_id', branch_id)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Filter by branch if needed (post-filter due to join)
+  // branch_id filter at application level (join column can't use .eq in PostgREST directly)
   const filtered = branch_id
     ? (data ?? []).filter((p: any) => p.appointment?.branch_id === branch_id)
     : data ?? []
 
+  // Barbers: scope to own branch or own appointments — already inside company scope
   const visiblePayments = auth.role === 'barber'
     ? filtered.filter((payment: any) => {
         const appointmentBranchId = payment.appointment?.branch_id
-        const appointmentBarberId = payment.appointment?.barber?.id
+        const appointmentBarberId = payment.appointment?.barber_id
         return (
           (appointmentBranchId && auth.branch_ids.includes(appointmentBranchId)) ||
           (auth.barber_id && appointmentBarberId === auth.barber_id)
