@@ -138,6 +138,12 @@ export function isSlotAvailable(options: {
   availability: WeeklyAvailability
   existingAppointments: Array<Pick<Appointment, 'start_time' | 'end_time' | 'status'>>
   referenceDate?: Date
+  /**
+   * When true, skips the last-minute booking cutoff check.
+   * Use for staff/admin bookings (walk-ins, on-the-spot scheduling) — the
+   * 5-minute rule is a UX guard for self-serve public clients only.
+   */
+  skipCutoff?: boolean
 }): SlotAvailabilityResult {
   const {
     date,
@@ -146,6 +152,7 @@ export function isSlotAvailable(options: {
     availability,
     existingAppointments,
     referenceDate = new Date(),
+    skipCutoff = false,
   } = options
 
   const daySchedule = availability[getBookingDayKey(date)]
@@ -166,7 +173,7 @@ export function isSlotAvailable(options: {
   }
 
   const slotCutoffMinuteKey = toMinuteKey(cutoff.date, cutoff.time)
-  if (now.minuteKey > slotCutoffMinuteKey) {
+  if (!skipCutoff && now.minuteKey > slotCutoffMinuteKey) {
     return { available: false, reason: 'past_cutoff', cutoffDate: cutoff.date, cutoffTime: cutoff.time, nowDate: now.date, nowTime: now.time }
   }
 

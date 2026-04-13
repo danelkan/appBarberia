@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Clock3,
   DollarSign,
+  MessageCircle,
   Plus,
   Receipt,
   UserRound,
@@ -26,6 +27,34 @@ import { useAdmin } from '../layout'
 import { PAYMENT_METHOD_LABELS, type Appointment, type Barber, type Client, type PaymentMethod, type Service } from '@/types'
 
 type ViewMode = 'day' | 'week'
+
+/**
+ * Normalizes a Uruguayan phone number to the international format required by WhatsApp
+ * (country code without + followed by the subscriber number, no spaces).
+ * Examples: "091 234 567" → "59891234567", "094567890" → "59894567890"
+ * Returns null if the number cannot be reasonably normalized.
+ */
+function buildWhatsAppUrl(rawPhone: string | null | undefined, message: string): string | null {
+  if (!rawPhone) return null
+  const digits = rawPhone.replace(/\D/g, '')
+  if (digits.length < 8) return null
+
+  let international: string
+  if (digits.startsWith('598')) {
+    international = digits
+  } else if (digits.startsWith('0')) {
+    // Local format 09X... → strip leading 0, prepend 598
+    international = '598' + digits.slice(1)
+  } else if (digits.length === 8) {
+    // 8-digit number without prefix → assume Uruguay mobile (add 598)
+    international = '598' + digits
+  } else {
+    // Already looks like an international number or unknown format
+    international = digits
+  }
+
+  return `https://wa.me/${international}?text=${encodeURIComponent(message)}`
+}
 
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
 
@@ -399,59 +428,87 @@ export default function AgendaPage() {
 
       {/* Appointment detail modal */}
       <Modal open={!!selected && !paymentModal} onClose={() => setSelected(null)} title="Detalle del turno">
-        {selected && (
-          <div className="space-y-5">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-              <div className="grid gap-3 text-sm text-slate-600">
-                <DetailRow label="Cliente"  value={`${selected.client?.first_name ?? ''} ${selected.client?.last_name ?? ''}`.trim()} />
-                <DetailRow label="Servicio" value={selected.service?.name ?? '-'} />
-                {!isBarber && <DetailRow label="Barbero" value={selected.barber?.name ?? '-'} />}
-                <DetailRow label="Fecha"    value={formatDate(selected.date)} />
-                <DetailRow label="Hora"     value={`${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}`} />
-                {selected.branch && <DetailRow label="Sucursal" value={selected.branch.name} />}
-                {selected.client?.phone && <DetailRow label="Teléfono" value={selected.client.phone} />}
+        {selected && (() => {
+          const clientName = `${selected.client?.first_name ?? ''} ${selected.client?.last_name ?? ''}`.trim()
+          const waMessage = [
+            `Hola ${selected.client?.first_name ?? 'cliente'}! ✂️`,
+            `Te confirmamos tu turno en Felito Barber Studio:`,
+            `📅 ${formatDate(selected.date)}`,
+            `⏰ ${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}`,
+            `💈 ${selected.service?.name ?? ''}`,
+            !isBarber && selected.barber?.name ? `Barbero: ${selected.barber.name}` : null,
+            selected.branch?.name ? `📍 ${selected.branch.name}` : null,
+            `¡Te esperamos!`,
+          ].filter(Boolean).join('\n')
+          const waUrl = buildWhatsAppUrl(selected.client?.phone, waMessage)
+
+          return (
+            <div className="space-y-5">
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="grid gap-3 text-sm text-slate-600">
+                  <DetailRow label="Cliente"  value={clientName || '-'} />
+                  <DetailRow label="Servicio" value={selected.service?.name ?? '-'} />
+                  {!isBarber && <DetailRow label="Barbero" value={selected.barber?.name ?? '-'} />}
+                  <DetailRow label="Fecha"    value={formatDate(selected.date)} />
+                  <DetailRow label="Hora"     value={`${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}`} />
+                  {selected.branch && <DetailRow label="Sucursal" value={selected.branch.name} />}
+                  {selected.client?.phone && <DetailRow label="Teléfono" value={selected.client.phone} />}
+                </div>
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className={STATUS_CONFIG[selected.status].color}>
-                {STATUS_CONFIG[selected.status].label}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className={STATUS_CONFIG[selected.status].color}>
+                  {STATUS_CONFIG[selected.status].label}
+                </Badge>
+                {selected.payment && (
+                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">Cobrado</Badge>
+                )}
+              </div>
+
+              {payError && !paymentModal && (
+                <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{payError}</p>
+              )}
+
+              {/* WhatsApp confirmation */}
+              {waUrl && (
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 active:scale-[0.99]"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Confirmar por WhatsApp
+                </a>
+              )}
+
+              <div className="flex gap-3">
+                {!selected.payment && selected.status !== 'cancelada' && can('cash.add_movement') && (
+                  <Button className="flex-1" onClick={() => openPayment(selected)}>
+                    <DollarSign className="h-4 w-4" />
+                    Cobrar
+                  </Button>
+                )}
+                {!selected.payment && selected.status !== 'cancelada' && can('cancel_appointments') && (
+                  <Button variant="danger" className="flex-1" onClick={() => cancelAppointment(selected)}>
+                    <XCircle className="h-4 w-4" />
+                    Cancelar
+                  </Button>
+                )}
+              </div>
+
               {selected.payment && (
-                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">Cobrado</Badge>
+                <Link
+                  href={`/admin/comprobante/${selected.payment.id}`}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Receipt className="h-4 w-4" />
+                  Ver comprobante
+                </Link>
               )}
             </div>
-
-            {payError && !paymentModal && (
-              <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{payError}</p>
-            )}
-
-            <div className="flex gap-3">
-              {!selected.payment && selected.status !== 'cancelada' && can('cash.add_movement') && (
-                <Button className="flex-1" onClick={() => openPayment(selected)}>
-                  <DollarSign className="h-4 w-4" />
-                  Cobrar
-                </Button>
-              )}
-              {!selected.payment && selected.status !== 'cancelada' && can('cancel_appointments') && (
-                <Button variant="danger" className="flex-1" onClick={() => cancelAppointment(selected)}>
-                  <XCircle className="h-4 w-4" />
-                  Cancelar
-                </Button>
-              )}
-            </div>
-
-            {selected.payment && (
-              <Link
-                href={`/admin/comprobante/${selected.payment.id}`}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <Receipt className="h-4 w-4" />
-                Ver comprobante
-              </Link>
-            )}
-          </div>
-        )}
+          )
+        })()}
       </Modal>
 
       {/* Payment modal */}

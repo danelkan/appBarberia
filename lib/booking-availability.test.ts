@@ -108,6 +108,37 @@ describe('booking availability', () => {
     expect(barberB.find(slot => slot.time === '15:00')?.available).toBe(true)
   })
 
+  it('allows staff to book a slot past the cutoff when skipCutoff is true', () => {
+    // Simulates a walk-in at 14:58 for a 15:00 slot — staff should succeed
+    const result = isSlotAvailable({
+      date: '2026-04-13',
+      startTime: '15:00',
+      durationMinutes: 30,
+      availability: DEFAULT_AVAILABILITY,
+      existingAppointments: [],
+      referenceDate: new Date('2026-04-13T17:58:00.000Z'), // 14:58 Montevideo — past cutoff
+      skipCutoff: true,
+    })
+
+    expect(result.available).toBe(true)
+    expect(result.reason).toBe('available')
+  })
+
+  it('still blocks an occupied slot even when skipCutoff is true', () => {
+    const result = isSlotAvailable({
+      date: '2026-04-13',
+      startTime: '15:00',
+      durationMinutes: 30,
+      availability: DEFAULT_AVAILABILITY,
+      existingAppointments: [{ start_time: '15:00', end_time: '15:30', status: 'pendiente' }],
+      referenceDate: new Date('2026-04-13T17:58:00.000Z'),
+      skipCutoff: true,
+    })
+
+    expect(result.available).toBe(false)
+    expect(result.reason).toBe('occupied')
+  })
+
   it('uses the business timezone when deciding what counts as today', () => {
     const dates = getAvailableDates(
       {

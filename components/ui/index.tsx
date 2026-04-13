@@ -112,16 +112,22 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
       <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={cn('relative w-full rounded-t-[28px] border border-slate-200 bg-white p-6 shadow-2xl sm:rounded-[28px]', maxW)}>
+      <div className={cn(
+        'relative flex w-full flex-col rounded-t-[28px] border border-slate-200 bg-white shadow-2xl sm:rounded-[28px]',
+        'max-h-[92vh] sm:max-h-[88vh]',
+        maxW,
+      )}>
         {title && (
-          <div className="mb-5 flex items-center justify-between gap-4">
+          <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-slate-100 px-6 py-5">
             <h3 className="text-lg font-semibold text-slate-950">{title}</h3>
             <button onClick={onClose} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
               <X className="h-4 w-4" />
             </button>
           </div>
         )}
-        {children}
+        <div className="overflow-y-auto p-6">
+          {children}
+        </div>
       </div>
     </div>
   )

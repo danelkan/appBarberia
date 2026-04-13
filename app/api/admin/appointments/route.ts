@@ -62,18 +62,13 @@ export async function POST(req: NextRequest) {
     durationMinutes: service.duration_minutes,
     availability: barber.availability,
     existingAppointments: appointmentsForDay as any,
+    // Staff can book walk-ins at any time — the 5-min cutoff is for public self-bookings only.
+    skipCutoff: true,
   })
 
   if (!availabilityCheck.available) {
     if (availabilityCheck.reason === 'day_unavailable' || availabilityCheck.reason === 'outside_schedule') {
       return NextResponse.json({ error: 'Ese horario no pertenece a la disponibilidad actual del barbero.' }, { status: 400 })
-    }
-
-    if (availabilityCheck.reason === 'past_cutoff') {
-      return NextResponse.json(
-        { error: 'Los turnos libres solo pueden reservarse hasta 5 minutos antes de la hora de inicio.' },
-        { status: 409 }
-      )
     }
 
     return NextResponse.json({ error: 'El horario ya está ocupado. Elegí otro horario.' }, { status: 409 })
