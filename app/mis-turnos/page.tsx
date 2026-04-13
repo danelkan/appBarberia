@@ -1,8 +1,9 @@
 'use client'
 import { useState } from 'react'
-import { Scissors, Calendar, Clock, Search, X, AlertCircle, CheckCircle, MapPin, ArrowLeft } from 'lucide-react'
+import { Calendar, Clock, Search, X, AlertCircle, CheckCircle, MapPin, ArrowLeft, Scissors } from 'lucide-react'
 import { Button, Input, Spinner } from '@/components/ui'
 import { cn, formatDate, STATUS_CONFIG } from '@/lib/utils'
+import { BrandLogo } from '@/components/brand-logo'
 import Link from 'next/link'
 import type { Appointment, Client } from '@/types'
 
@@ -66,9 +67,7 @@ export default function MisTurnosPage() {
       <header className="bg-white border-b border-border sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center">
-              <Scissors className="w-3.5 h-3.5 text-gold" />
-            </div>
+            <BrandLogo size={32} className="rounded-xl" />
             <div>
               <p className="text-sm font-semibold text-cream leading-none">Felito Barber Studio</p>
               <p className="text-[10px] text-cream/40 mt-0.5 font-medium">Mis turnos</p>

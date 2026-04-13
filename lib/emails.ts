@@ -35,6 +35,7 @@ const BRAND = {
   accent: '#111827',
 }
 
+
 function emailShell({
   eyebrow,
   title,
@@ -67,7 +68,7 @@ function emailShell({
                       <tr>
                         <td>
                           <div style="display:inline-flex;align-items:center;gap:12px;">
-                            <div style="width:48px;height:48px;border-radius:16px;background:${BRAND.accent};color:#ffffff;font-size:24px;line-height:48px;text-align:center;font-weight:700;">${appConfig.logoInitial}</div>
+                            <img src="${appConfig.url}/icon-192.png" alt="${appConfig.name}" width="48" height="48" style="border-radius:16px;display:block;" />
                             <div>
                               <p style="margin:0;font-size:18px;font-weight:700;color:${BRAND.ink};">${appConfig.name}</p>
                               <p style="margin:4px 0 0;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:${BRAND.muted};">${eyebrow}</p>

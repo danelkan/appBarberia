@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowRight, MapPin, Scissors } from 'lucide-react'
+import { ArrowRight, MapPin } from 'lucide-react'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { BrandLogo } from '@/components/brand-logo'
 
 export const revalidate = 300
 
@@ -25,9 +26,7 @@ export default async function HomePage() {
         {/* Header */}
         <header className="flex items-center">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white">
-              <Scissors className="h-4 w-4" />
-            </div>
+            <BrandLogo size={40} className="rounded-xl" />
             <div>
               <p className="text-sm font-semibold text-slate-950">Felito Barber Studio</p>
               <p className="text-xs text-slate-400">Montevideo</p>

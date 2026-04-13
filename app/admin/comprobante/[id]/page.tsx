@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Scissors, Printer, ArrowLeft, CheckCircle, MapPin, Clock, Share2, Download } from 'lucide-react'
+import { Printer, ArrowLeft, CheckCircle, MapPin, Clock, Share2, Download } from 'lucide-react'
+import { BrandLogo } from '@/components/brand-logo'
 import { formatPrice } from '@/lib/utils'
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ICONS, type Payment, type PaymentMethod } from '@/types'
 import { Spinner } from '@/components/ui'
@@ -142,8 +143,8 @@ export default function ComprobantePage() {
 
         {/* Header */}
         <div className="px-8 py-7 text-center border-b border-border">
-          <div className="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mx-auto mb-4">
-            <Scissors className="w-6 h-6 text-gold" />
+          <div className="mx-auto mb-4 w-14 h-14">
+            <BrandLogo size={56} className="rounded-2xl" />
           </div>
           <h1 className="font-serif text-2xl text-cream">Felito Barber Studio</h1>
           {appt.branch && (

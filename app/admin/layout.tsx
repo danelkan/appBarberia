@@ -13,7 +13,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Scissors,
   ShieldCheck,
   Store,
   Users,
@@ -21,6 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { Button, Spinner } from '@/components/ui'
+import { BrandLogo } from '@/components/brand-logo'
 import { hasResolvedPermission } from '@/lib/permissions'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -192,9 +192,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex h-full flex-col">
       <div className="border-b border-slate-200 px-5 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
-            <Scissors className="h-5 w-5" />
-          </div>
+          <BrandLogo size={44} />
           <div>
             <p className="text-sm font-semibold text-slate-950">{process.env.NEXT_PUBLIC_APP_NAME ?? 'Barber Studio'}</p>
             <p className="text-xs text-slate-500">Backoffice operativo</p>

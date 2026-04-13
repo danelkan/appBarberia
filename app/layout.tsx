@@ -40,15 +40,18 @@ export const metadata: Metadata = {
     siteName: 'Felito Barber Studio',
   },
   icons: {
-    icon:     [{ url: '/favicon.svg', type: 'image/svg+xml' }],
-    shortcut: '/favicon.svg',
-    apple:    [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    icon:     [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: '/icon-192.png',
+    apple:    [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
   manifest: '/site.webmanifest',
   appleWebApp: {
     capable:         true,
-    title:           'Felito',
-    statusBarStyle:  'default',
+    title:           'Felito Admin',
+    statusBarStyle:  'black-translucent',
   },
   robots: { index: true, follow: true },
   formatDetection: { telephone: false },

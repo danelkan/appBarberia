@@ -4,8 +4,9 @@ export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, Eye, EyeOff, Scissors } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { BrandLogo } from '@/components/brand-logo'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -43,9 +44,7 @@ export default function LoginPage() {
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl items-center">
         <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <section className="rounded-[36px] border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
-            <div className="inline-flex h-14 w-14 items-center justify-center rounded-3xl bg-slate-950 text-white">
-              <Scissors className="h-6 w-6" />
-            </div>
+            <BrandLogo size={56} className="rounded-3xl" />
             <p className="mt-8 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Felito Barber Studio</p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
               Acceso de staff y administración.
