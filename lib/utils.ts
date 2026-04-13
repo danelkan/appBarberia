@@ -1,8 +1,13 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { format, parse, addMinutes, isAfter, isBefore, startOfDay } from 'date-fns'
+import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { Appointment, WeeklyAvailability, TimeSlot } from '@/types'
+import {
+  calcEndTime as calculateEndTime,
+  generateTimeSlots as buildTimeSlots,
+  getAvailableDates as listAvailableDates,
+} from '@/lib/booking-availability'
 
 // ─── Class merging ────────────────────────────────────────────────
 export function cn(...inputs: ClassValue[]) {
@@ -41,49 +46,12 @@ export function generateTimeSlots(
   existingAppointments: Appointment[],
   intervalMinutes = 30
 ): TimeSlot[] {
-  const d = new Date(date + 'T00:00:00')
-  const dayKey = ISO_DAY_MAP[d.getDay()]
-  const daySchedule = availability[dayKey]
-
-  if (!daySchedule?.enabled) return []
-
-  const slots: TimeSlot[] = []
-  const startTime = parse(daySchedule.start, 'HH:mm', d)
-  const endTime = parse(daySchedule.end, 'HH:mm', d)
-  const now = new Date()
-  const isToday = format(d, 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd')
-
-  let current = startTime
-  while (isBefore(current, endTime)) {
-    const slotEnd = addMinutes(current, durationMinutes)
-    if (isAfter(slotEnd, endTime)) break
-
-    const timeStr = format(current, 'HH:mm')
-    const slotDateTime = parse(timeStr, 'HH:mm', d)
-
-    // Skip past times for today — allow booking up to 5 min before slot
-    const isPast = isToday && isBefore(slotDateTime, addMinutes(now, 5))
-
-    // Check overlap with existing appointments
-    const hasOverlap = existingAppointments
-      .filter(a => a.status !== 'cancelada')
-      .some(a => {
-        const apptStart = parse(a.start_time.slice(0, 5), 'HH:mm', d)
-        const apptEnd = parse(a.end_time.slice(0, 5), 'HH:mm', d)
-        return isBefore(current, apptEnd) && isAfter(slotEnd, apptStart)
-      })
-
-    slots.push({ time: timeStr, available: !isPast && !hasOverlap })
-    current = addMinutes(current, intervalMinutes)
-  }
-
-  return slots
+  return buildTimeSlots(date, availability, durationMinutes, existingAppointments, intervalMinutes)
 }
 
 // ─── Calculate end time ───────────────────────────────────────────
 export function calcEndTime(startTime: string, durationMinutes: number): string {
-  const base = parse(startTime, 'HH:mm', new Date())
-  return format(addMinutes(base, durationMinutes), 'HH:mm')
+  return calculateEndTime(startTime, durationMinutes)
 }
 
 // ─── Status labels & colors ───────────────────────────────────────
@@ -98,17 +66,5 @@ export function getAvailableDates(
   availability: WeeklyAvailability,
   daysAhead = 30
 ): string[] {
-  const dates: string[] = []
-  const today = startOfDay(new Date())
-
-  for (let i = 0; i < daysAhead; i++) {
-    const d = new Date(today)
-    d.setDate(today.getDate() + i)
-    const dayKey = ISO_DAY_MAP[d.getDay()]
-    if (availability[dayKey]?.enabled) {
-      dates.push(format(d, 'yyyy-MM-dd'))
-    }
-  }
-
-  return dates
+  return listAvailableDates(availability, daysAhead)
 }

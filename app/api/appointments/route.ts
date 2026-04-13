@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getVisibleBarberById } from '@/lib/barbers'
+import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { calcEndTime } from '@/lib/utils'
 import { sendBookingEmails } from '@/lib/emails'
 import { applyAuthCookies, type AuthRoleContext, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
@@ -133,12 +133,26 @@ export async function POST(req: NextRequest) {
 
     const endTime = calcEndTime(startTime, service.duration_minutes)
 
-    const { data: conflicts } = await supabase
-      .from('appointments').select('id')
-      .eq('barber_id', barberId).eq('date', date).neq('status', 'cancelada')
-      .lt('start_time', endTime).gt('end_time', startTime)
+    const { data: appointmentsForDay = [] } = await supabase
+      .from('appointments')
+      .select('start_time, end_time, status')
+      .eq('barber_id', barberId)
+      .eq('date', date)
+      .neq('status', 'cancelada')
 
-    if (conflicts && conflicts.length > 0) {
+    const availabilityCheck = isSlotAvailable({
+      date,
+      startTime,
+      durationMinutes: service.duration_minutes,
+      availability: barber.availability,
+      existingAppointments: appointmentsForDay as any,
+    })
+
+    if (!availabilityCheck.available) {
+      if (availabilityCheck.reason === 'day_unavailable' || availabilityCheck.reason === 'outside_schedule') {
+        return NextResponse.json({ error: 'Ese horario no pertenece a la disponibilidad actual del barbero.' }, { status: 400 })
+      }
+
       return NextResponse.json({ error: 'El horario ya no está disponible. Por favor elegí otro.' }, { status: 409 })
     }
 

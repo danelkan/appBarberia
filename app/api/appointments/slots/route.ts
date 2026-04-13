@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getVisibleBarberById } from '@/lib/barbers'
+import { generateTimeSlots } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { generateTimeSlots } from '@/lib/utils'
 import { slotsQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -38,7 +38,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
   }
 
-  // Fetch existing appointments for this barber on this date
   const { data: appointments = [] } = await supabase
     .from('appointments')
     .select('start_time, end_time, status')
@@ -50,9 +49,8 @@ export async function GET(req: NextRequest) {
 
   const response = NextResponse.json({ slots })
 
-  // Short cache: slots are valid for ~15s. Stale responses revalidate in bg for 30s.
-  // This reduces duplicate network hits when users rapidly switch dates/barbers.
-  response.headers.set('Cache-Control', 'public, max-age=15, stale-while-revalidate=30')
+  // Slot availability is time-sensitive to the current minute, so never serve stale results.
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
 
   const headers = getRateLimitHeaders(rateLimit)
   Object.entries(headers).forEach(([key, value]) => {

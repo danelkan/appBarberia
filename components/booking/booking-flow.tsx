@@ -94,6 +94,7 @@ export default function BookingFlow({
   const slotsRef      = useRef<HTMLDivElement>(null)
   const datesRef      = useRef<HTMLDivElement>(null)
   const slotDebounce  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const slotsAbortRef = useRef<AbortController | null>(null)
 
   const availableDates = useMemo(
     () => (selectedBarber ? getAvailableDates(selectedBarber.availability ?? {}, 21) : []),
@@ -116,29 +117,55 @@ export default function BookingFlow({
   // Fetch slots when barber+service+date are all set — debounced 200ms to
   // avoid a network request on every intermediate selection change.
   useEffect(() => {
-    if (!selectedBarber || !selectedService || !selectedDate) { setSlots([]); return }
+    if (!selectedBarber || !selectedService || !selectedDate) {
+      slotsAbortRef.current?.abort()
+      setSlots([])
+      return
+    }
 
+    slotsAbortRef.current?.abort()
     if (slotDebounce.current) clearTimeout(slotDebounce.current)
     slotDebounce.current = setTimeout(() => {
       startLoadingSlots(async () => {
         setError('')
+        const controller = new AbortController()
+        slotsAbortRef.current = controller
         const params = new URLSearchParams({
           barberId: selectedBarber.id,
           branchId: branch.id,
           date: selectedDate,
           duration: String(selectedService.duration_minutes),
         })
-        const res  = await fetch(`/api/appointments/slots?${params.toString()}`)
-        const data = await res.json()
-        if (!res.ok) { setError(data.error ?? 'No se pudieron cargar los horarios'); setSlots([]); return }
-        setSlots(data.slots ?? [])
+
+        try {
+          const res = await fetch(`/api/appointments/slots?${params.toString()}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          })
+          const data = await res.json()
+          if (!res.ok) { setError(data.error ?? 'No se pudieron cargar los horarios'); setSlots([]); return }
+          setSlots(data.slots ?? [])
+        } catch (fetchError) {
+          if (fetchError instanceof Error && fetchError.name === 'AbortError') return
+          setError('No se pudieron cargar los horarios')
+          setSlots([])
+        }
       })
     }, 200)
 
     return () => {
       if (slotDebounce.current) clearTimeout(slotDebounce.current)
+      slotsAbortRef.current?.abort()
     }
   }, [branch.id, selectedBarber, selectedDate, selectedService])
+
+  useEffect(() => {
+    setTime(currentTime => (
+      slots.some(slot => slot.available && slot.time === currentTime)
+        ? currentTime
+        : ''
+    ))
+  }, [slots])
 
   // Scroll to slots when they load
   useEffect(() => {

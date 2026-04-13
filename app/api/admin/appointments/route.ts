@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getVisibleBarberById } from '@/lib/barbers'
+import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { calcEndTime } from '@/lib/utils'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
@@ -49,17 +49,33 @@ export async function POST(req: NextRequest) {
 
   const end_time = calcEndTime(start_time, service.duration_minutes)
 
-  // Check for conflicts
-  const { data: conflicts } = await supabase
+  const { data: appointmentsForDay = [] } = await supabase
     .from('appointments')
-    .select('id')
+    .select('start_time, end_time, status')
     .eq('barber_id', barber_id)
     .eq('date', date)
     .neq('status', 'cancelada')
-    .lt('start_time', end_time)
-    .gt('end_time', start_time)
 
-  if (conflicts && conflicts.length > 0) {
+  const availabilityCheck = isSlotAvailable({
+    date,
+    startTime: start_time,
+    durationMinutes: service.duration_minutes,
+    availability: barber.availability,
+    existingAppointments: appointmentsForDay as any,
+  })
+
+  if (!availabilityCheck.available) {
+    if (availabilityCheck.reason === 'day_unavailable' || availabilityCheck.reason === 'outside_schedule') {
+      return NextResponse.json({ error: 'Ese horario no pertenece a la disponibilidad actual del barbero.' }, { status: 400 })
+    }
+
+    if (availabilityCheck.reason === 'past_cutoff') {
+      return NextResponse.json(
+        { error: 'Los turnos libres solo pueden reservarse hasta 5 minutos antes de la hora de inicio.' },
+        { status: 409 }
+      )
+    }
+
     return NextResponse.json({ error: 'El horario ya está ocupado. Elegí otro horario.' }, { status: 409 })
   }
 
