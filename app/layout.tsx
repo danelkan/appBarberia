@@ -16,7 +16,7 @@ const dmSerif = DM_Serif_Display({
 })
 
 export const viewport: Viewport = {
-  themeColor: '#0f172a',
+  themeColor: '#faf8f0',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -38,20 +38,35 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'es_UY',
     siteName: 'Felito Barber Studio',
+    images: [
+      {
+        url: '/felito-wordmark.png',
+        width: 860,
+        height: 420,
+        alt: 'Felito Barber Studio',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Felito Barber Studio',
+    description: 'Reservá tu turno online — Cordón y Punta Carretas.',
+    images: ['/felito-wordmark.png'],
   },
   icons: {
     icon:     [
       { url: '/favicon.svg', type: 'image/svg+xml' },
       { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    shortcut: '/icon-192.png',
+    shortcut: ['/favicon.svg', '/icon-192.png'],
     apple:    [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
   manifest: '/site.webmanifest',
   appleWebApp: {
     capable:         true,
-    title:           'Felito Admin',
-    statusBarStyle:  'black-translucent',
+    title:           'Felito Barber',
+    statusBarStyle:  'default',
   },
   robots: { index: true, follow: true },
   formatDetection: { telephone: false },
