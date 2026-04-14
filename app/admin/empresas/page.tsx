@@ -43,17 +43,24 @@ export default function EmpresasPage() {
   const [planForm, setPlanForm]   = useState({ plan_tier: 'starter', max_branches: '1', max_barbers: '3' })
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
+  const [loadingError, setLoadingError] = useState('')
 
   const isSuperadmin = user?.role === 'superadmin'
 
   async function fetchCompanies() {
     setLoading(true)
+    setLoadingError('')
     try {
-      const res  = await fetch('/api/companies?include_stats=1')
+      const res  = await fetch('/api/companies?include_stats=1&branches=1', { cache: 'no-store' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? 'No se pudieron cargar las barberías')
+      }
       const data = await res.json()
       setCompanies(data.companies ?? [])
-    } catch {
+    } catch (fetchError) {
       setCompanies([])
+      setLoadingError(fetchError instanceof Error ? fetchError.message : 'No se pudieron cargar las barberías')
     } finally {
       setLoading(false)
     }
@@ -93,7 +100,7 @@ export default function EmpresasPage() {
     setSaving(false)
     if (!res.ok) { setError(data.error ?? 'Error al guardar'); return }
     setEditModal(false)
-    fetchCompanies()
+    await fetchCompanies()
   }
 
   async function savePlan() {
@@ -112,22 +119,34 @@ export default function EmpresasPage() {
     setSaving(false)
     if (!res.ok) { setError(data.error ?? 'Error al actualizar el plan'); return }
     setPlanModal(false)
-    fetchCompanies()
+    await fetchCompanies()
   }
 
   async function toggleActive(c: CompanyWithStats) {
-    await fetch(`/api/companies/${c.id}`, {
+    setError('')
+    const res = await fetch(`/api/companies/${c.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...c, active: !c.active }),
     })
-    fetchCompanies()
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) { setError(data.error ?? 'No se pudo actualizar el estado'); return }
+    await fetchCompanies()
   }
 
   async function remove(c: CompanyWithStats) {
     if (!confirm(`¿Eliminar "${c.name}"? Esta acción no se puede deshacer.`)) return
-    await fetch(`/api/companies/${c.id}`, { method: 'DELETE' })
-    fetchCompanies()
+    setError('')
+    const res = await fetch(`/api/companies/${c.id}`, { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const details = data.details
+        ? ` Sucursales: ${data.details.branches ?? 0}, usuarios: ${data.details.users ?? 0}, turnos: ${data.details.appointments ?? 0}.`
+        : ''
+      setError((data.error ?? 'No se pudo eliminar la barbería') + details)
+      return
+    }
+    await fetchCompanies()
   }
 
   const activeCount   = companies.filter(c => c.active).length
@@ -167,6 +186,13 @@ export default function EmpresasPage() {
 
       {loading ? (
         <div className="flex justify-center py-20"><Spinner /></div>
+      ) : loadingError ? (
+        <EmptyState
+          icon={<Building2 className="h-6 w-6" />}
+          title="No pudimos cargar las barberías"
+          description={loadingError}
+          action={<Button size="sm" onClick={() => { void fetchCompanies() }}>Reintentar</Button>}
+        />
       ) : companies.length === 0 ? (
         <EmptyState
           icon={<Building2 className="h-6 w-6" />}
@@ -245,6 +271,19 @@ export default function EmpresasPage() {
                 </span>
               </div>
 
+              {(company.branches ?? []).length > 0 && (
+                <div className="mb-4 flex flex-wrap gap-1.5">
+                  {(company.branches ?? []).map(branch => (
+                    <span
+                      key={branch.id}
+                      className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+                    >
+                      {branch.address ?? branch.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* Contact info */}
               <div className="space-y-1.5 text-sm">
                 {company.email && (
@@ -277,6 +316,11 @@ export default function EmpresasPage() {
             <Input label="Teléfono" value={editing.phone ?? ''} onChange={e => setEditing(p => ({ ...p, phone: e.target.value }))} placeholder="096 000 000" />
           </div>
           <Input label="Dirección" value={editing.address ?? ''} onChange={e => setEditing(p => ({ ...p, address: e.target.value }))} placeholder="Calle 123, Ciudad" />
+          {editing.name?.trim() && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Slug público: <span className="font-mono">{editing.name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}</span>
+            </div>
+          )}
           <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <input type="checkbox" checked={editing.active ?? true} onChange={e => setEditing(p => ({ ...p, active: e.target.checked }))} className="accent-slate-950" />
             Barbería activa

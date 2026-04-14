@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listVisibleBarbers } from '@/lib/barbers'
+import { COMPANY_PLAN_TIERS, getCompanyPlanDefaults, normalizeOptionalBoolean, normalizeOptionalText, normalizePositiveInt, slugifyCompanyName } from '@/lib/companies'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
@@ -22,8 +22,8 @@ export async function GET(req: NextRequest) {
   }
 
   const selectQuery = (withBranches || includeStats)
-    ? '*, branches(id, name, address, active)'
-    : '*'
+    ? 'id, name, slug, email, phone, address, active, created_at, plan_tier, max_branches, max_barbers, billing_email, branches(id, name, address, active, company_id)'
+    : 'id, name, slug, email, phone, address, active, created_at, plan_tier, max_branches, max_barbers, billing_email'
 
   const { data, error } = await supabase
     .from('companies')
@@ -35,25 +35,30 @@ export async function GET(req: NextRequest) {
   let companies = data ?? []
 
   if (includeStats) {
-    const { barbers: visibleBarbers, branchLinks } = await listVisibleBarbers(supabase)
-    const visibleBarberIds = new Set(visibleBarbers.map((barber: any) => barber.id))
+    const companyIds = companies.map((company: any) => company.id)
+    const [{ data: companyBarbers }, { data: companyUsers }] = await Promise.all([
+      companyIds.length > 0
+        ? supabase.from('barbers').select('id, company_id').in('company_id', companyIds)
+        : Promise.resolve({ data: [] as any[] }),
+      companyIds.length > 0
+        ? supabase.from('user_roles').select('user_id, company_id, active').in('company_id', companyIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ])
 
     companies = companies.map((c: any) => {
       const activeBranches = (c.branches ?? []).filter((b: any) => b.active)
-      const activeBranchIds = new Set(activeBranches.map((branch: any) => branch.id))
-      const barberCount = new Set(
-        (branchLinks ?? [])
-          .filter((link: any) => visibleBarberIds.has(link.barber_id) && activeBranchIds.has(link.branch?.id))
-          .map((link: any) => link.barber_id)
-      ).size
+      const barberCount = (companyBarbers ?? []).filter((barber: any) => barber.company_id === c.id).length
+      const userCount = (companyUsers ?? []).filter((role: any) => role.company_id === c.id && role.active !== false).length
+      const defaults = getCompanyPlanDefaults(c.plan_tier)
 
       return {
         ...c,
         plan_tier: c.plan_tier ?? 'starter',
-        max_branches: c.max_branches ?? 1,
-        max_barbers: c.max_barbers ?? 3,
+        max_branches: c.max_branches ?? defaults.max_branches,
+        max_barbers: c.max_barbers ?? defaults.max_barbers,
         branch_count: activeBranches.length,
         barber_count: barberCount,
+        user_count: userCount,
       }
     })
   }
@@ -66,33 +71,55 @@ export async function POST(req: NextRequest) {
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'manage_companies')
   if (denied) return denied
+  if (auth.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Solo el superadmin puede crear barberías' }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
-  const { name, email, phone, address, active } = body
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const email = normalizeOptionalText(body.email)
+  const phone = normalizeOptionalText(body.phone)
+  const address = normalizeOptionalText(body.address)
+  const active = normalizeOptionalBoolean(body.active, true)
+  const requestedPlanTier = typeof body.plan_tier === 'string' ? body.plan_tier : 'starter'
+  const planTier = COMPANY_PLAN_TIERS.includes(requestedPlanTier) ? requestedPlanTier : 'starter'
+  const planDefaults = getCompanyPlanDefaults(planTier)
+  const maxBranches = normalizePositiveInt(body.max_branches, planDefaults.max_branches)
+  const maxBarbers = normalizePositiveInt(body.max_barbers, planDefaults.max_barbers)
 
-  if (!name?.trim()) {
+  if (!name) {
     return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 })
   }
 
-  // Generate slug from name
-  const slug = name.trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+  const slug = slugifyCompanyName(name)
+  if (!slug) {
+    return NextResponse.json({ error: 'No se pudo generar un slug válido para la barbería' }, { status: 400 })
+  }
 
   const supabase = createSupabaseAdmin()
+  const { data: existingSlug } = await supabase
+    .from('companies')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (existingSlug) {
+    return NextResponse.json({ error: 'Ya existe una barbería con ese nombre/slug' }, { status: 409 })
+  }
+
   const { data, error } = await supabase
     .from('companies')
     .insert({
-      name: name.trim(),
+      name,
       slug,
-      email: email?.trim() || null,
-      phone: phone?.trim() || null,
-      address: address?.trim() || null,
-      active: active ?? true,
+      email,
+      phone,
+      address,
+      active,
+      plan_tier: planTier,
+      max_branches: maxBranches,
+      max_barbers: maxBarbers,
     })
     .select('*')
     .single()

@@ -99,12 +99,16 @@ export interface Company {
   email?: string | null
   phone?: string | null
   address?: string | null
+  billing_email?: string | null
   active: boolean
   created_at: string
   branches?: Branch[]
   plan_tier?: string | null
   max_branches?: number | null
   max_barbers?: number | null
+  branch_count?: number
+  barber_count?: number
+  user_count?: number
 }
 
 export interface Branch {

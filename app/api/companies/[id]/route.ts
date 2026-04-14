@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { COMPANY_PLAN_TIERS, getCompanyPlanDefaults, normalizeOptionalBoolean, normalizeOptionalText, normalizePositiveInt, slugifyCompanyName } from '@/lib/companies'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const supabase = createSupabaseAdmin()
   const { data, error } = await supabase
     .from('companies')
-    .select('*, branches(id, name, address, active)')
+    .select('id, name, slug, email, phone, address, active, created_at, plan_tier, max_branches, max_barbers, billing_email, branches(id, name, address, active, company_id)')
     .eq('id', params.id)
     .single()
 
@@ -32,6 +33,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'manage_companies')
   if (denied) return denied
+  if (auth.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Solo el superadmin puede editar barberías' }, { status: 403 })
+  }
 
   if (!UUID_RE.test(params.id)) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
@@ -39,21 +43,42 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
-  const { name, email, phone, address, active } = body
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const email = normalizeOptionalText(body.email)
+  const phone = normalizeOptionalText(body.phone)
+  const address = normalizeOptionalText(body.address)
+  const active = normalizeOptionalBoolean(body.active, true)
 
-  if (!name?.trim()) {
+  if (!name) {
     return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 })
   }
 
   const supabase = createSupabaseAdmin()
+  const slug = slugifyCompanyName(name)
+  if (!slug) {
+    return NextResponse.json({ error: 'No se pudo generar un slug válido para la barbería' }, { status: 400 })
+  }
+
+  const { data: existingSlug } = await supabase
+    .from('companies')
+    .select('id')
+    .eq('slug', slug)
+    .neq('id', params.id)
+    .maybeSingle()
+
+  if (existingSlug) {
+    return NextResponse.json({ error: 'Ya existe otra barbería con ese nombre/slug' }, { status: 409 })
+  }
+
   const { data, error } = await supabase
     .from('companies')
     .update({
-      name: name.trim(),
-      email: email?.trim() || null,
-      phone: phone?.trim() || null,
-      address: address?.trim() || null,
-      active: active ?? true,
+      name,
+      slug,
+      email,
+      phone,
+      address,
+      active,
     })
     .eq('id', params.id)
     .select('*')
@@ -79,18 +104,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
-  const { plan_tier, max_branches, max_barbers, billing_email } = body
+  const requestedPlanTier = typeof body.plan_tier === 'string' ? body.plan_tier : undefined
+  const billingEmail = normalizeOptionalText(body.billing_email)
 
-  const validTiers = ['starter', 'pro', 'enterprise']
-  if (plan_tier && !validTiers.includes(plan_tier)) {
+  if (requestedPlanTier && !COMPANY_PLAN_TIERS.includes(requestedPlanTier)) {
     return NextResponse.json({ error: 'Plan inválido' }, { status: 400 })
   }
 
+  const planDefaults = getCompanyPlanDefaults(requestedPlanTier)
   const update: Record<string, unknown> = {}
-  if (plan_tier        !== undefined) update.plan_tier        = plan_tier
-  if (max_branches     !== undefined) update.max_branches     = Number(max_branches)
-  if (max_barbers      !== undefined) update.max_barbers      = Number(max_barbers)
-  if (billing_email    !== undefined) update.billing_email    = billing_email?.trim() || null
+  if (requestedPlanTier !== undefined) update.plan_tier = requestedPlanTier
+  if (body.max_branches !== undefined) update.max_branches = normalizePositiveInt(body.max_branches, planDefaults.max_branches)
+  if (body.max_barbers !== undefined) update.max_barbers = normalizePositiveInt(body.max_barbers, planDefaults.max_barbers)
+  if (body.billing_email !== undefined) update.billing_email = billingEmail
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: 'No hay cambios para aplicar' }, { status: 400 })
+  }
 
   const supabase = createSupabaseAdmin()
   const { data, error } = await supabase
@@ -115,7 +145,28 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     return NextResponse.json({ error: 'Solo el superadmin puede eliminar empresas' }, { status: 403 })
   }
 
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
   const supabase = createSupabaseAdmin()
+  const [{ count: branchCount }, { count: userCount }, { count: appointmentCount }] = await Promise.all([
+    supabase.from('branches').select('*', { count: 'exact', head: true }).eq('company_id', params.id),
+    supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('company_id', params.id),
+    supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('company_id', params.id),
+  ])
+
+  if ((branchCount ?? 0) > 0 || (userCount ?? 0) > 0 || (appointmentCount ?? 0) > 0) {
+    return NextResponse.json({
+      error: 'No podés eliminar una barbería con datos asociados',
+      details: {
+        branches: branchCount ?? 0,
+        users: userCount ?? 0,
+        appointments: appointmentCount ?? 0,
+      },
+    }, { status: 409 })
+  }
+
   const { error } = await supabase.from('companies').delete().eq('id', params.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
