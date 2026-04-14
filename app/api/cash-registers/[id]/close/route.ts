@@ -3,6 +3,7 @@ import { closeCashRegisterSchema } from '@/lib/validations'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { createCashAuditLog, getCashRegisterSummary } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,11 +27,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const supabase = createSupabaseAdmin()
-  const { data: register } = await supabase
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let registerQuery = supabase
     .from('cash_registers')
     .select('*')
     .eq('id', params.id)
-    .maybeSingle()
+
+  if (companyId) {
+    registerQuery = registerQuery.eq('company_id', companyId)
+  }
+
+  const { data: register } = await registerQuery.maybeSingle()
 
   if (!register) {
     return NextResponse.json({ error: 'Caja no encontrada' }, { status: 404 })
@@ -48,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const counted = Number(result.data.counted_cash_amount)
   const difference = counted - summary.expected_cash_amount
 
-  const { data: updated, error } = await supabase
+  let updateQuery = supabase
     .from('cash_registers')
     .update({
       status: 'closed',
@@ -61,6 +69,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })
     .eq('id', params.id)
     .eq('status', 'open')
+
+  if (companyId) {
+    updateQuery = updateQuery.eq('company_id', companyId)
+  }
+
+  const { data: updated, error } = await updateQuery
     .select('*')
     .single()
 

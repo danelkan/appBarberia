@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendCancellationEmail } from '@/lib/emails'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { updateAppointmentStatusSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -44,11 +45,18 @@ export async function PATCH(
   const { status } = result.data
 
   const supabase = createSupabaseAdmin()
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
 
-  const { data: appointment, error } = await supabase
+  let query = supabase
     .from('appointments')
     .update({ status })
     .eq('id', id)
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+
+  const { data: appointment, error } = await query
     .select('*, client:clients(*), barber:barbers(*), service:services(*)')
     .single()
 
@@ -109,11 +117,18 @@ export async function DELETE(
   }
 
   const supabase = createSupabaseAdmin()
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
 
-  const { error } = await supabase
+  let query = supabase
     .from('appointments')
     .delete()
     .eq('id', id)
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+
+  const { error } = await query
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

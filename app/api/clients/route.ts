@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { clientQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -31,6 +31,25 @@ export async function GET(req: NextRequest) {
   const { q, branch_id } = result.data
 
   const supabase = createSupabaseAdmin()
+  const companyId = auth.role === 'superadmin'
+    ? null
+    : await resolveCompanyId(auth, supabase)
+  const effectiveBranchCompanyId = branch_id
+    ? companyId ?? (
+        (await supabase
+          .from('branches')
+          .select('company_id')
+          .eq('id', branch_id)
+          .maybeSingle()).data?.company_id as string | null
+      )
+    : companyId
+
+  if (branch_id && auth.role !== 'superadmin') {
+    const branchAllowed = await canAccessBranch(auth, supabase, branch_id)
+    if (!branchAllowed) {
+      return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+    }
+  }
 
   // Determine which branch(es) to filter by.
   // Barbers are always scoped to their own branches regardless of query param.
@@ -51,6 +70,7 @@ export async function GET(req: NextRequest) {
     const { data: appts } = await supabase
       .from('appointments')
       .select('client_id')
+      .eq('company_id', effectiveBranchCompanyId ?? '')
       .in('branch_id', filterBranchIds)
 
     const allIds = (appts ?? [])
@@ -65,10 +85,6 @@ export async function GET(req: NextRequest) {
 
   // When no branch filter is active (admin listing all clients), scope to
   // the caller's company so admins from different tenants can't see each other's data.
-  const companyId = filterBranchIds === null
-    ? await resolveCompanyId(auth, supabase)
-    : null
-
   let query = supabase
     .from('clients')
     .select('id, first_name, last_name, email, phone, birthday, created_at')
@@ -85,7 +101,7 @@ export async function GET(req: NextRequest) {
 
   if (q) {
     const sanitizedQ = q.replace(/[%_]/g, '\\$&')
-    query = query.or(`first_name.ilike.%${sanitizedQ}%,last_name.ilike.%${sanitizedQ}%,email.ilike.%${sanitizedQ}%`)
+    query = query.or(`first_name.ilike.%${sanitizedQ}%,last_name.ilike.%${sanitizedQ}%,email.ilike.%${sanitizedQ}%,phone.ilike.%${sanitizedQ}%`)
   }
 
   const { data, error } = await query
@@ -126,12 +142,16 @@ export async function POST(req: NextRequest) {
   }
 
   const companyId = await resolveCompanyId(auth, supabase)
+  if (!companyId) {
+    return NextResponse.json({ error: 'Empresa no resuelta para este usuario' }, { status: 400 })
+  }
 
   // Check for existing client by email (if provided)
   if (email?.trim()) {
     const { data: existing } = await supabase
       .from('clients')
       .select('id, first_name, last_name, email')
+      .eq('company_id', companyId)
       .eq('email', email.trim().toLowerCase())
       .maybeSingle()
 
@@ -148,7 +168,7 @@ export async function POST(req: NextRequest) {
       email: email?.trim().toLowerCase() ?? null,
       phone: phone?.trim() ?? null,
       birthday: (birthday?.trim() ?? null) || null,
-      ...(companyId ? { company_id: companyId } : {}),
+      company_id: companyId,
     })
     .select('*')
     .single()

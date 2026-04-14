@@ -4,7 +4,7 @@ import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendBookingEmails } from '@/lib/emails'
 import { applyAuthCookies, type AuthRoleContext, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyIdFromBranch } from '@/lib/tenant'
+import { canAccessBranch, resolveAccessibleBranchIds, resolveCompanyId, resolveCompanyIdFromBranch } from '@/lib/tenant'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -14,21 +14,7 @@ async function resolveCompanyBranchIds(
   supabase: ReturnType<typeof createSupabaseAdmin>,
   auth: AuthRoleContext
 ): Promise<string[]> {
-  // Use branch_ids from token if available
-  if (auth.branch_ids.length > 0) return auth.branch_ids
-
-  let companyId = auth.company_id ?? null
-
-  if (!companyId) {
-    // Derive company from a single active company (single-tenant default)
-    const { data: companies } = await supabase.from('companies').select('id').eq('active', true)
-    if ((companies ?? []).length === 1) companyId = companies![0].id as string
-  }
-
-  if (!companyId) return []
-
-  const { data: branches } = await supabase.from('branches').select('id').eq('company_id', companyId)
-  return (branches ?? []).map((b: any) => b.id as string)
+  return resolveAccessibleBranchIds(auth, supabase)
 }
 
 export async function GET(req: NextRequest) {
@@ -61,12 +47,17 @@ export async function GET(req: NextRequest) {
     : barberId
 
   const supabase = createSupabaseAdmin()
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
 
   // Resolve which branch IDs this caller is allowed to see
   // Superadmin sees everything; everyone else is scoped to their company
   let allowedBranchIds: string[] | null = null
   if (auth.role !== 'superadmin') {
     if (branchId) {
+      const branchAllowed = await canAccessBranch(auth, supabase, branchId)
+      if (!branchAllowed) {
+        return applyAuthCookies(NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 }), auth)
+      }
       allowedBranchIds = [branchId]
     } else {
       allowedBranchIds = await resolveCompanyBranchIds(supabase, auth)
@@ -86,6 +77,7 @@ export async function GET(req: NextRequest) {
     .order('date', { ascending: false })
     .order('start_time', { ascending: false })
 
+  if (companyId)                 query = query.eq('company_id', companyId)
   if (from)                      query = query.gte('date', from)
   if (to)                        query = query.lte('date', to)
   if (effectiveBarberId)         query = query.eq('barber_id', effectiveBarberId)
@@ -117,12 +109,20 @@ export async function POST(req: NextRequest) {
     }
 
     const { serviceId, barberId, branchId, date, startTime, client: clientData } = result.data
+    if (!branchId) {
+      return NextResponse.json({ error: 'La reserva requiere una sucursal válida' }, { status: 400 })
+    }
     const supabase = createSupabaseAdmin()
+    const companyId = await resolveCompanyIdFromBranch(supabase, branchId)
+
+    if (!companyId) {
+      return NextResponse.json({ error: 'No se pudo resolver la barbería de la reserva' }, { status: 400 })
+    }
 
     // Parallelize service + barber lookup — saves ~100ms vs sequential
     const [serviceResult, barber] = await Promise.all([
-      supabase.from('services').select('*').eq('id', serviceId).single(),
-      getVisibleBarberById(supabase, barberId, { branchId }),
+      supabase.from('services').select('*').eq('id', serviceId).eq('company_id', companyId).single(),
+      getVisibleBarberById(supabase, barberId, { branchId, companyId }),
     ])
     const { data: service, error: serviceError } = serviceResult
     if (serviceError || !service) {
@@ -137,6 +137,7 @@ export async function POST(req: NextRequest) {
     const { data: appointmentsForDay = [] } = await supabase
       .from('appointments')
       .select('start_time, end_time, status')
+      .eq('company_id', companyId)
       .eq('barber_id', barberId)
       .eq('date', date)
       .neq('status', 'cancelada')
@@ -157,12 +158,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El horario ya no está disponible. Por favor elegí otro.' }, { status: 409 })
     }
 
-    const companyId = await resolveCompanyIdFromBranch(supabase, branchId)
-
     // Scope client lookup to this company — prevents merging histories across tenants
     let existingClientQuery = supabase
       .from('clients').select('id').eq('email', clientData.email)
-    if (companyId) existingClientQuery = existingClientQuery.eq('company_id', companyId)
+    existingClientQuery = existingClientQuery.eq('company_id', companyId)
     const { data: existingClient } = await existingClientQuery.maybeSingle()
 
     let clientId: string
@@ -177,7 +176,7 @@ export async function POST(req: NextRequest) {
           email: clientData.email,
           phone: clientData.phone,
           birthday: clientData.birthday ?? null,
-          ...(companyId ? { company_id: companyId } : {}),
+          company_id: companyId,
         })
         .select('id').single()
       if (clientError || !newClient) {
@@ -205,7 +204,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Error creando turno' }, { status: 500 })
     }
 
-    const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientId).single()
+    const { data: fullClient } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', clientId)
+      .eq('company_id', companyId)
+      .single()
 
     if (fullClient) {
       await sendBookingEmails(fullClient, barber, service, appointment)

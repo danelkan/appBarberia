@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { getCashRegisterSummary, hydrateCashRegister, createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,9 +19,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   const supabase = createSupabaseAdmin()
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
   const register = await hydrateCashRegister(supabase, params.id)
 
   if (!register) {
+    return NextResponse.json({ error: 'Caja no encontrada' }, { status: 404 })
+  }
+
+  if (companyId && register.company_id !== companyId) {
     return NextResponse.json({ error: 'Caja no encontrada' }, { status: 404 })
   }
 
@@ -44,11 +50,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
   const supabase = createSupabaseAdmin()
-  const { data: current } = await supabase
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let currentQuery = supabase
     .from('cash_registers')
     .select('*')
     .eq('id', params.id)
-    .maybeSingle()
+
+  if (companyId) {
+    currentQuery = currentQuery.eq('company_id', companyId)
+  }
+
+  const { data: current } = await currentQuery.maybeSingle()
 
   if (!current) {
     return NextResponse.json({ error: 'Caja no encontrada' }, { status: 404 })
@@ -62,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const summary = await getCashRegisterSummary(supabase, current.id, Number(current.opening_amount))
   const difference = nextCounted - summary.expected_cash_amount
 
-  const { data: updated, error } = await supabase
+  let updateQuery = supabase
     .from('cash_registers')
     .update({
       opening_notes: body.opening_notes ?? current.opening_notes,
@@ -72,6 +85,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       difference_amount: difference,
     })
     .eq('id', params.id)
+
+  if (companyId) {
+    updateQuery = updateQuery.eq('company_id', companyId)
+  }
+
+  const { data: updated, error } = await updateQuery
     .select('*')
     .single()
 

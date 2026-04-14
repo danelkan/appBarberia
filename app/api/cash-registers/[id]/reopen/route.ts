@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,11 +19,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const supabase = createSupabaseAdmin()
-  const { data: register } = await supabase
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let registerQuery = supabase
     .from('cash_registers')
     .select('*')
     .eq('id', params.id)
-    .maybeSingle()
+
+  if (companyId) {
+    registerQuery = registerQuery.eq('company_id', companyId)
+  }
+
+  const { data: register } = await registerQuery.maybeSingle()
 
   if (!register) {
     return NextResponse.json({ error: 'Caja no encontrada' }, { status: 404 })
@@ -36,6 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .from('cash_registers')
     .select('id')
     .eq('branch_id', register.branch_id)
+    .eq('company_id', register.company_id)
     .eq('status', 'open')
     .maybeSingle()
 
@@ -43,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Ya existe otra caja abierta en esta sucursal' }, { status: 409 })
   }
 
-  const { data: reopened, error } = await supabase
+  let reopenQuery = supabase
     .from('cash_registers')
     .update({
       status: 'open',
@@ -54,6 +63,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       closing_notes: null,
     })
     .eq('id', params.id)
+
+  if (companyId) {
+    reopenQuery = reopenQuery.eq('company_id', companyId)
+  }
+
+  const { data: reopened, error } = await reopenQuery
     .select('*')
     .single()
 

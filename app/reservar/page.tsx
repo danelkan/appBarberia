@@ -7,6 +7,7 @@ import BookingFlow from '@/components/booking/booking-flow'
 interface BookingPageProps {
   searchParams: {
     branch?: string
+    company?: string
   }
 }
 
@@ -18,24 +19,53 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
 
   const supabase = createSupabaseAdmin()
   const branchId = searchParams.branch
+  const companyParam = searchParams.company?.trim()
 
   if (!branchId) {
     redirect('/')
   }
 
-  let branches
+  let selectedBranch
   let services
   let branchBarbers
 
   try {
+    const { data: branch } = await supabase
+      .from('branches')
+      .select('id, name, address, company_id')
+      .eq('id', branchId)
+      .eq('active', true)
+      .maybeSingle()
+
+    if (!branch?.company_id) {
+      redirect('/')
+    }
+
+    if (companyParam) {
+      const { data: company } = await supabase
+        .from('companies')
+        .select('id, slug')
+        .or(`id.eq.${companyParam},slug.eq.${companyParam}`)
+        .maybeSingle()
+
+      if (!company || company.id !== branch.company_id) {
+        redirect('/')
+      }
+    }
+
+    selectedBranch = branch
+
     const results = await Promise.all([
-      supabase.from('branches').select('id, name, address').eq('active', true).order('name'),
-      supabase.from('services').select('*').eq('active', true).order('price'),
-      listVisibleBarbers(supabase, { branchId }),
+      supabase
+        .from('services')
+        .select('*')
+        .eq('active', true)
+        .eq('company_id', branch.company_id)
+        .order('price'),
+      listVisibleBarbers(supabase, { branchId, companyId: branch.company_id }),
     ])
 
     ;[
-      { data: branches },
       { data: services },
       { barbers: branchBarbers },
     ] = results
@@ -43,8 +73,6 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
     console.error('[booking] Failed to load booking data from Supabase:', formatSupabaseError(error))
     throw new Error('Unable to load booking data from Supabase')
   }
-
-  const selectedBranch = (branches ?? []).find(branch => branch.id === branchId)
 
   if (!selectedBranch) {
     redirect('/')

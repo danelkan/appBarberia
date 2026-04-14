@@ -82,6 +82,21 @@ export default function CajaPage() {
     void loadRegisters()
   }, [loadRegisters])
 
+  useEffect(() => {
+    const nextBranchId = activeBranch?.id ?? allowedBranches[0]?.id ?? ''
+    setBranchFilter(current => (
+      current && allowedBranches.some(branch => branch.id === current)
+        ? current
+        : nextBranchId
+    ))
+    setOpenForm(current => ({
+      ...current,
+      branch_id: current.branch_id && allowedBranches.some(branch => branch.id === current.branch_id)
+        ? current.branch_id
+        : nextBranchId,
+    }))
+  }, [activeBranch?.id, allowedBranches])
+
   const currentOpenRegister = useMemo(() => {
     if (branchFilter) {
       return registers.find(r => r.status === 'open' && r.branch_id === branchFilter) ?? null
@@ -98,7 +113,7 @@ export default function CajaPage() {
       .catch(() => { if (!cancelled) setActiveRegisterDetails(null) })
     return () => { cancelled = true }
   // Depend on .id, not the object reference — avoids refetch on unrelated state changes
-  }, [currentOpenRegister?.id])
+  }, [currentOpenRegister, currentOpenRegister?.id])
 
   async function handleOpenRegister() {
     setSaving(true); setError('')

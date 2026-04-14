@@ -41,6 +41,43 @@ export async function resolveCompanyId(
   return null
 }
 
+export async function resolveAccessibleBranchIds(
+  auth: AuthRoleContext,
+  supabase: SupabaseClient
+): Promise<string[]> {
+  if (auth.role === 'superadmin') {
+    const { data: branches } = await supabase.from('branches').select('id')
+    return (branches ?? []).map((branch: { id: string }) => branch.id)
+  }
+
+  if (auth.branch_ids.length > 0) {
+    return auth.branch_ids
+  }
+
+  const companyId = await resolveCompanyId(auth, supabase)
+  if (!companyId) return []
+
+  const { data: branches } = await supabase
+    .from('branches')
+    .select('id')
+    .eq('company_id', companyId)
+
+  return (branches ?? []).map((branch: { id: string }) => branch.id)
+}
+
+export async function canAccessBranch(
+  auth: AuthRoleContext,
+  supabase: SupabaseClient,
+  branchId: string
+): Promise<boolean> {
+  if (auth.role === 'superadmin') {
+    return true
+  }
+
+  const accessibleBranchIds = await resolveAccessibleBranchIds(auth, supabase)
+  return accessibleBranchIds.includes(branchId)
+}
+
 /**
  * Derives the company_id from a branch_id.
  * Used in public booking flow where the caller is not authenticated.

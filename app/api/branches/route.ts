@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { type AuthRoleContext, requireAuth, requireAdminAuth, requirePermission, unauthorizedResponse, forbiddenResponse, hasPermission } from '@/lib/api-auth'
+import { resolveCompanyIdFromBranch } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +38,7 @@ async function getCompanyIdForAuth(supabase: ReturnType<typeof createSupabaseAdm
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const includeInactive = searchParams.get('all') === '1'
+  const companyIdParam = searchParams.get('company_id')
 
   const supabase = createSupabaseAdmin()
 
@@ -66,10 +68,18 @@ export async function GET(req: NextRequest) {
   }
 
   // Public: active branches only — no auth required
+  const effectiveCompanyId = companyIdParam
+    ?? await resolveCompanyIdFromBranch(supabase, null)
+
+  if (!effectiveCompanyId) {
+    return NextResponse.json({ branches: [] })
+  }
+
   const { data, error } = await supabase
     .from('branches')
     .select('*, company:companies(id, name)')
     .eq('active', true)
+    .eq('company_id', effectiveCompanyId)
     .order('name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ branches: data ?? [] })

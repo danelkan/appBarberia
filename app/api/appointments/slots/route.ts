@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getVisibleBarberById } from '@/lib/barbers'
 import { generateTimeSlots } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { resolveCompanyIdFromBranch } from '@/lib/tenant'
 import { slotsQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -31,8 +32,12 @@ export async function GET(req: NextRequest) {
   const { barberId, branchId, date, duration } = result.data
 
   const supabase = createSupabaseAdmin()
+  const companyId = await resolveCompanyIdFromBranch(supabase, branchId)
+  if (!companyId) {
+    return NextResponse.json({ error: 'No se pudo resolver la barbería' }, { status: 400 })
+  }
 
-  const barber = await getVisibleBarberById(supabase, barberId, { branchId })
+  const barber = await getVisibleBarberById(supabase, barberId, { branchId, companyId })
 
   if (!barber) {
     return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
@@ -41,6 +46,7 @@ export async function GET(req: NextRequest) {
   const { data: appointments = [] } = await supabase
     .from('appointments')
     .select('start_time, end_time, status')
+    .eq('company_id', companyId)
     .eq('barber_id', barberId)
     .eq('date', date)
     .neq('status', 'cancelada')

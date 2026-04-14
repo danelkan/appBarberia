@@ -34,15 +34,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Faltan campos obligatorios: servicio, barbero, fecha y hora' }, { status: 400 })
   }
 
+  if (!branch_id) {
+    return NextResponse.json({ error: 'La sucursal es obligatoria para crear un turno' }, { status: 400 })
+  }
+
   if (!existingClientId && !client_name?.trim()) {
     return NextResponse.json({ error: 'Nombre del cliente requerido' }, { status: 400 })
   }
 
   const supabase = createSupabaseAdmin()
+  const companyId = await resolveCompanyId(auth, supabase)
+
+  if (!companyId) {
+    return NextResponse.json({ error: 'No se pudo resolver la empresa del usuario' }, { status: 400 })
+  }
 
   const [{ data: service, error: serviceError }, barber] = await Promise.all([
-    supabase.from('services').select('*').eq('id', service_id).single(),
-    getVisibleBarberById(supabase, barber_id, { branchId: branch_id }),
+    supabase.from('services').select('*').eq('id', service_id).eq('company_id', companyId).single(),
+    getVisibleBarberById(supabase, barber_id, { branchId: branch_id, companyId }),
   ])
 
   if (serviceError || !service) return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
@@ -53,6 +62,7 @@ export async function POST(req: NextRequest) {
   const { data: appointmentsForDay = [] } = await supabase
     .from('appointments')
     .select('start_time, end_time, status')
+    .eq('company_id', companyId)
     .eq('barber_id', barber_id)
     .eq('date', date)
     .neq('status', 'cancelada')
@@ -75,13 +85,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El horario ya está ocupado. Elegí otro horario.' }, { status: 409 })
   }
 
-  const companyId = await resolveCompanyId(auth, supabase)
-
   // Resolve client
   let clientId: string
 
   if (existingClientId) {
-    clientId = existingClientId
+    const { data: existingClient } = await supabase
+      .from('clients')
+      .select('id')
+      .eq('id', existingClientId)
+      .eq('company_id', companyId)
+      .maybeSingle()
+
+    if (!existingClient) {
+      return NextResponse.json({ error: 'Cliente no encontrado en esta empresa' }, { status: 404 })
+    }
+
+    clientId = existingClient.id
   } else {
     const emailNorm = client_email?.trim().toLowerCase() || null
 
@@ -90,6 +109,7 @@ export async function POST(req: NextRequest) {
       const { data: byEmail } = await supabase
         .from('clients')
         .select('id')
+        .eq('company_id', companyId)
         .eq('email', emailNorm)
         .maybeSingle()
 
@@ -103,7 +123,7 @@ export async function POST(req: NextRequest) {
             last_name:  '',
             email:      emailNorm,
             phone:      client_phone?.trim() ?? null,
-            ...(companyId ? { company_id: companyId } : {}),
+            company_id: companyId,
           })
           .select('id')
           .single()
@@ -120,7 +140,7 @@ export async function POST(req: NextRequest) {
           last_name:  '',
           email:      null,
           phone:      client_phone?.trim() ?? null,
-          ...(companyId ? { company_id: companyId } : {}),
+          company_id: companyId,
         })
         .select('id')
         .single()

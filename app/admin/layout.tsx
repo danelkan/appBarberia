@@ -69,6 +69,7 @@ const NAV_ITEMS = [
 const DRAWER_WIDTH_PX = 360
 const DRAWER_CLOSE_THRESHOLD_PX = 72
 const SWIPE_LOCK_DISTANCE_PX = 12
+const ACTIVE_BRANCH_STORAGE_PREFIX = 'app.activeBranch'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -98,10 +99,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     [user]
   )
 
+  const activeBranchStorageKey = useMemo(() => {
+    if (!user?.company_id) return null
+    return `${ACTIVE_BRANCH_STORAGE_PREFIX}.${user.company_id}.${user.id}`
+  }, [user?.company_id, user?.id])
+
   useEffect(() => {
     let mounted = true
 
     async function bootstrap() {
+      if (mounted) {
+        setLoading(true)
+        setUser(null)
+        setBranches([])
+        setActiveBranch(null)
+      }
+
       try {
         const {
           data: { session },
@@ -133,10 +146,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           ? (nextBranches ?? []).filter((branch: Branch) => nextUser.branch_ids.includes(branch.id))
           : nextBranches ?? []) as Branch[]
 
-        setUser(nextUser ?? null)
+        const nextUserValue = nextUser ?? null
+        setUser(nextUserValue)
         setBranches(allowedBranches)
 
-        const storedBranchId = window.localStorage.getItem('app.activeBranch')
+        const storageKey = nextUserValue?.company_id
+          ? `${ACTIVE_BRANCH_STORAGE_PREFIX}.${nextUserValue.company_id}.${nextUserValue.id}`
+          : null
+        const storedBranchId = storageKey ? window.localStorage.getItem(storageKey) : null
         const restoredBranch = allowedBranches.find(branch => branch.id === storedBranchId) ?? null
         const nextActiveBranch = nextUser?.role === 'barber'
           ? allowedBranches[0] ?? null
@@ -168,10 +185,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [pathname])
 
   useEffect(() => {
+    if (!activeBranchStorageKey) return
+
     if (activeBranch) {
-      window.localStorage.setItem('app.activeBranch', activeBranch.id)
+      window.localStorage.setItem(activeBranchStorageKey, activeBranch.id)
+    } else {
+      window.localStorage.removeItem(activeBranchStorageKey)
     }
-  }, [activeBranch])
+  }, [activeBranch, activeBranchStorageKey])
 
   useEffect(() => {
     if (!mobileOpen) {

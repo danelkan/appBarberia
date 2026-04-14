@@ -25,6 +25,13 @@ export async function GET(req: NextRequest) {
   const companyId = companyIdParam
     ?? (auth ? (await resolveCompanyId(auth, supabase)) ?? undefined : undefined)
 
+  if (!auth && !branchId && !companyId) {
+    return NextResponse.json({ barbers: [] })
+  }
+  if (auth && auth.role !== 'superadmin' && !companyId) {
+    return NextResponse.json({ barbers: [] })
+  }
+
   const { barbers: data, userRoles: activeRoles, branchLinks } = await listVisibleBarbers(
     supabase,
     { branchId, companyId }
@@ -38,9 +45,16 @@ export async function GET(req: NextRequest) {
       Array.from(assignedBranchIdsByBarber.values()).flatMap(branchIds => branchIds)
     )
   )
-  const { data: assignedBranches } = allAssignedBranchIds.length > 0
-    ? await supabase.from('branches').select('*').in('id', allAssignedBranchIds)
+  const assignedBranchesResult = allAssignedBranchIds.length > 0
+    ? await (async () => {
+        let query = supabase.from('branches').select('*').in('id', allAssignedBranchIds)
+        if (companyId) {
+          query = query.eq('company_id', companyId)
+        }
+        return query
+      })()
     : { data: [] }
+  const assignedBranches = assignedBranchesResult.data ?? []
   const branchesById = new Map((assignedBranches ?? []).map((branch: any) => [branch.id, branch]))
 
   const rolesByBarberId = new Map(

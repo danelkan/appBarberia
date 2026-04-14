@@ -3,6 +3,7 @@ import { cashMovementSchema } from '@/lib/validations'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,11 +20,38 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   const supabase = createSupabaseAdmin()
-  const { data: movements, error } = await supabase
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let registerQuery = supabase
+    .from('cash_registers')
+    .select('id, branch_id, company_id')
+    .eq('id', params.id)
+
+  if (companyId) {
+    registerQuery = registerQuery.eq('company_id', companyId)
+  }
+
+  const { data: register } = await registerQuery.maybeSingle()
+
+  if (!register) {
+    return NextResponse.json({ error: 'Caja no encontrada' }, { status: 404 })
+  }
+
+  if (auth.role === 'barber' && !auth.branch_ids.includes(register.branch_id)) {
+    return NextResponse.json({ error: 'No tenés acceso a esta caja' }, { status: 403 })
+  }
+
+  let movementsQuery = supabase
     .from('cash_movements')
     .select('*')
     .eq('cash_register_id', params.id)
     .order('created_at', { ascending: false })
+
+  if (register.company_id) {
+    movementsQuery = movementsQuery.eq('company_id', register.company_id)
+  }
+
+  const { data: movements, error } = await movementsQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ movements: movements ?? [] })
@@ -47,11 +75,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const supabase = createSupabaseAdmin()
-  const { data: register } = await supabase
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let registerQuery = supabase
     .from('cash_registers')
     .select('*')
     .eq('id', params.id)
-    .maybeSingle()
+
+  if (companyId) {
+    registerQuery = registerQuery.eq('company_id', companyId)
+  }
+
+  const { data: register } = await registerQuery.maybeSingle()
 
   if (!register) {
     return NextResponse.json({ error: 'Caja no encontrada' }, { status: 404 })

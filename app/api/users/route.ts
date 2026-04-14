@@ -142,7 +142,6 @@ export async function GET(req: NextRequest) {
   let rolesQuery = supabase.from('user_roles').select('*')
   let barbersQuery = supabase.from('barbers').select('id, name, email, availability')
   let branchesQuery = supabase.from('branches').select('id, name')
-  let branchLinksQuery = supabase.from('barber_branches').select('barber_id, branch_id')
 
   if (companyFilter) {
     rolesQuery    = rolesQuery.eq('company_id', companyFilter)
@@ -296,7 +295,7 @@ export async function POST(req: NextRequest) {
     let reusedBarber = false
 
     try {
-      const result = await createOrReuseBarberForUser(supabase, { name, email, availability }, userId)
+      const result = await createOrReuseBarberForUser(supabase, { name, email, availability, company_id }, userId)
       barber = result.barber
       reusedBarber = result.reused
     } catch (error) {
@@ -392,7 +391,7 @@ export async function PATCH(req: NextRequest) {
   if (Object.keys(payload).length > 0) {
     const { error } = await supabase
       .from('user_roles')
-      .upsert({ user_id, ...payload }, { onConflict: 'user_id' })
+      .upsert({ user_id, ...(scope?.companyId ? { company_id: scope.companyId } : {}), ...payload }, { onConflict: 'user_id' })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -433,7 +432,7 @@ export async function PATCH(req: NextRequest) {
       try {
         const { barber } = await createOrReuseBarberForUser(
           supabase,
-          { name: barberName, email: barberEmail, availability: availability ?? DEFAULT_AVAILABILITY },
+          { name: barberName, email: barberEmail, availability: availability ?? DEFAULT_AVAILABILITY, company_id: scope?.companyId ?? null },
           user_id
         )
         const { error: linkError } = await supabase.from('user_roles').update({ barber_id: barber.id }).eq('user_id', user_id)
@@ -450,8 +449,13 @@ export async function PATCH(req: NextRequest) {
       const updates: Record<string, unknown> = {}
       if (availability) updates.availability = availability
       if (name) updates.name = name
+      if (scope?.companyId) updates.company_id = scope.companyId
       if (Object.keys(updates).length > 0) {
-        await supabase.from('barbers').update(updates).eq('id', currentBarberId)
+        let barberUpdateQuery = supabase.from('barbers').update(updates).eq('id', currentBarberId)
+        if (scope?.companyId) {
+          barberUpdateQuery = barberUpdateQuery.eq('company_id', scope.companyId)
+        }
+        await barberUpdateQuery
       }
       if (appears_in_agenda === false) {
         await syncBarberBranches(supabase, currentBarberId, [])

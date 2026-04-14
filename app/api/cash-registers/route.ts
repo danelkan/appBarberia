@@ -134,6 +134,9 @@ export async function POST(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
   const { branch_id, opening_amount, opening_notes } = result.data
+  const resolvedCompanyId = auth.role === 'superadmin'
+    ? null
+    : await resolveCompanyId(auth, supabase)
   const { data: branch } = await supabase
     .from('branches')
     .select('id, company_id')
@@ -144,12 +147,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
   }
 
+  if (resolvedCompanyId && branch.company_id !== resolvedCompanyId) {
+    return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+  }
+
   if (auth.role === 'barber' && !auth.branch_ids.includes(branch_id)) {
     return NextResponse.json({ error: 'No tenés acceso a esta sucursal' }, { status: 403 })
   }
 
   const payload = {
-    company_id: branch.company_id ?? auth.company_id ?? null,
+    company_id: branch.company_id ?? resolvedCompanyId ?? auth.company_id ?? null,
     branch_id,
     status: 'open',
     opening_amount: Number(opening_amount),

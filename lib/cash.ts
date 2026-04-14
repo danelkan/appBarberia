@@ -65,6 +65,29 @@ export async function getOpenCashRegister(admin: SupabaseClient, branchId: strin
   return data as CashRegister | null
 }
 
+async function buildUserMap(admin: SupabaseClient, userIds: string[]) {
+  if (userIds.length === 0) return new Map<string, { id: string; email: string; name: string }>()
+
+  const uniqueIds = Array.from(new Set(userIds.filter(Boolean)))
+  const results = await Promise.all(
+    uniqueIds.map(userId => admin.auth.admin.getUserById(userId))
+  )
+
+  return new Map(
+    results.flatMap(({ data }) => {
+      if (!data?.user) return []
+      return [[
+        data.user.id,
+        {
+          id: data.user.id,
+          email: data.user.email ?? '',
+          name: data.user.user_metadata?.full_name ?? data.user.user_metadata?.name ?? data.user.email ?? '',
+        },
+      ]]
+    })
+  )
+}
+
 export async function createCashAuditLog(
   admin: SupabaseClient,
   input: {
@@ -108,7 +131,7 @@ export async function hydrateCashRegister(admin: SupabaseClient, cashRegisterId:
 
   if (error || !register) return null
 
-  const [{ data: movements }, { data: logs }, { data: usersData }] = await Promise.all([
+  const [{ data: movements }, { data: logs }, usersData] = await Promise.all([
     admin
       .from('cash_movements')
       .select('*')
@@ -119,20 +142,24 @@ export async function hydrateCashRegister(admin: SupabaseClient, cashRegisterId:
       .select('*')
       .eq('cash_register_id', cashRegisterId)
       .order('created_at', { ascending: false }),
-    admin.auth.admin.listUsers(),
+    buildUserMap(
+      admin,
+      [
+        register.opened_by_user_id,
+        register.closed_by_user_id,
+      ].filter((value): value is string => Boolean(value))
+    ),
   ])
 
-  const users = usersData?.users ?? []
-  const userMap = new Map(
-    users.map(user => [
-      user.id,
-      {
-        id: user.id,
-        email: user.email ?? '',
-        name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email ?? '',
-      },
-    ])
-  )
+  const extraUserIds = [
+    ...(movements ?? []).map((movement: any) => movement.created_by_user_id),
+    ...(logs ?? []).map((log: any) => log.performed_by_user_id),
+  ].filter((value): value is string => Boolean(value))
+
+  const extraUserMap = await buildUserMap(admin, extraUserIds)
+  extraUserMap.forEach((value, key) => {
+    usersData.set(key, value)
+  })
 
   const summary = buildCashSummary(
     (movements ?? []) as Pick<CashMovement, 'type' | 'payment_method' | 'amount'>[],
@@ -142,15 +169,15 @@ export async function hydrateCashRegister(admin: SupabaseClient, cashRegisterId:
   return {
     ...register,
     summary,
-    opened_by_user: register.opened_by_user_id ? userMap.get(register.opened_by_user_id) ?? null : null,
-    closed_by_user: register.closed_by_user_id ? userMap.get(register.closed_by_user_id) ?? null : null,
+    opened_by_user: register.opened_by_user_id ? usersData.get(register.opened_by_user_id) ?? null : null,
+    closed_by_user: register.closed_by_user_id ? usersData.get(register.closed_by_user_id) ?? null : null,
     movements: (movements ?? []).map((movement: any) => ({
       ...movement,
-      created_by_user: movement.created_by_user_id ? userMap.get(movement.created_by_user_id) ?? null : null,
+      created_by_user: movement.created_by_user_id ? usersData.get(movement.created_by_user_id) ?? null : null,
     })),
     audit_logs: (logs ?? []).map((log: any) => ({
       ...log,
-      performed_by_user: log.performed_by_user_id ? userMap.get(log.performed_by_user_id) ?? null : null,
+      performed_by_user: log.performed_by_user_id ? usersData.get(log.performed_by_user_id) ?? null : null,
     })),
   }
 }

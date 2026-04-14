@@ -19,6 +19,7 @@ interface BarberWriteInput {
   email: string
   availability?: unknown
   photo_url?: string | null
+  company_id?: string | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ function cleanBarberPayload(input: BarberWriteInput) {
   }
   if (input.availability !== undefined) payload.availability = input.availability
   if (input.photo_url !== undefined) payload.photo_url = input.photo_url
+  if (input.company_id !== undefined) payload.company_id = input.company_id
   return payload
 }
 
@@ -202,14 +204,17 @@ export async function listVisibleBarbers(
   supabase: SupabaseClient,
   options?: { branchId?: string; companyId?: string }
 ) {
-  const branchLinksQuery = options?.branchId
-    ? supabase
-        .from('barber_branches')
-        .select('barber_id, branch_id, branch:branches(*)')
-        .eq('branch_id', options.branchId)
-    : supabase
-        .from('barber_branches')
-        .select('barber_id, branch_id, branch:branches(*)')
+  const branchLinksSelect = 'barber_id, branch_id, branch:branches!inner(id, name, address, company_id)'
+  let branchLinksQuery = supabase
+    .from('barber_branches')
+    .select(branchLinksSelect)
+
+  if (options?.branchId) {
+    branchLinksQuery = branchLinksQuery.eq('branch_id', options.branchId)
+  }
+  if (options?.companyId) {
+    branchLinksQuery = branchLinksQuery.eq('branch.company_id', options.companyId)
+  }
 
   let barbersQuery = supabase.from('barbers').select('*').order('created_at')
   if (options?.companyId) {
@@ -261,26 +266,39 @@ export async function listVisibleBarbers(
 export async function getVisibleBarberById(
   supabase: SupabaseClient,
   barberId: string,
-  options?: { branchId?: string | null }
+  options?: { branchId?: string | null; companyId?: string | null }
 ) {
-  const branchLinksQuery = options?.branchId
-    ? supabase
-        .from('barber_branches')
-        .select('branch_id')
-        .eq('barber_id', barberId)
-        .eq('branch_id', options.branchId)
-    : supabase
-        .from('barber_branches')
-        .select('branch_id')
-        .eq('barber_id', barberId)
+  let branchLinksQuery = supabase
+    .from('barber_branches')
+    .select('branch_id, branch:branches!inner(company_id)')
+    .eq('barber_id', barberId)
+
+  if (options?.branchId) {
+    branchLinksQuery = branchLinksQuery.eq('branch_id', options.branchId)
+  }
+  if (options?.companyId) {
+    branchLinksQuery = branchLinksQuery.eq('branch.company_id', options.companyId)
+  }
 
   const [
     { data: barber   },
     { data: roleRow  },
     { data: branchLinks },
   ] = await Promise.all([
-    supabase.from('barbers').select('*').eq('id', barberId).maybeSingle(),
-    supabase.from('user_roles').select('user_id, barber_id, active').eq('barber_id', barberId).maybeSingle(),
+    (() => {
+      let query = supabase.from('barbers').select('*').eq('id', barberId)
+      if (options?.companyId) {
+        query = query.eq('company_id', options.companyId)
+      }
+      return query.maybeSingle()
+    })(),
+    (() => {
+      let query = supabase.from('user_roles').select('user_id, barber_id, active').eq('barber_id', barberId)
+      if (options?.companyId) {
+        query = query.eq('company_id', options.companyId)
+      }
+      return query.maybeSingle()
+    })(),
     branchLinksQuery,
   ])
 

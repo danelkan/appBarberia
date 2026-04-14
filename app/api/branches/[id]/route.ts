@@ -46,16 +46,26 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     }
   }
 
-  const { data, error } = await supabase
+  const scopedCompanyId = auth.role === 'superadmin'
+    ? company_id ?? existingBranch.company_id ?? null
+    : existingBranch.company_id ?? auth.company_id ?? null
+
+  let query = supabase
     .from('branches')
     .update({
       name: name.trim(),
       address: address?.trim() || null,
       phone: phone?.trim() || null,
       active: Boolean(active),
-      company_id: auth.role === 'superadmin' ? company_id ?? null : existingBranch.company_id ?? auth.company_id ?? null,
+      company_id: scopedCompanyId,
     })
     .eq('id', params.id)
+
+  if (scopedCompanyId) {
+    query = query.eq('company_id', scopedCompanyId)
+  }
+
+  const { data, error } = await query
     .select('*')
     .single()
 

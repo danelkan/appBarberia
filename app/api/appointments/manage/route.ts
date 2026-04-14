@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendCancellationEmail } from '@/lib/emails'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
+import { resolveCompanyIdFromBranch } from '@/lib/tenant'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +10,30 @@ export const dynamic = 'force-dynamic'
 const lookupSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(6).max(30),
+  branch_id: z.string().uuid().optional(),
+  company: z.string().min(1).optional(),
 })
+
+async function resolvePublicCompanyId(
+  supabase: ReturnType<typeof createSupabaseAdmin>,
+  input: { branchId?: string; company?: string }
+) {
+  if (input.branchId) {
+    return resolveCompanyIdFromBranch(supabase, input.branchId)
+  }
+
+  if (input.company) {
+    const { data: company } = await supabase
+      .from('companies')
+      .select('id')
+      .or(`id.eq.${input.company},slug.eq.${input.company}`)
+      .maybeSingle()
+
+    return (company?.id as string | null) ?? null
+  }
+
+  return resolveCompanyIdFromBranch(supabase, null)
+}
 
 // GET /api/appointments/manage?email=&phone= — busca turnos del cliente
 export async function GET(req: NextRequest) {
@@ -20,17 +44,28 @@ export async function GET(req: NextRequest) {
   const parsed = lookupSchema.safeParse({
     email: searchParams.get('email') ?? '',
     phone: searchParams.get('phone') ?? '',
+    branch_id: searchParams.get('branch_id') ?? undefined,
+    company: searchParams.get('company') ?? undefined,
   })
   if (!parsed.success) {
     return NextResponse.json({ error: 'Email y teléfono requeridos' }, { status: 400 })
   }
 
   const supabase = createSupabaseAdmin()
+  const companyId = await resolvePublicCompanyId(supabase, {
+    branchId: parsed.data.branch_id,
+    company: parsed.data.company,
+  })
+
+  if (!companyId) {
+    return NextResponse.json({ error: 'Necesitás entrar desde el enlace de tu barbería o sucursal' }, { status: 400 })
+  }
 
   // Verificar que el cliente exista con ese email Y ese teléfono (doble validación)
   const { data: client } = await supabase
     .from('clients')
     .select('id, first_name, last_name, email, phone')
+    .eq('company_id', companyId)
     .eq('email', parsed.data.email)
     .eq('phone', parsed.data.phone)
     .single()
@@ -46,8 +81,10 @@ export async function GET(req: NextRequest) {
     .select(`
       id, date, start_time, end_time, status,
       barber:barbers(id, name),
-      service:services(id, name, price, duration_minutes)
+      service:services(id, name, price, duration_minutes),
+      branch:branches(name)
     `)
+    .eq('company_id', companyId)
     .eq('client_id', client.id)
     .gte('date', today)
     .neq('status', 'cancelada')
@@ -69,6 +106,8 @@ export async function PATCH(req: NextRequest) {
     appointment_id: z.string().uuid(),
     email: z.string().email(),
     phone: z.string().min(6).max(30),
+    branch_id: z.string().uuid().optional(),
+    company: z.string().min(1).optional(),
   })
 
   const parsed = schema.safeParse(body)
@@ -77,11 +116,20 @@ export async function PATCH(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
+  const companyId = await resolvePublicCompanyId(supabase, {
+    branchId: parsed.data.branch_id,
+    company: parsed.data.company,
+  })
+
+  if (!companyId) {
+    return NextResponse.json({ error: 'Necesitás entrar desde el enlace de tu barbería o sucursal' }, { status: 400 })
+  }
 
   // Verificar que el cliente es dueño del turno
   const { data: client } = await supabase
     .from('clients')
     .select('id')
+    .eq('company_id', companyId)
     .eq('email', parsed.data.email)
     .eq('phone', parsed.data.phone)
     .single()
@@ -94,6 +142,7 @@ export async function PATCH(req: NextRequest) {
     .from('appointments')
     .select('*, client:clients(*), barber:barbers(*), service:services(*)')
     .eq('id', parsed.data.appointment_id)
+    .eq('company_id', companyId)
     .eq('client_id', client.id)
     .single()
 
@@ -119,6 +168,7 @@ export async function PATCH(req: NextRequest) {
   const { error: updateError } = await supabase
     .from('appointments')
     .update({ status: 'cancelada' })
+    .eq('company_id', companyId)
     .eq('id', appt.id)
 
   if (updateError) {

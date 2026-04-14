@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { requireAdminAuth, requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId, resolveCompanyIdFromBranch } from '@/lib/tenant'
 import { createServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -18,10 +18,24 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   // Prefer explicit param (public booking flow); fall back to auth context if present
   const companyIdParam = searchParams.get('company_id') ?? undefined
+  const branchIdParam = searchParams.get('branch_id') ?? undefined
+
+  const auth = await requireAuth(req).catch(() => null)
+  const authCompanyId = auth
+    ? await resolveCompanyId(auth, supabase)
+    : null
+  const branchCompanyId = branchIdParam
+    ? await resolveCompanyIdFromBranch(supabase, branchIdParam)
+    : null
+  const effectiveCompanyId = authCompanyId ?? companyIdParam ?? branchCompanyId
 
   let query = supabase.from('services').select('*').eq('active', true).order('price')
-  if (companyIdParam) {
-    query = query.eq('company_id', companyIdParam)
+  if (effectiveCompanyId) {
+    query = query.eq('company_id', effectiveCompanyId)
+  } else if (auth && auth.role !== 'superadmin') {
+    return NextResponse.json({ services: [] })
+  } else if (!auth) {
+    return NextResponse.json({ services: [] })
   }
   const { data, error } = await query
 
@@ -66,10 +80,13 @@ export async function POST(req: NextRequest) {
 
   const supabase = createSupabaseAdmin()
   const companyId = await resolveCompanyId(auth, supabase)
+  if (!companyId) {
+    return NextResponse.json({ error: 'Empresa no resuelta para este usuario' }, { status: 400 })
+  }
 
   const { data, error } = await supabase
     .from('services')
-    .insert({ ...result.data, ...(companyId ? { company_id: companyId } : {}) })
+    .insert({ ...result.data, company_id: companyId })
     .select('*')
     .single()
 

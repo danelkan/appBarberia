@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { resolveCompanyId } from '@/lib/tenant'
 import { updateServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -39,10 +40,18 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   const supabase = createSupabaseAdmin()
-  const { data, error } = await supabase
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let query = supabase
     .from('services')
     .update(result.data)
     .eq('id', id)
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+
+  const { data, error } = await query
     .select('*')
     .single()
 
@@ -85,10 +94,18 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   }
 
   const supabase = createSupabaseAdmin()
-  const { error } = await supabase
+  const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let query = supabase
     .from('services')
     .update({ active: false })
     .eq('id', id)
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+
+  const { error } = await query
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

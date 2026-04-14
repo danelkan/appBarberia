@@ -6,6 +6,46 @@ import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, end
 
 export const dynamic = 'force-dynamic'
 
+async function resolveScopedAppointmentIds(input: {
+  supabase: ReturnType<typeof createSupabaseAdmin>
+  auth: Awaited<ReturnType<typeof requireAuth>>
+  companyId: string | null
+  branchId?: string | null
+}) {
+  const { supabase, auth, companyId, branchId } = input
+
+  let query = supabase.from('appointments').select('id')
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+
+  if (branchId) {
+    query = query.eq('branch_id', branchId)
+  }
+
+  if (auth?.role === 'barber') {
+    const orFilters: string[] = []
+    if (auth.barber_id) {
+      orFilters.push(`barber_id.eq.${auth.barber_id}`)
+    }
+    if (auth.branch_ids.length > 0) {
+      const sanitizedBranchIds = auth.branch_ids
+        .join(',')
+      orFilters.push(`branch_id.in.(${sanitizedBranchIds})`)
+    }
+
+    if (orFilters.length === 0) {
+      return []
+    }
+
+    query = query.or(orFilters.join(','))
+  }
+
+  const { data } = await query
+  return (data ?? []).map((appointment: { id: string }) => appointment.id)
+}
+
 function calcTotals(payments: any[]): {
   efectivo: number; mercado_pago: number; debito: number; transferencia: number; total: number; count: number
 } {
@@ -41,36 +81,39 @@ export async function GET(req: NextRequest) {
   const companyId = auth.role === 'superadmin'
     ? null
     : await resolveCompanyId(auth, supabase)
+  const appointmentIds = await resolveScopedAppointmentIds({
+    supabase,
+    auth,
+    companyId,
+    branchId: branch_id,
+  })
+
+  if (appointmentIds.length === 0) {
+    return NextResponse.json({
+      summary: {
+        today: calcTotals([]),
+        week: calcTotals([]),
+        month: calcTotals([]),
+        year: calcTotals([]),
+      }
+    })
+  }
 
   // Single query — fetch entire year (covers all ranges) to avoid 4 round-trips.
   // company_id filter at DB level replaces the in-memory cross-tenant post-filter.
   let query = supabase
     .from('payments')
-    .select('amount, method, created_at, appointment:appointments(branch_id, barber_id)')
+    .select('amount, method, created_at')
     .gte('created_at', ranges.year[0])
     .lte('created_at', ranges.year[1])
 
   if (companyId) query = query.eq('company_id', companyId)
+  query = query.in('appointment_id', appointmentIds)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  let rows = data ?? []
-
-  // Barbers: further scope to own branch/appointments (within company)
-  if (auth.role === 'barber') {
-    rows = rows.filter((p: any) => {
-      const appt = p.appointment
-      return (
-        (appt?.branch_id && auth.branch_ids.includes(appt.branch_id)) ||
-        (auth.barber_id && appt?.barber_id === auth.barber_id)
-      )
-    })
-  }
-
-  if (branch_id) {
-    rows = rows.filter((p: any) => p.appointment?.branch_id === branch_id)
-  }
+  const rows = data ?? []
 
   // Bucket into periods
   const [todayFrom, todayTo]   = ranges.today.map(d => new Date(d))
