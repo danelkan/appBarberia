@@ -2,7 +2,7 @@ import { unstable_noStore as noStore } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin, formatSupabaseError } from '@/lib/supabase'
-import { buildCompanyScopeFilter, resolveBranchCompanyScope } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveBranchCompanyScope, resolveCompanyRecordByIdentifier } from '@/lib/tenant'
 import BookingFlow from '@/components/booking/booking-flow'
 
 interface BookingPageProps {
@@ -52,11 +52,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
     }
 
     if (companyParam) {
-      const { data: company } = await supabase
-        .from('companies')
-        .select('id, slug')
-        .or(`id.eq.${companyParam},slug.eq.${companyParam}`)
-        .maybeSingle()
+      const company = await resolveCompanyRecordByIdentifier(supabase, companyParam)
 
       if (!company || company.id !== effectiveCompanyId) {
         redirect('/')

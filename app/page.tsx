@@ -6,7 +6,7 @@ import { resolveUserRole } from '@/lib/api-auth'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { BrandLogo } from '@/components/brand-logo'
-import { buildCompanyScopeFilter, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveCompanyId, resolveCompanyRecordByIdentifier, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 
 interface HomePageProps {
   searchParams: {
@@ -54,8 +54,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     .eq('active', true)
     .order('created_at')
 
-  const { data: scopedCompanies } = effectiveCompanyParam
-    ? await baseCompanyQuery.or(`id.eq.${effectiveCompanyParam},slug.eq.${effectiveCompanyParam}`)
+  const resolvedCompany = effectiveCompanyParam
+    ? await resolveCompanyRecordByIdentifier(supabase, effectiveCompanyParam)
+    : null
+
+  const { data: scopedCompanies } = resolvedCompany
+    ? await baseCompanyQuery.eq('id', resolvedCompany.id)
     : { data: null as Array<{ id: string; name: string; slug: string | null }> | null }
 
   const { data: allCompanies } = effectiveCompanyParam && !(scopedCompanies?.length)

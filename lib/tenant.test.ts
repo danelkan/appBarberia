@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCompanyScopeFilter, getSingleCompanyLegacyScope } from '@/lib/tenant'
+import { buildCompanyScopeFilter, getSingleCompanyLegacyScope, isUuidLike } from '@/lib/tenant'
 
 describe('single-company legacy scope', () => {
   it('enables the legacy fallback when there is exactly one active company', () => {
@@ -40,5 +40,15 @@ describe('company scope filter builder', () => {
     expect(buildCompanyScopeFilter('company_id', 'company-a', true)).toBe(
       'company_id.eq.company-a,company_id.is.null'
     )
+  })
+})
+
+describe('company identifier parsing', () => {
+  it('detects UUID identifiers', () => {
+    expect(isUuidLike('11111111-1111-1111-1111-111111111111')).toBe(true)
+  })
+
+  it('does not treat slugs as UUIDs', () => {
+    expect(isUuidLike('felito-studios')).toBe(false)
   })
 })

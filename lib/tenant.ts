@@ -6,6 +6,12 @@ export interface CompanyScopeContext {
   allowLegacyUnscoped: boolean
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isUuidLike(value: string | null | undefined) {
+  return Boolean(value && UUID_REGEX.test(value))
+}
+
 export function getSingleCompanyLegacyScope(
   activeCompanyIds: string[],
   requestedCompanyId?: string | null
@@ -49,6 +55,25 @@ async function listActiveCompanyIds(supabase: SupabaseClient): Promise<string[]>
     .eq('active', true)
 
   return (companies ?? []).map((company: { id: string }) => company.id)
+}
+
+export async function resolveCompanyRecordByIdentifier(
+  supabase: SupabaseClient,
+  identifier: string | null | undefined
+): Promise<{ id: string; slug: string | null } | null> {
+  if (!identifier?.trim()) return null
+
+  const normalized = identifier.trim()
+  let query = supabase
+    .from('companies')
+    .select('id, slug')
+
+  query = isUuidLike(normalized)
+    ? query.eq('id', normalized)
+    : query.eq('slug', normalized)
+
+  const { data } = await query.maybeSingle()
+  return (data as { id: string; slug: string | null } | null) ?? null
 }
 
 export async function resolveSingleCompanyLegacyScope(

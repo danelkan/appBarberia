@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendCancellationEmail } from '@/lib/emails'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
-import { buildCompanyScopeFilter, resolveBranchCompanyScope, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveBranchCompanyScope, resolveCompanyRecordByIdentifier, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -23,13 +23,8 @@ async function resolvePublicCompanyId(
   }
 
   if (input.company) {
-    const { data: company } = await supabase
-      .from('companies')
-      .select('id')
-      .or(`id.eq.${input.company},slug.eq.${input.company}`)
-      .maybeSingle()
-
-    return resolveSingleCompanyLegacyScope(supabase, (company?.id as string | null) ?? null)
+    const company = await resolveCompanyRecordByIdentifier(supabase, input.company)
+    return resolveSingleCompanyLegacyScope(supabase, company?.id ?? null)
   }
 
   return resolveBranchCompanyScope(supabase, null)
