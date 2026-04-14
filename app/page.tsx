@@ -2,9 +2,11 @@ import type { Metadata } from 'next'
 import { unstable_noStore as noStore } from 'next/cache'
 import Link from 'next/link'
 import { ArrowRight, MapPin } from 'lucide-react'
+import { resolveUserRole } from '@/lib/api-auth'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { BrandLogo } from '@/components/brand-logo'
-import { buildCompanyScopeFilter, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 
 interface HomePageProps {
   searchParams: {
@@ -24,7 +26,27 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   noStore()
 
   const supabase = createSupabaseAdmin()
+  const serverSupabase = createSupabaseServerClient()
   const companyParam = searchParams.company?.trim()
+  const {
+    data: { user },
+  } = await serverSupabase.auth.getUser()
+
+  let authCompanyId: string | null = null
+  if (user) {
+    const resolvedRole = await resolveUserRole(supabase, user.id, user.email)
+    if (resolvedRole.active && resolvedRole.role !== 'superadmin') {
+      authCompanyId = await resolveCompanyId(
+        {
+          ...resolvedRole,
+          session: { user: { id: user.id, email: user.email ?? undefined } },
+          response: undefined,
+        },
+        supabase
+      )
+    }
+  }
+  const effectiveCompanyParam = companyParam ?? authCompanyId ?? undefined
 
   const baseCompanyQuery = supabase
     .from('companies')
@@ -32,11 +54,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     .eq('active', true)
     .order('created_at')
 
-  const { data: scopedCompanies } = companyParam
-    ? await baseCompanyQuery.or(`id.eq.${companyParam},slug.eq.${companyParam}`)
+  const { data: scopedCompanies } = effectiveCompanyParam
+    ? await baseCompanyQuery.or(`id.eq.${effectiveCompanyParam},slug.eq.${effectiveCompanyParam}`)
     : { data: null as Array<{ id: string; name: string; slug: string | null }> | null }
 
-  const { data: allCompanies } = companyParam && !(scopedCompanies?.length)
+  const { data: allCompanies } = effectiveCompanyParam && !(scopedCompanies?.length)
     ? await supabase
         .from('companies')
         .select('id, name, slug')
@@ -45,7 +67,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     : { data: null as Array<{ id: string; name: string; slug: string | null }> | null }
 
   const activeCompanies = (scopedCompanies?.length ? scopedCompanies : allCompanies) ?? []
-  const selectedCompany = companyParam
+  const selectedCompany = effectiveCompanyParam
     ? scopedCompanies?.[0] ?? null
     : activeCompanies.length === 1 ? activeCompanies[0] : null
 
