@@ -125,7 +125,10 @@ export async function sendConfirmationEmail(
   client: Client,
   barber: Barber,
   service: Service,
-  appointment: Appointment
+  appointment: Appointment,
+  options?: {
+    companyKey?: string | null
+  }
 ) {
   const toEmail = normalizeEmail(client.email)
   if (!toEmail) {
@@ -140,6 +143,10 @@ export async function sendConfirmationEmail(
   const safeBarber    = sanitize(barber.name)
   const safeDate      = sanitize(formatDate(appointment.date))
   const safeTime      = sanitizeTime(appointment.start_time.slice(0, 5))
+
+  const myAppointmentsUrl = options?.companyKey
+    ? `${appConfig.url}/mis-turnos?company=${encodeURIComponent(options.companyKey)}`
+    : `${appConfig.url}/mis-turnos`
 
   const result = await getResend().emails.send({
     from: FROM,
@@ -157,7 +164,7 @@ export async function sendConfirmationEmail(
           { label: 'Hora',     value: safeTime },
         ])}
         <div style="margin-top:28px;">
-          ${ctaButton('Ver o cancelar turno', `${appConfig.url}/mis-turnos`)}
+          ${ctaButton('Ver o cancelar turno', myAppointmentsUrl)}
         </div>
       `,
     }),
@@ -222,13 +229,19 @@ export async function sendCancellationEmail(
   client: Client,
   barber: Barber,
   service: Service,
-  appointment: Appointment
+  appointment: Appointment,
+  options?: {
+    companyKey?: string | null
+  }
 ) {
   const toEmail = normalizeEmail(client.email)
   if (!toEmail) return null
 
   const safeDate = sanitize(formatDate(appointment.date))
   const safeTime = sanitizeTime(appointment.start_time.slice(0, 5))
+  const bookingUrl = options?.companyKey
+    ? `${appConfig.url}/?company=${encodeURIComponent(options.companyKey)}`
+    : `${appConfig.url}/`
 
   const result = await getResend().emails.send({
     from: FROM,
@@ -246,7 +259,7 @@ export async function sendCancellationEmail(
           { label: 'Hora',     value: safeTime },
         ])}
         <div style="margin-top:28px;">
-          ${ctaButton('Reservar nuevo turno', `${appConfig.url}/`)}
+          ${ctaButton('Reservar nuevo turno', bookingUrl)}
         </div>
       `,
     }),
@@ -265,10 +278,13 @@ export async function sendBookingEmails(
   client: Client,
   barber: Barber,
   service: Service,
-  appointment: Appointment
+  appointment: Appointment,
+  options?: {
+    companyKey?: string | null
+  }
 ) {
   const results = await Promise.allSettled([
-    sendConfirmationEmail(client, barber, service, appointment),
+    sendConfirmationEmail(client, barber, service, appointment, options),
     sendBarberNotification(client, barber, service, appointment),
   ])
 

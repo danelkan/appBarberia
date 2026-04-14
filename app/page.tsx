@@ -25,20 +25,28 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const supabase = createSupabaseAdmin()
   const companyParam = searchParams.company?.trim()
 
-  let companyQuery = supabase
+  const baseCompanyQuery = supabase
     .from('companies')
     .select('id, name, slug')
     .eq('active', true)
     .order('created_at')
 
-  if (companyParam) {
-    companyQuery = companyQuery.or(`id.eq.${companyParam},slug.eq.${companyParam}`)
-  }
+  const { data: scopedCompanies } = companyParam
+    ? await baseCompanyQuery.or(`id.eq.${companyParam},slug.eq.${companyParam}`)
+    : { data: null as Array<{ id: string; name: string; slug: string | null }> | null }
 
-  const { data: companies } = await companyQuery
+  const { data: allCompanies } = companyParam && !(scopedCompanies?.length)
+    ? await supabase
+        .from('companies')
+        .select('id, name, slug')
+        .eq('active', true)
+        .order('created_at')
+    : { data: null as Array<{ id: string; name: string; slug: string | null }> | null }
+
+  const activeCompanies = (scopedCompanies?.length ? scopedCompanies : allCompanies) ?? []
   const selectedCompany = companyParam
-    ? (companies ?? [])[0] ?? null
-    : (companies ?? []).length === 1 ? companies![0] : null
+    ? scopedCompanies?.[0] ?? null
+    : activeCompanies.length === 1 ? activeCompanies[0] : null
 
   const { data: branches } = selectedCompany
     ? await supabase
@@ -72,35 +80,56 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             Reserva online
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-            Elegí tu sucursal
+            {selectedCompany ? 'Elegí tu sucursal' : 'Elegí tu barbería'}
           </h1>
+          {!selectedCompany && (
+            <p className="mt-2 text-sm text-slate-500">
+              Accedé desde el enlace propio de tu barbería o elegila acá para ver solo sus sucursales.
+            </p>
+          )}
 
           <div className="mt-5 space-y-3">
-            {!selectedCompany && (
-              <div className="rounded-[24px] border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
-                Accedé desde el enlace propio de tu barbería para ver solo sus sucursales y turnos.
-              </div>
+            {!selectedCompany ? (
+              activeCompanies.map(company => (
+                <Link
+                  key={company.id}
+                  href={`/?company=${company.slug ?? company.id}`}
+                  className="group flex items-center gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition duration-150 hover:border-slate-300 hover:shadow-md active:scale-[0.99]"
+                >
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 transition group-hover:bg-slate-950 group-hover:text-white">
+                    <MapPin className="h-5 w-5" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-950">{company.name}</p>
+                    <p className="mt-0.5 text-sm text-slate-500">Entrar a reservas</p>
+                  </div>
+
+                  <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
+                </Link>
+              ))
+            ) : (
+              (branches ?? []).map(branch => (
+                <Link
+                  key={branch.id}
+                  href={`/reservar?branch=${branch.id}${companyQueryValue ? `&company=${companyQueryValue}` : ''}`}
+                  className="group flex items-center gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition duration-150 hover:border-slate-300 hover:shadow-md active:scale-[0.99]"
+                >
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 transition group-hover:bg-slate-950 group-hover:text-white">
+                    <MapPin className="h-5 w-5" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-950">{branch.name}</p>
+                    {branch.address && (
+                      <p className="mt-0.5 truncate text-sm text-slate-500">{branch.address}</p>
+                    )}
+                  </div>
+
+                  <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
+                </Link>
+              ))
             )}
-            {(branches ?? []).map(branch => (
-              <Link
-                key={branch.id}
-                href={`/reservar?branch=${branch.id}${companyQueryValue ? `&company=${companyQueryValue}` : ''}`}
-                className="group flex items-center gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition duration-150 hover:border-slate-300 hover:shadow-md active:scale-[0.99]"
-              >
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 transition group-hover:bg-slate-950 group-hover:text-white">
-                  <MapPin className="h-5 w-5" />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-950">{branch.name}</p>
-                  {branch.address && (
-                    <p className="mt-0.5 truncate text-sm text-slate-500">{branch.address}</p>
-                  )}
-                </div>
-
-                <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
-              </Link>
-            ))}
           </div>
 
           <div className="mt-5 text-center">

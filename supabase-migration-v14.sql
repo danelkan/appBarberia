@@ -108,6 +108,17 @@ WHERE bb.branch_id = br.id
 
 -- ─── 3. Legacy cleanup ───────────────────────────────────────────
 
+DELETE FROM public.payments p
+USING public.appointments a, public.branches br
+WHERE p.appointment_id = a.id
+  AND a.branch_id = br.id
+  AND br.name ILIKE 'Sucursal Test';
+
+DELETE FROM public.appointments a
+USING public.branches br
+WHERE a.branch_id = br.id
+  AND br.name ILIKE 'Sucursal Test';
+
 DELETE FROM public.branches
 WHERE name ILIKE 'Sucursal Test';
 

@@ -212,7 +212,9 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (fullClient) {
-      await sendBookingEmails(fullClient, barber, service, appointment)
+      await sendBookingEmails(fullClient, barber, service, appointment, {
+        companyKey: companyId,
+      })
     }
 
     const response = NextResponse.json({ appointment, success: true })

@@ -33,6 +33,7 @@ export default function MisTurnosClient({ branchId, company }: MisTurnosClientPr
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [cancelSuccess, setCancelSuccess] = useState<string | null>(null)
+  const homeHref = company ? `/?company=${encodeURIComponent(company)}` : '/'
 
   const lookup = async () => {
     if (!email || !phone) return
@@ -87,7 +88,7 @@ export default function MisTurnosClient({ branchId, company }: MisTurnosClientPr
             </div>
           </div>
           <Link
-            href="/"
+            href={homeHref}
             className="flex items-center gap-1.5 text-xs font-medium text-cream/50 hover:text-cream transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -166,7 +167,7 @@ export default function MisTurnosClient({ branchId, company }: MisTurnosClientPr
                 <Calendar className="w-10 h-10 text-cream/15 mx-auto mb-3" />
                 <p className="text-cream/50 text-sm font-medium mb-4">No tenés turnos próximos</p>
                 <Link
-                  href="/"
+                  href={homeHref}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-gold text-black text-sm font-semibold rounded-xl hover:bg-gold-dark transition-colors"
                 >
                   <Scissors className="w-3.5 h-3.5" />
@@ -232,7 +233,7 @@ export default function MisTurnosClient({ branchId, company }: MisTurnosClientPr
                 })}
 
                 <div className="pt-1 text-center">
-                  <Link href="/" className="text-sm text-gold-dark hover:text-gold transition-colors font-semibold">
+                  <Link href={homeHref} className="text-sm text-gold-dark hover:text-gold transition-colors font-semibold">
                     + Reservar otro turno
                   </Link>
                 </div>

@@ -28,6 +28,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
   let selectedBranch
   let services
   let branchBarbers
+  let publicCompanyKey: string | null = null
 
   try {
     const { data: branch } = await supabase
@@ -51,6 +52,16 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
       if (!company || company.id !== branch.company_id) {
         redirect('/')
       }
+
+      publicCompanyKey = company.slug ?? company.id
+    } else {
+      const { data: company } = await supabase
+        .from('companies')
+        .select('id, slug')
+        .eq('id', branch.company_id)
+        .maybeSingle()
+
+      publicCompanyKey = company?.slug ?? company?.id ?? branch.company_id
     }
 
     selectedBranch = branch
@@ -90,6 +101,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
       branch={selectedBranch}
       services={services ?? []}
       barbers={barbersForBranch}
+      publicCompanyKey={publicCompanyKey}
     />
   )
 }

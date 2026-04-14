@@ -176,7 +176,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (appt.client) {
-    sendCancellationEmail(appt.client, appt.barber, appt.service, appt).catch(console.error)
+    sendCancellationEmail(appt.client, appt.barber, appt.service, appt, {
+      companyKey: companyId,
+    }).catch(console.error)
   }
 
   return NextResponse.json({ success: true })

@@ -73,10 +73,12 @@ export default function BookingFlow({
   branch,
   services,
   barbers,
+  publicCompanyKey,
 }: {
   branch:   Pick<Branch, 'id' | 'name' | 'address'>
   services: Service[]
   barbers:  Barber[]
+  publicCompanyKey?: string | null
 }) {
   const [step, setStep]               = useState<Step>(1)
   const [selectedService, setService] = useState<Service | null>(null)
@@ -219,6 +221,10 @@ export default function BookingFlow({
   const ctaDisabled = step === 1 ? !selectedService :
                       step === 2 ? !canStep2 :
                                    !canSubmit
+  const homeHref = publicCompanyKey ? `/?company=${encodeURIComponent(publicCompanyKey)}` : '/'
+  const myAppointmentsHref = publicCompanyKey
+    ? `/mis-turnos?company=${encodeURIComponent(publicCompanyKey)}`
+    : '/mis-turnos'
 
   // ── Success screen ──────────────────────────────────────────────
   if (success) {
@@ -243,10 +249,10 @@ export default function BookingFlow({
             </div>
 
             <div className="mt-6 flex flex-col gap-3">
-              <Link href="/" className="btn-gold w-full">
+              <Link href={homeHref} className="btn-gold w-full">
                 Nueva reserva
               </Link>
-              <Link href="/mis-turnos" className="btn-outline w-full">
+              <Link href={myAppointmentsHref} className="btn-outline w-full">
                 Ver mis turnos
               </Link>
             </div>
@@ -264,7 +270,7 @@ export default function BookingFlow({
       <header className="safe-area-pt sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <Link
-            href="/"
+            href={homeHref}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-slate-950"
           >
             <ArrowLeft className="h-4 w-4" />
