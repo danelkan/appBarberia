@@ -193,7 +193,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-950">{branch.name}</p>
+                    <p className="font-semibold text-slate-950">{selectedCompany.name} ({branch.name})</p>
                     <p className="mt-0.5 truncate text-sm text-slate-500">
                       {branch.address}
                     </p>
