@@ -157,19 +157,25 @@ export async function resolveAccessibleBranchIds(
     return (branches ?? []).map((branch: { id: string }) => branch.id)
   }
 
-  if (auth.branch_ids.length > 0) {
+  if (auth.role === 'barber' && auth.branch_ids.length > 0) {
     return auth.branch_ids
   }
 
   const companyId = await resolveCompanyId(auth, supabase)
-  if (!companyId) return []
+  if (companyId) {
+    const { data: branches } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('company_id', companyId)
 
-  const { data: branches } = await supabase
-    .from('branches')
-    .select('id')
-    .eq('company_id', companyId)
+    return (branches ?? []).map((branch: { id: string }) => branch.id)
+  }
 
-  return (branches ?? []).map((branch: { id: string }) => branch.id)
+  if (auth.branch_ids.length > 0) {
+    return auth.branch_ids
+  }
+
+  return []
 }
 
 export async function canAccessBranch(
