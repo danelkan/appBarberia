@@ -58,6 +58,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     : { data: [] }
 
   const companyQueryValue = selectedCompany?.slug ?? selectedCompany?.id ?? null
+  const hasVisibleBranches = Boolean((branches ?? []).length)
 
   return (
     <main className="flex min-h-screen flex-col px-4 py-5 sm:px-6">
@@ -108,6 +109,24 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
                 </Link>
               ))
+            ) : !hasVisibleBranches ? (
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-base font-medium text-slate-700">
+                  No encontramos sucursales activas para esta barbería.
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  Revisá en la base que exista al menos una fila en <code>branches</code> con{' '}
+                  <code>company_id = {selectedCompany.id}</code> y <code>active = true</code>.
+                </p>
+                <div className="mt-4">
+                  <Link
+                    href="/"
+                    className="text-sm font-medium text-slate-700 underline-offset-4 transition hover:text-slate-950 hover:underline"
+                  >
+                    Volver a elegir barbería
+                  </Link>
+                </div>
+              </div>
             ) : (
               (branches ?? []).map(branch => (
                 <Link
