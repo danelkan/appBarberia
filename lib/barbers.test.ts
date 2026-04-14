@@ -67,7 +67,7 @@ describe('getVisibleBarberIds', () => {
       branchLinks: [],
       validAuthUserIds: new Set(['u1']),
     })
-    expect(visible.has('b1')).toBe(false)
+    expect(visible.has('b1')).toBe(true)
   })
 
   it('hides barber when neither source has branch assignment', () => {
@@ -108,7 +108,7 @@ describe('getVisibleBarberIds', () => {
       validAuthUserIds: new Set(['u1', 'u2']),
       branchId: 'br-a',
     })
-    expect(visible.has('b-a')).toBe(false)
+    expect(visible.has('b-a')).toBe(true)
     expect(visible.has('b-b')).toBe(false)
   })
 
@@ -181,6 +181,6 @@ describe('getAssignedBranchIdsByBarber', () => {
       branchLinks: [],
     })
 
-    expect(assigned.get('legacy-barber')).toBeUndefined()
+    expect(assigned.get('legacy-barber')).toEqual(['br-a'])
   })
 })

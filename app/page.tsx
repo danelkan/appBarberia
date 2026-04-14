@@ -86,9 +86,20 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         .or(buildCompanyScopeFilter('company_id', selectedCompany.id, companyScope?.allowLegacyUnscoped))
         .order('name')
     : { data: [] }
+  const { data: allActiveBranches } = !selectedCompany
+    ? await supabase
+        .from('branches')
+        .select('company_id')
+        .eq('active', true)
+    : { data: [] as Array<{ company_id: string | null }> }
 
   const companyQueryValue = selectedCompany?.slug ?? selectedCompany?.id ?? null
   const hasVisibleBranches = Boolean((branches ?? []).length)
+  const branchCountByCompany = new Map<string, number>()
+  for (const branch of allActiveBranches ?? []) {
+    if (!branch.company_id) continue
+    branchCountByCompany.set(branch.company_id, (branchCountByCompany.get(branch.company_id) ?? 0) + 1)
+  }
 
   return (
     <main className="flex min-h-screen flex-col px-4 py-5 sm:px-6">
@@ -133,7 +144,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-slate-950">{company.name}</p>
-                    <p className="mt-0.5 text-sm text-slate-500">Entrar a reservas</p>
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      {branchCountByCompany.get(company.id) ?? 0} sucursal{(branchCountByCompany.get(company.id) ?? 0) === 1 ? '' : 'es'}
+                    </p>
                   </div>
 
                   <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
@@ -169,10 +182,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-950">{branch.name}</p>
-                    {branch.address && (
-                      <p className="mt-0.5 truncate text-sm text-slate-500">{branch.address}</p>
-                    )}
+                    <p className="font-semibold text-slate-950">{selectedCompany.name}</p>
+                    <p className="mt-0.5 truncate text-sm text-slate-500">
+                      {branch.address ?? branch.name}
+                    </p>
                   </div>
 
                   <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />

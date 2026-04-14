@@ -27,6 +27,12 @@ export default function SucursalesPage() {
   const isSuperadmin = me?.role === 'superadmin'
   // Admins can edit branches but cannot create or delete them
   const canEdit = isSuperadmin || me?.role === 'admin'
+  const branchesByCompany = branches.reduce<Record<string, Branch[]>>((acc, branch) => {
+    const companyName = branch.company?.name ?? 'Empresa'
+    acc[companyName] = acc[companyName] ?? []
+    acc[companyName].push(branch)
+    return acc
+  }, {})
 
   useEffect(() => { void loadData() }, [])
 
@@ -88,47 +94,67 @@ export default function SucursalesPage() {
           action={isSuperadmin ? <Button size="sm" onClick={openNew}>Crear sucursal</Button> : undefined}
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {branches.map(branch => (
-            <div key={branch.id} className="card p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-lg font-semibold text-slate-950">{branch.name}</h3>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      branch.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      {branch.active ? 'Activa' : 'Oculta'}
-                    </span>
+        <div className="space-y-6">
+          {Object.entries(branchesByCompany).map(([companyName, companyBranches]) => (
+            <section key={companyName} className="space-y-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-950">{companyName}</h3>
+                <p className="text-sm text-slate-500">
+                  {companyBranches.length} sucursal{companyBranches.length === 1 ? '' : 'es'}
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {companyBranches.map(branch => (
+                  <div key={branch.id} className="card p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-lg font-semibold text-slate-950">
+                            {branch.address ?? branch.name}
+                          </h4>
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            branch.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {branch.active ? 'Activa' : 'Oculta'}
+                          </span>
+                        </div>
+                        {branch.address && branch.name !== branch.address && (
+                          <p className="mt-1 text-sm text-slate-500">
+                            Alias interno: {branch.name}
+                          </p>
+                        )}
+                      </div>
+
+                      {canEdit && (
+                        <button
+                          onClick={() => openEdit(branch)}
+                          className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+                          title="Editar sucursal"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-4 space-y-2 text-sm text-slate-600">
+                      {branch.address && (
+                        <p className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                          {branch.address}
+                        </p>
+                      )}
+                      {branch.phone && (
+                        <p className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                          {branch.phone}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-
-                {canEdit && (
-                  <button
-                    onClick={() => openEdit(branch)}
-                    className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
-                    title="Editar sucursal"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                )}
+                ))}
               </div>
-
-              <div className="mt-4 space-y-2 text-sm text-slate-600">
-                {branch.address && (
-                  <p className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-slate-400 flex-shrink-0" />
-                    {branch.address}
-                  </p>
-                )}
-                {branch.phone && (
-                  <p className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-slate-400 flex-shrink-0" />
-                    {branch.phone}
-                  </p>
-                )}
-              </div>
-            </div>
+            </section>
           ))}
         </div>
       )}

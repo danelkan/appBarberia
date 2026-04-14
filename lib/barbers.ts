@@ -46,6 +46,11 @@ function cleanBarberPayload(input: BarberWriteInput) {
   return payload
 }
 
+function normalizeRoleBranchIds(branchIds: unknown): string[] {
+  if (!Array.isArray(branchIds)) return []
+  return Array.from(new Set(branchIds.filter((branchId): branchId is string => typeof branchId === 'string')))
+}
+
 // ─── Core visibility logic ────────────────────────────────────────
 
 /**
@@ -87,10 +92,14 @@ export function getVisibleBarberIds(input: {
       if (input.validAuthUserIds && !input.validAuthUserIds.has(role.user_id)) return false
 
       const tableBranches = tableSourceBranches.get(role.barber_id)
-      if (!tableBranches || tableBranches.size === 0) return false
+      const legacyBranches = normalizeRoleBranchIds(role.branch_ids)
+      const effectiveBranches = tableBranches && tableBranches.size > 0
+        ? tableBranches
+        : new Set(legacyBranches)
+      if (effectiveBranches.size === 0) return false
 
       if (input.branchId) {
-        return tableBranches.has(input.branchId)
+        return effectiveBranches.has(input.branchId)
       }
 
       return true
@@ -111,6 +120,17 @@ export function getAssignedBranchIdsByBarber(input: {
     const set = branchIdsByBarber.get(link.barber_id) ?? new Set<string>()
     set.add(link.branch_id)
     branchIdsByBarber.set(link.barber_id, set)
+  }
+
+  for (const role of input.userRoles) {
+    if (!role.barber_id) continue
+    const existing = branchIdsByBarber.get(role.barber_id)
+    if (existing && existing.size > 0) continue
+
+    const legacyBranchIds = normalizeRoleBranchIds(role.branch_ids)
+    if (legacyBranchIds.length === 0) continue
+
+    branchIdsByBarber.set(role.barber_id, new Set(legacyBranchIds))
   }
 
   return new Map(
@@ -204,6 +224,7 @@ export async function listVisibleBarbers(
   supabase: SupabaseClient,
   options?: { branchId?: string; companyId?: string; allowLegacyUnscoped?: boolean }
 ) {
+  const allowNullCompanyWhenBranchScoped = Boolean(options?.branchId)
   const branchLinksSelect = 'barber_id, branch_id, branch:branches!inner(id, name, address, company_id)'
   let branchLinksQuery = supabase
     .from('barber_branches')
@@ -218,7 +239,7 @@ export async function listVisibleBarbers(
 
   let barbersQuery = supabase.from('barbers').select('*').order('created_at')
   if (options?.companyId) {
-    barbersQuery = options.allowLegacyUnscoped
+    barbersQuery = options.allowLegacyUnscoped || allowNullCompanyWhenBranchScoped
       ? barbersQuery.or(`company_id.eq.${options.companyId},company_id.is.null`)
       : barbersQuery.eq('company_id', options.companyId)
   }
@@ -228,7 +249,7 @@ export async function listVisibleBarbers(
     .select('user_id, barber_id, role, active, branch_ids, company_id')
     .not('barber_id', 'is', null)
   if (options?.companyId) {
-    rolesQuery = options.allowLegacyUnscoped
+    rolesQuery = options.allowLegacyUnscoped || allowNullCompanyWhenBranchScoped
       ? rolesQuery.or(`company_id.eq.${options.companyId},company_id.is.null`)
       : rolesQuery.eq('company_id', options.companyId)
   }
@@ -272,6 +293,7 @@ export async function getVisibleBarberById(
   barberId: string,
   options?: { branchId?: string | null; companyId?: string | null; allowLegacyUnscoped?: boolean }
 ) {
+  const allowNullCompanyWhenBranchScoped = Boolean(options?.branchId)
   let branchLinksQuery = supabase
     .from('barber_branches')
     .select('branch_id, branch:branches!inner(company_id)')
@@ -292,16 +314,16 @@ export async function getVisibleBarberById(
     (() => {
       let query = supabase.from('barbers').select('*').eq('id', barberId)
       if (options?.companyId) {
-        query = options.allowLegacyUnscoped
+        query = options.allowLegacyUnscoped || allowNullCompanyWhenBranchScoped
           ? query.or(`company_id.eq.${options.companyId},company_id.is.null`)
           : query.eq('company_id', options.companyId)
       }
       return query.maybeSingle()
     })(),
     (() => {
-      let query = supabase.from('user_roles').select('user_id, barber_id, active').eq('barber_id', barberId)
+      let query = supabase.from('user_roles').select('user_id, barber_id, active, branch_ids').eq('barber_id', barberId)
       if (options?.companyId) {
-        query = options.allowLegacyUnscoped
+        query = options.allowLegacyUnscoped || allowNullCompanyWhenBranchScoped
           ? query.or(`company_id.eq.${options.companyId},company_id.is.null`)
           : query.eq('company_id', options.companyId)
       }
@@ -321,7 +343,13 @@ export async function getVisibleBarberById(
   if (authUserError || !authUser?.user) return null
 
   const hasTableBranch = (branchLinks ?? []).length > 0
-  if (!hasTableBranch) return null
+  if (!hasTableBranch) {
+    const legacyBranchIds = normalizeRoleBranchIds(roleRow?.branch_ids)
+    if (options?.branchId) {
+      return legacyBranchIds.includes(options.branchId) ? barber : null
+    }
+    return legacyBranchIds.length > 0 ? barber : null
+  }
 
   return barber
 }
