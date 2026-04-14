@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAssignedBranchIdsByBarber, listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { resolveBranchCompanyScope, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -22,8 +22,13 @@ export async function GET(req: NextRequest) {
   // If an authenticated admin/barber is calling, scope by their company.
   // For public booking flow (unauthenticated), use the company_id query param.
   const auth = await requireAuth(req).catch(() => null)
-  const companyId = companyIdParam
-    ?? (auth ? (await resolveCompanyId(auth, supabase)) ?? undefined : undefined)
+  const authCompanyId = auth ? (await resolveCompanyId(auth, supabase)) ?? undefined : undefined
+  const publicCompanyScope = auth
+    ? { companyId: null, allowLegacyUnscoped: false }
+    : branchId
+      ? await resolveBranchCompanyScope(supabase, branchId)
+      : await resolveSingleCompanyLegacyScope(supabase, companyIdParam)
+  const companyId = authCompanyId ?? publicCompanyScope.companyId ?? undefined
 
   if (!auth && !branchId && !companyId) {
     return NextResponse.json({ barbers: [] })
@@ -34,7 +39,11 @@ export async function GET(req: NextRequest) {
 
   const { barbers: data, userRoles: activeRoles, branchLinks } = await listVisibleBarbers(
     supabase,
-    { branchId, companyId }
+    {
+      branchId,
+      companyId,
+      allowLegacyUnscoped: !auth && publicCompanyScope.allowLegacyUnscoped,
+    }
   )
   const assignedBranchIdsByBarber = getAssignedBranchIdsByBarber({
     userRoles: activeRoles ?? [],

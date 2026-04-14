@@ -4,7 +4,7 @@ import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendBookingEmails } from '@/lib/emails'
 import { applyAuthCookies, type AuthRoleContext, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
-import { canAccessBranch, resolveAccessibleBranchIds, resolveCompanyId, resolveCompanyIdFromBranch } from '@/lib/tenant'
+import { buildCompanyScopeFilter, canAccessBranch, resolveAccessibleBranchIds, resolveBranchCompanyScope, resolveCompanyId } from '@/lib/tenant'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -113,7 +113,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'La reserva requiere una sucursal válida' }, { status: 400 })
     }
     const supabase = createSupabaseAdmin()
-    const companyId = await resolveCompanyIdFromBranch(supabase, branchId)
+    const companyScope = await resolveBranchCompanyScope(supabase, branchId)
+    const companyId = companyScope.companyId
 
     if (!companyId) {
       return NextResponse.json({ error: 'No se pudo resolver la barbería de la reserva' }, { status: 400 })
@@ -121,8 +122,16 @@ export async function POST(req: NextRequest) {
 
     // Parallelize service + barber lookup — saves ~100ms vs sequential
     const [serviceResult, barber] = await Promise.all([
-      supabase.from('services').select('*').eq('id', serviceId).eq('company_id', companyId).single(),
-      getVisibleBarberById(supabase, barberId, { branchId, companyId }),
+      (() => {
+        let query = supabase.from('services').select('*').eq('id', serviceId)
+        query = query.or(buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped))
+        return query.single()
+      })(),
+      getVisibleBarberById(supabase, barberId, {
+        branchId,
+        companyId,
+        allowLegacyUnscoped: companyScope.allowLegacyUnscoped,
+      }),
     ])
     const { data: service, error: serviceError } = serviceResult
     if (serviceError || !service) {
@@ -137,7 +146,7 @@ export async function POST(req: NextRequest) {
     const { data: appointmentsForDay = [] } = await supabase
       .from('appointments')
       .select('start_time, end_time, status')
-      .eq('company_id', companyId)
+      .or(buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped))
       .eq('barber_id', barberId)
       .eq('date', date)
       .neq('status', 'cancelada')
@@ -161,7 +170,9 @@ export async function POST(req: NextRequest) {
     // Scope client lookup to this company — prevents merging histories across tenants
     let existingClientQuery = supabase
       .from('clients').select('id').eq('email', clientData.email)
-    existingClientQuery = existingClientQuery.eq('company_id', companyId)
+    existingClientQuery = existingClientQuery.or(
+      buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped)
+    )
     const { data: existingClient } = await existingClientQuery.maybeSingle()
 
     let clientId: string

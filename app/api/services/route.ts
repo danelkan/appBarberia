@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId, resolveCompanyIdFromBranch } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveBranchCompanyScope, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 import { createServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -24,14 +24,18 @@ export async function GET(req: NextRequest) {
   const authCompanyId = auth
     ? await resolveCompanyId(auth, supabase)
     : null
-  const branchCompanyId = branchIdParam
-    ? await resolveCompanyIdFromBranch(supabase, branchIdParam)
-    : null
-  const effectiveCompanyId = authCompanyId ?? companyIdParam ?? branchCompanyId
+  const publicCompanyScope = auth
+    ? { companyId: null, allowLegacyUnscoped: false }
+    : branchIdParam
+      ? await resolveBranchCompanyScope(supabase, branchIdParam)
+      : await resolveSingleCompanyLegacyScope(supabase, companyIdParam)
+  const effectiveCompanyId = authCompanyId ?? publicCompanyScope.companyId
 
   let query = supabase.from('services').select('*').eq('active', true).order('price')
   if (effectiveCompanyId) {
-    query = query.eq('company_id', effectiveCompanyId)
+    query = auth
+      ? query.eq('company_id', effectiveCompanyId)
+      : query.or(buildCompanyScopeFilter('company_id', effectiveCompanyId, publicCompanyScope.allowLegacyUnscoped))
   } else if (auth && auth.role !== 'superadmin') {
     return NextResponse.json({ services: [] })
   } else if (!auth) {

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { ArrowRight, MapPin } from 'lucide-react'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { BrandLogo } from '@/components/brand-logo'
+import { buildCompanyScopeFilter, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 
 interface HomePageProps {
   searchParams: {
@@ -48,12 +49,15 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     ? scopedCompanies?.[0] ?? null
     : activeCompanies.length === 1 ? activeCompanies[0] : null
 
+  const companyScope = selectedCompany
+    ? await resolveSingleCompanyLegacyScope(supabase, selectedCompany.id)
+    : null
   const { data: branches } = selectedCompany
     ? await supabase
         .from('branches')
         .select('id, name, address')
         .eq('active', true)
-        .eq('company_id', selectedCompany.id)
+        .or(buildCompanyScopeFilter('company_id', selectedCompany.id, companyScope?.allowLegacyUnscoped))
         .order('name')
     : { data: [] }
 

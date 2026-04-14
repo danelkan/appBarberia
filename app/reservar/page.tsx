@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin, formatSupabaseError } from '@/lib/supabase'
+import { buildCompanyScopeFilter, resolveBranchCompanyScope } from '@/lib/tenant'
 import BookingFlow from '@/components/booking/booking-flow'
 
 interface BookingPageProps {
@@ -29,6 +30,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
   let services
   let branchBarbers
   let publicCompanyKey: string | null = null
+  let companyScope = { companyId: null as string | null, allowLegacyUnscoped: false }
 
   try {
     const { data: branch } = await supabase
@@ -38,7 +40,14 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
       .eq('active', true)
       .maybeSingle()
 
-    if (!branch?.company_id) {
+    if (!branch) {
+      redirect('/')
+    }
+
+    companyScope = await resolveBranchCompanyScope(supabase, branch.id)
+    const effectiveCompanyId = branch.company_id ?? companyScope.companyId
+
+    if (!effectiveCompanyId) {
       redirect('/')
     }
 
@@ -49,7 +58,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
         .or(`id.eq.${companyParam},slug.eq.${companyParam}`)
         .maybeSingle()
 
-      if (!company || company.id !== branch.company_id) {
+      if (!company || company.id !== effectiveCompanyId) {
         redirect('/')
       }
 
@@ -58,22 +67,30 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
       const { data: company } = await supabase
         .from('companies')
         .select('id, slug')
-        .eq('id', branch.company_id)
+        .eq('id', effectiveCompanyId)
         .maybeSingle()
 
-      publicCompanyKey = company?.slug ?? company?.id ?? branch.company_id
+      publicCompanyKey = company?.slug ?? company?.id ?? effectiveCompanyId
     }
 
     selectedBranch = branch
 
     const results = await Promise.all([
-      supabase
-        .from('services')
-        .select('*')
-        .eq('active', true)
-        .eq('company_id', branch.company_id)
-        .order('price'),
-      listVisibleBarbers(supabase, { branchId, companyId: branch.company_id }),
+      (() => {
+        let query = supabase
+          .from('services')
+          .select('*')
+          .eq('active', true)
+          .order('price')
+
+        query = query.or(buildCompanyScopeFilter('company_id', effectiveCompanyId, companyScope.allowLegacyUnscoped))
+        return query
+      })(),
+      listVisibleBarbers(supabase, {
+        branchId,
+        companyId: effectiveCompanyId,
+        allowLegacyUnscoped: companyScope.allowLegacyUnscoped,
+      }),
     ])
 
     ;[

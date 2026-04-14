@@ -1,6 +1,88 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AuthRoleContext } from '@/lib/api-auth'
 
+export interface CompanyScopeContext {
+  companyId: string | null
+  allowLegacyUnscoped: boolean
+}
+
+export function getSingleCompanyLegacyScope(
+  activeCompanyIds: string[],
+  requestedCompanyId?: string | null
+): CompanyScopeContext {
+  const companyId = requestedCompanyId ?? null
+  if (activeCompanyIds.length !== 1) {
+    return {
+      companyId,
+      allowLegacyUnscoped: false,
+    }
+  }
+
+  const singleCompanyId = activeCompanyIds[0]
+  if (companyId && companyId !== singleCompanyId) {
+    return {
+      companyId,
+      allowLegacyUnscoped: false,
+    }
+  }
+
+  return {
+    companyId: singleCompanyId,
+    allowLegacyUnscoped: true,
+  }
+}
+
+export function buildCompanyScopeFilter(
+  columnName: string,
+  companyId: string,
+  allowLegacyUnscoped = false
+) {
+  return allowLegacyUnscoped
+    ? `${columnName}.eq.${companyId},${columnName}.is.null`
+    : `${columnName}.eq.${companyId}`
+}
+
+async function listActiveCompanyIds(supabase: SupabaseClient): Promise<string[]> {
+  const { data: companies } = await supabase
+    .from('companies')
+    .select('id')
+    .eq('active', true)
+
+  return (companies ?? []).map((company: { id: string }) => company.id)
+}
+
+export async function resolveSingleCompanyLegacyScope(
+  supabase: SupabaseClient,
+  requestedCompanyId?: string | null
+): Promise<CompanyScopeContext> {
+  const activeCompanyIds = await listActiveCompanyIds(supabase)
+  return getSingleCompanyLegacyScope(activeCompanyIds, requestedCompanyId)
+}
+
+export async function resolveBranchCompanyScope(
+  supabase: SupabaseClient,
+  branchId: string | null | undefined
+): Promise<CompanyScopeContext> {
+  if (!branchId) {
+    return resolveSingleCompanyLegacyScope(supabase)
+  }
+
+  const { data } = await supabase
+    .from('branches')
+    .select('company_id')
+    .eq('id', branchId)
+    .maybeSingle()
+
+  if (data?.company_id) {
+    return {
+      companyId: data.company_id as string,
+      allowLegacyUnscoped: false,
+    }
+  }
+
+  return resolveSingleCompanyLegacyScope(supabase)
+}
+
 /**
  * Resolves the company_id for the current request.
  *
@@ -86,21 +168,6 @@ export async function resolveCompanyIdFromBranch(
   supabase: SupabaseClient,
   branchId: string | null | undefined
 ): Promise<string | null> {
-  if (!branchId) {
-    const { data: companies } = await supabase
-      .from('companies')
-      .select('id')
-      .eq('active', true)
-
-    if ((companies ?? []).length === 1) return (companies![0] as { id: string }).id
-    return null
-  }
-
-  const { data } = await supabase
-    .from('branches')
-    .select('company_id')
-    .eq('id', branchId)
-    .maybeSingle()
-
-  return (data?.company_id as string | null) ?? null
+  const scope = await resolveBranchCompanyScope(supabase, branchId)
+  return scope.companyId
 }

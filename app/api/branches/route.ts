@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { type AuthRoleContext, requireAuth, requireAdminAuth, requirePermission, unauthorizedResponse, forbiddenResponse, hasPermission } from '@/lib/api-auth'
-import { resolveCompanyIdFromBranch } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveCompanyIdFromBranch, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
   // Public: active branches only — no auth required
   const effectiveCompanyId = companyIdParam
     ?? await resolveCompanyIdFromBranch(supabase, null)
+  const publicCompanyScope = await resolveSingleCompanyLegacyScope(supabase, effectiveCompanyId)
 
   if (!effectiveCompanyId) {
     return NextResponse.json({ branches: [] })
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
     .from('branches')
     .select('*, company:companies(id, name)')
     .eq('active', true)
-    .eq('company_id', effectiveCompanyId)
+    .or(buildCompanyScopeFilter('company_id', effectiveCompanyId, publicCompanyScope.allowLegacyUnscoped))
     .order('name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ branches: data ?? [] })

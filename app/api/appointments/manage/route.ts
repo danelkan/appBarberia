@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendCancellationEmail } from '@/lib/emails'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
-import { resolveCompanyIdFromBranch } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveBranchCompanyScope, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -19,7 +19,7 @@ async function resolvePublicCompanyId(
   input: { branchId?: string; company?: string }
 ) {
   if (input.branchId) {
-    return resolveCompanyIdFromBranch(supabase, input.branchId)
+    return resolveBranchCompanyScope(supabase, input.branchId)
   }
 
   if (input.company) {
@@ -29,10 +29,10 @@ async function resolvePublicCompanyId(
       .or(`id.eq.${input.company},slug.eq.${input.company}`)
       .maybeSingle()
 
-    return (company?.id as string | null) ?? null
+    return resolveSingleCompanyLegacyScope(supabase, (company?.id as string | null) ?? null)
   }
 
-  return resolveCompanyIdFromBranch(supabase, null)
+  return resolveBranchCompanyScope(supabase, null)
 }
 
 // GET /api/appointments/manage?email=&phone= — busca turnos del cliente
@@ -52,10 +52,11 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
-  const companyId = await resolvePublicCompanyId(supabase, {
+  const companyScope = await resolvePublicCompanyId(supabase, {
     branchId: parsed.data.branch_id,
     company: parsed.data.company,
   })
+  const companyId = companyScope.companyId
 
   if (!companyId) {
     return NextResponse.json({ error: 'Necesitás entrar desde el enlace de tu barbería o sucursal' }, { status: 400 })
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
   const { data: client } = await supabase
     .from('clients')
     .select('id, first_name, last_name, email, phone')
-    .eq('company_id', companyId)
+    .or(buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped))
     .eq('email', parsed.data.email)
     .eq('phone', parsed.data.phone)
     .single()
@@ -84,7 +85,7 @@ export async function GET(req: NextRequest) {
       service:services(id, name, price, duration_minutes),
       branch:branches(name)
     `)
-    .eq('company_id', companyId)
+    .or(buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped))
     .eq('client_id', client.id)
     .gte('date', today)
     .neq('status', 'cancelada')
@@ -116,10 +117,11 @@ export async function PATCH(req: NextRequest) {
   }
 
   const supabase = createSupabaseAdmin()
-  const companyId = await resolvePublicCompanyId(supabase, {
+  const companyScope = await resolvePublicCompanyId(supabase, {
     branchId: parsed.data.branch_id,
     company: parsed.data.company,
   })
+  const companyId = companyScope.companyId
 
   if (!companyId) {
     return NextResponse.json({ error: 'Necesitás entrar desde el enlace de tu barbería o sucursal' }, { status: 400 })
@@ -129,7 +131,7 @@ export async function PATCH(req: NextRequest) {
   const { data: client } = await supabase
     .from('clients')
     .select('id')
-    .eq('company_id', companyId)
+    .or(buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped))
     .eq('email', parsed.data.email)
     .eq('phone', parsed.data.phone)
     .single()
@@ -142,7 +144,7 @@ export async function PATCH(req: NextRequest) {
     .from('appointments')
     .select('*, client:clients(*), barber:barbers(*), service:services(*)')
     .eq('id', parsed.data.appointment_id)
-    .eq('company_id', companyId)
+    .or(buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped))
     .eq('client_id', client.id)
     .single()
 

@@ -34,14 +34,14 @@ describe('multi-tenant regression audit', () => {
     const itemSource = readRepoFile('app/api/services/[id]/route.ts')
 
     expect(listSource).toContain('effectiveCompanyId')
-    expect(listSource).toContain("query = query.eq('company_id', effectiveCompanyId)")
+    expect(listSource).toContain("buildCompanyScopeFilter('company_id', effectiveCompanyId")
     expect(itemSource).toContain("query = query.eq('company_id', companyId)")
   })
 
   it('stops the public home page from listing branches across all tenants', () => {
     const source = readRepoFile('app/page.tsx')
 
-    expect(source).toContain(".eq('company_id', selectedCompany.id)")
+    expect(source).toContain("buildCompanyScopeFilter('company_id', selectedCompany.id")
     expect(source).toContain('Accedé desde el enlace propio de tu barbería')
   })
 
