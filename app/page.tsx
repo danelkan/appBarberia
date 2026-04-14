@@ -33,9 +33,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   } = await serverSupabase.auth.getUser()
 
   let authCompanyId: string | null = null
+  let isSuperadmin = false
   if (user) {
     const resolvedRole = await resolveUserRole(supabase, user.id, user.email)
-    if (resolvedRole.active && resolvedRole.role !== 'superadmin') {
+    if (resolvedRole.active && resolvedRole.role === 'superadmin') {
+      isSuperadmin = true
+    } else if (resolvedRole.active) {
       authCompanyId = await resolveCompanyId(
         {
           ...resolvedRole,
@@ -62,7 +65,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     ? await baseCompanyQuery.eq('id', resolvedCompany.id)
     : { data: null as Array<{ id: string; name: string; slug: string | null }> | null }
 
-  const { data: allCompanies } = effectiveCompanyParam && !(scopedCompanies?.length)
+  const { data: allCompanies } = !resolvedCompany
     ? await supabase
         .from('companies')
         .select('id, name, slug')
@@ -74,6 +77,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const selectedCompany = effectiveCompanyParam
     ? scopedCompanies?.[0] ?? null
     : activeCompanies.length === 1 ? activeCompanies[0] : null
+
+  // Solo superadmin puede ver la lista de todas las empresas
+  const visibleCompanies = (!selectedCompany && !isSuperadmin) ? [] : activeCompanies
 
   const companyScope = selectedCompany
     ? await resolveSingleCompanyLegacyScope(supabase, selectedCompany.id)
@@ -124,15 +130,20 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">
             {selectedCompany ? 'Elegí tu sucursal' : 'Elegí tu barbería'}
           </h1>
-          {!selectedCompany && (
+          {!selectedCompany && !isSuperadmin && (
             <p className="mt-2 text-sm text-slate-500">
-              Accedé desde el enlace propio de tu barbería o elegila acá para ver solo sus sucursales.
+              Accedé desde el enlace propio de tu barbería para reservar tu turno.
+            </p>
+          )}
+          {!selectedCompany && isSuperadmin && (
+            <p className="mt-2 text-sm text-slate-500">
+              Seleccioná una empresa para ver sus sucursales.
             </p>
           )}
 
           <div className="mt-5 space-y-3">
             {!selectedCompany ? (
-              activeCompanies.map(company => (
+              visibleCompanies.map(company => (
                 <Link
                   key={company.id}
                   href={`/?company=${company.slug ?? company.id}`}
