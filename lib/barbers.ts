@@ -212,7 +212,7 @@ export async function listVisibleBarbers(
   if (options?.branchId) {
     branchLinksQuery = branchLinksQuery.eq('branch_id', options.branchId)
   }
-  if (options?.companyId && !options.allowLegacyUnscoped) {
+  if (options?.companyId && !options.allowLegacyUnscoped && !options.branchId) {
     branchLinksQuery = branchLinksQuery.eq('branch.company_id', options.companyId)
   }
 
@@ -280,7 +280,7 @@ export async function getVisibleBarberById(
   if (options?.branchId) {
     branchLinksQuery = branchLinksQuery.eq('branch_id', options.branchId)
   }
-  if (options?.companyId && !options.allowLegacyUnscoped) {
+  if (options?.companyId && !options.allowLegacyUnscoped && !options.branchId) {
     branchLinksQuery = branchLinksQuery.eq('branch.company_id', options.companyId)
   }
 
