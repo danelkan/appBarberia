@@ -27,7 +27,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const supabase = createSupabaseAdmin()
   const serverSupabase = createSupabaseServerClient()
-  const companyParam = searchParams.company?.trim()
+  const companyParam = searchParams.company?.trim() ?? process.env.NEXT_PUBLIC_COMPANY_SLUG?.trim()
   const {
     data: { user },
   } = await serverSupabase.auth.getUser()
