@@ -2,11 +2,8 @@ import type { Metadata } from 'next'
 import { unstable_noStore as noStore } from 'next/cache'
 import Link from 'next/link'
 import { ArrowRight, MapPin } from 'lucide-react'
-import { resolveUserRole } from '@/lib/api-auth'
 import { createSupabaseAdmin } from '@/lib/supabase'
-import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { BrandLogo } from '@/components/brand-logo'
-import { buildCompanyScopeFilter, resolveCompanyId, resolveCompanyRecordByIdentifier, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -20,52 +17,12 @@ export default async function HomePage() {
   noStore()
 
   const supabase = createSupabaseAdmin()
-  const serverSupabase = createSupabaseServerClient()
-  const {
-    data: { user },
-  } = await serverSupabase.auth.getUser()
 
-  let authCompanyId: string | null = null
-  if (user) {
-    const resolvedRole = await resolveUserRole(supabase, user.id, user.email)
-    if (resolvedRole.active && resolvedRole.role !== 'superadmin') {
-      authCompanyId = await resolveCompanyId(
-        {
-          ...resolvedRole,
-          session: { user: { id: user.id, email: user.email ?? undefined } },
-          response: undefined,
-        },
-        supabase
-      )
-    }
-  }
-
-  const resolvedCompany = authCompanyId
-    ? await resolveCompanyRecordByIdentifier(supabase, authCompanyId)
-    : null
-
-  const { data: allCompanies } = !resolvedCompany
-    ? await supabase
-        .from('companies')
-        .select('id, name, slug')
-        .eq('active', true)
-        .order('created_at')
-    : { data: null as Array<{ id: string; name: string; slug: string | null }> | null }
-
-  const activeCompanies = allCompanies ?? []
-  const selectedCompany = resolvedCompany ?? (activeCompanies.length === 1 ? activeCompanies[0] : null)
-
-  const companyScope = selectedCompany
-    ? await resolveSingleCompanyLegacyScope(supabase, selectedCompany.id)
-    : null
-  const { data: branches } = selectedCompany
-    ? await supabase
-        .from('branches')
-        .select('id, name, address')
-        .eq('active', true)
-        .or(buildCompanyScopeFilter('company_id', selectedCompany.id, companyScope?.allowLegacyUnscoped))
-        .order('name')
-    : { data: [] }
+  const { data: branches } = await supabase
+    .from('branches')
+    .select('id, name, address')
+    .eq('active', true)
+    .order('name')
 
   const hasVisibleBranches = Boolean((branches ?? []).length)
 
