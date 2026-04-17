@@ -36,6 +36,15 @@ npx web-push generate-vapid-keys
 
 Configurar `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT`, y aplicar `supabase-migration-v15.sql`.
 
+Notas de compatibilidad:
+- Android Chrome y desktop Chrome/Edge funcionan desde HTTPS.
+- iPhone/Safari requiere iOS 16.4+ y que el usuario instale la app en la pantalla de inicio; Safari normal no permite Web Push en pestaña.
+- Si el botón muestra que falta preparar la tabla push, aplicar `supabase-migration-v15.sql`.
+
+## Precios por sucursal
+
+Aplicar `supabase-migration-v16.sql`. Los servicios mantienen `services.price` como precio base y los overrides viven en `service_branch_prices`. Cada turno guarda `appointments.service_price` como snapshot para que agenda, caja y comprobantes usen el precio real de la sucursal al momento de reservar.
+
 ## Deploy en Vercel
 
 ```bash

@@ -157,6 +157,27 @@ export async function resolveAccessibleBranchIds(
     return (branches ?? []).map((branch: { id: string }) => branch.id)
   }
 
+  const hasCompanyWideBranchAccess =
+    auth.role === 'admin' &&
+    (
+      auth.permissions.includes('manage_branches') ||
+      auth.permissions.includes('manage_users') ||
+      auth.permissions.includes('manage_services') ||
+      auth.permissions.includes('manage_schedules')
+    )
+
+  if (hasCompanyWideBranchAccess) {
+    const companyId = await resolveCompanyId(auth, supabase)
+    if (companyId) {
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('company_id', companyId)
+
+      return (branches ?? []).map((branch: { id: string }) => branch.id)
+    }
+  }
+
   if (auth.branch_ids.length > 0) {
     return auth.branch_ids
   }

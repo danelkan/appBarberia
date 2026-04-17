@@ -57,6 +57,10 @@ export const createServiceSchema = z.object({
   price: z.number().positive('Price must be positive').max(99999.99, 'Price too high'),
   duration_minutes: z.number().int().positive('Duration must be positive').max(480, 'Duration cannot exceed 8 hours'),
   active: z.boolean().optional().default(true),
+  branch_prices: z.array(z.object({
+    branch_id: uuidSchema,
+    price: z.number().positive().max(99999.99),
+  })).optional(),
 })
 
 export const updateServiceSchema = z.object({
@@ -64,6 +68,10 @@ export const updateServiceSchema = z.object({
   price: z.number().positive().max(99999.99).optional(),
   duration_minutes: z.number().int().positive().max(480).optional(),
   active: z.boolean().optional(),
+  branch_prices: z.array(z.object({
+    branch_id: uuidSchema,
+    price: z.number().positive().max(99999.99),
+  })).optional(),
 })
 
 // ─── Slots Query Schema ────────────────────────────────────────────

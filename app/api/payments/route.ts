@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { createCashAuditLog, getOpenCashRegister, mapPaymentMethodToCashMethod } from '@/lib/cash'
 
 export const dynamic = 'force-dynamic'
@@ -24,6 +24,10 @@ async function resolveScopedAppointmentIds(input: {
 
   if (branchId) {
     query = query.eq('branch_id', branchId)
+  }
+
+  if (auth?.role !== 'superadmin' && auth?.branch_ids.length && !branchId) {
+    query = query.in('branch_id', auth.branch_ids)
   }
 
   if (auth?.role === 'barber') {
@@ -81,7 +85,7 @@ export async function POST(req: NextRequest) {
   const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
   let appointmentQuery = supabase
     .from('appointments')
-    .select('id, barber_id, branch_id, service_id, company_id')
+    .select('id, barber_id, branch_id, service_id, company_id, service_price, service:services(price)')
     .eq('id', appointment_id)
 
   if (companyId) {
@@ -92,6 +96,12 @@ export async function POST(req: NextRequest) {
 
   if (!appointment) {
     return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
+  }
+  const expectedAmount = Number(appointment.service_price ?? (appointment.service as any)?.price ?? 0)
+  if (expectedAmount > 0 && Math.abs(parsedAmount - expectedAmount) >= 0.01) {
+    return NextResponse.json({
+      error: `El monto debe coincidir con el precio de la sucursal: ${expectedAmount}`,
+    }, { status: 400 })
   }
 
   if (auth.role === 'barber') {
@@ -105,6 +115,13 @@ export async function POST(req: NextRequest) {
 
   if (!appointment.branch_id) {
     return NextResponse.json({ error: 'El turno no tiene sucursal asignada' }, { status: 400 })
+  }
+
+  if (auth.role !== 'superadmin') {
+    const allowed = await canAccessBranch(auth, supabase, appointment.branch_id)
+    if (!allowed) {
+      return NextResponse.json({ error: 'No tenés acceso a la sucursal de este cobro' }, { status: 403 })
+    }
   }
 
   const openRegister = await getOpenCashRegister(supabase, appointment.branch_id)
@@ -219,6 +236,12 @@ export async function GET(req: NextRequest) {
   const companyId = auth.role === 'superadmin'
     ? null
     : await resolveCompanyId(auth, supabase)
+  if (branch_id && auth.role !== 'superadmin') {
+    const allowed = await canAccessBranch(auth, supabase, branch_id)
+    if (!allowed) {
+      return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+    }
+  }
   const appointmentIds = await resolveScopedAppointmentIds({
     supabase,
     auth,
@@ -238,7 +261,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, amount, method, receipt_number, created_at,
       appointment:appointments(
-        id, date, start_time, branch_id, barber_id,
+        id, date, start_time, branch_id, barber_id, service_price,
         client:clients(first_name, last_name),
         barber:barbers(id, name),
         service:services(name, price),

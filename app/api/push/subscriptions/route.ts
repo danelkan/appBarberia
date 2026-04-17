@@ -34,10 +34,41 @@ export async function POST(req: NextRequest) {
     }, { onConflict: 'endpoint' })
 
   if (error) {
+    if (error.message.toLowerCase().includes('push_subscriptions')) {
+      return NextResponse.json({
+        error: 'La tabla push_subscriptions no existe. Aplicá supabase-migration-v15.sql.',
+        code: 'push_table_missing',
+      }, { status: 500 })
+    }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   return NextResponse.json({ success: true })
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req)
+  if (!auth) return unauthorizedResponse()
+
+  const supabase = createSupabaseAdmin()
+  const { count, error } = await supabase
+    .from('push_subscriptions')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', auth.session.user.id)
+
+  if (error) {
+    if (error.message.toLowerCase().includes('push_subscriptions')) {
+      return NextResponse.json({
+        ready: false,
+        count: 0,
+        code: 'push_table_missing',
+        error: 'La tabla push_subscriptions no existe. Aplicá supabase-migration-v15.sql.',
+      }, { status: 500 })
+    }
+    return NextResponse.json({ ready: false, count: 0, error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ready: true, count: count ?? 0 })
 }
 
 export async function DELETE(req: NextRequest) {

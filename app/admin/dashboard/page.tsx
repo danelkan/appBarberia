@@ -180,8 +180,8 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-shrink-0 text-right">
                       <p className="text-sm font-semibold text-slate-950">{appt.start_time?.slice(0, 5)}</p>
-                      {appt.service?.price && (
-                        <p className="text-xs text-slate-400">{formatPrice(appt.service.price)}</p>
+                      {(appt.service_price || appt.service?.price) && (
+                        <p className="text-xs text-slate-400">{formatPrice(Number(appt.service_price ?? appt.service.price))}</p>
                       )}
                     </div>
                     <div className={cn(

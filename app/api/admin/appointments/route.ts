@@ -5,6 +5,7 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { notifyBarberForAppointment } from '@/lib/push'
+import { resolveServiceForBranch } from '@/lib/service-pricing'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,8 +60,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No podés crear turnos para otro barbero' }, { status: 403 })
   }
 
-  const [{ data: service, error: serviceError }, barber] = await Promise.all([
-    supabase.from('services').select('*').eq('id', service_id).eq('company_id', companyId).single(),
+  const [{ service, error: serviceError }, barber] = await Promise.all([
+    resolveServiceForBranch(supabase, { serviceId: service_id, branchId: branch_id, companyId }),
     getVisibleBarberById(supabase, barber_id, { branchId: branch_id, companyId }),
   ])
 
@@ -169,6 +170,7 @@ export async function POST(req: NextRequest) {
       service_id,
       branch_id:  branch_id ?? null,
       company_id: companyId,
+      service_price: service.price,
       date,
       start_time,
       end_time,

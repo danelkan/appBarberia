@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
   const { data: appointments } = await supabase
     .from('appointments')
     .select(`
-      id, date, start_time, end_time, status,
+      id, date, start_time, end_time, status, service_price,
       barber:barbers(id, name),
       service:services(id, name, price, duration_minutes),
       branch:branches(name)
@@ -173,7 +173,10 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (appt.client) {
-    sendCancellationEmail(appt.client, appt.barber, appt.service, appt, {
+    const pricedService = appt.service
+      ? { ...appt.service, price: appt.service_price ?? appt.service.price }
+      : appt.service
+    sendCancellationEmail(appt.client, appt.barber, pricedService, appt, {
       companyKey: companyId,
     }).catch(console.error)
   }

@@ -1,14 +1,16 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, Scissors, Clock, DollarSign } from 'lucide-react'
 import { Button, Input, Spinner, EmptyState, Modal, PageHeader } from '@/components/ui'
 import { formatPrice } from '@/lib/utils'
+import { useAdmin } from '../layout'
 import type { Service } from '@/types'
 
 const EMPTY: Partial<Service> = { name: '', price: 0, duration_minutes: 30, active: true }
 
 export default function ServiciosPage() {
+  const { activeBranch, branches } = useAdmin()
   const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading]   = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -16,9 +18,12 @@ export default function ServiciosPage() {
   const [saving, setSaving]     = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
 
-  const fetchServices = async () => {
+  const fetchServices = useCallback(async () => {
+    setLoading(true)
     try {
-      const res  = await fetch('/api/services')
+      const params = new URLSearchParams({ include_inactive: '1' })
+      if (activeBranch) params.set('branch_id', activeBranch.id)
+      const res  = await fetch(`/api/services?${params.toString()}`, { cache: 'no-store' })
       const data = await res.json()
       setServices(data.services ?? [])
     } catch {
@@ -26,11 +31,11 @@ export default function ServiciosPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeBranch])
 
-  useEffect(() => { fetchServices() }, [])
+  useEffect(() => { fetchServices() }, [fetchServices])
 
-  const openNew  = () => { setEditing(EMPTY); setModalOpen(true) }
+  const openNew  = () => { setEditing({ ...EMPTY, branch_prices: [] }); setModalOpen(true) }
   const openEdit = (s: Service) => { setEditing(s); setModalOpen(true) }
 
   const save = async () => {
@@ -48,6 +53,22 @@ export default function ServiciosPage() {
     fetchServices()
   }
 
+  const getBranchPriceValue = (branchId: string) => {
+    const branchPrice = editing.branch_prices?.find(price => price.branch_id === branchId)
+    return branchPrice?.price ?? ''
+  }
+
+  const setBranchPrice = (branchId: string, rawValue: string) => {
+    setEditing(current => {
+      const nextPrices = (current.branch_prices ?? []).filter(price => price.branch_id !== branchId)
+      const parsed = Number(rawValue)
+      if (rawValue !== '' && Number.isFinite(parsed) && parsed > 0) {
+        nextPrices.push({ branch_id: branchId, price: parsed })
+      }
+      return { ...current, branch_prices: nextPrices }
+    })
+  }
+
   const remove = async (id: string) => {
     if (!confirm('¿Eliminar este servicio?')) return
     setDeleting(id)
@@ -61,7 +82,7 @@ export default function ServiciosPage() {
 
       <PageHeader
         title="Servicios"
-        subtitle={`${services.length} activo${services.length !== 1 ? 's' : ''}`}
+        subtitle={`${services.filter(service => service.active).length} activo${services.length !== 1 ? 's' : ''} · ${activeBranch?.name ?? 'todas las sucursales'}`}
         action={
           <Button onClick={openNew} size="sm">
             <Plus className="w-4 h-4" /> Nuevo servicio
@@ -124,6 +145,11 @@ export default function ServiciosPage() {
                   <span className="text-sm text-cream/55 font-medium">{s.duration_minutes} min</span>
                 </div>
               </div>
+              {s.branch_prices && s.branch_prices.length > 0 && (
+                <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-xs font-medium text-cream/50">
+                  Precio base {formatPrice(s.base_price ?? s.price)}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -143,7 +169,7 @@ export default function ServiciosPage() {
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Precio (UYU) *"
+              label="Precio base (UYU) *"
               type="number"
               min="0"
               step="1"
@@ -161,6 +187,30 @@ export default function ServiciosPage() {
               placeholder="30"
             />
           </div>
+          {branches.length > 0 && (
+            <div>
+              <p className="label mb-2">Precios por sucursal</p>
+              <div className="space-y-2">
+                {branches.map(branch => (
+                  <div key={branch.id} className="grid grid-cols-[1fr_130px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{branch.name}</p>
+                      <p className="text-xs text-slate-400">Vacío usa precio base</p>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={getBranchPriceValue(branch.id)}
+                      onChange={e => setBranchPrice(branch.id, e.target.value)}
+                      placeholder={String(editing.price ?? '')}
+                      className="input h-11"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
               Cancelar

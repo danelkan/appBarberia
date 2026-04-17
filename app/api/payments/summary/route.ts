@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +22,10 @@ async function resolveScopedAppointmentIds(input: {
 
   if (branchId) {
     query = query.eq('branch_id', branchId)
+  }
+
+  if (auth?.role !== 'superadmin' && auth?.branch_ids.length && !branchId) {
+    query = query.in('branch_id', auth.branch_ids)
   }
 
   if (auth?.role === 'barber') {
@@ -81,6 +85,10 @@ export async function GET(req: NextRequest) {
   const companyId = auth.role === 'superadmin'
     ? null
     : await resolveCompanyId(auth, supabase)
+  if (branch_id && auth.role !== 'superadmin') {
+    const allowed = await canAccessBranch(auth, supabase, branch_id)
+    if (!allowed) return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+  }
   const appointmentIds = await resolveScopedAppointmentIds({
     supabase,
     auth,

@@ -4,6 +4,7 @@ import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendBookingEmails } from '@/lib/emails'
 import { notifyBarberForAppointment } from '@/lib/push'
+import { resolveServiceForBranch } from '@/lib/service-pricing'
 import { applyAuthCookies, type AuthRoleContext, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
 import { buildCompanyScopeFilter, canAccessBranch, resolveAccessibleBranchIds, resolveBranchCompanyScope, resolveCompanyId } from '@/lib/tenant'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
@@ -127,18 +128,19 @@ export async function POST(req: NextRequest) {
 
     // Parallelize service + barber lookup — saves ~100ms vs sequential
     const [serviceResult, barber] = await Promise.all([
-      (() => {
-        let query = supabase.from('services').select('*').eq('id', serviceId)
-        query = query.or(buildCompanyScopeFilter('company_id', companyId, companyScope.allowLegacyUnscoped))
-        return query.single()
-      })(),
+      resolveServiceForBranch(supabase, {
+        serviceId,
+        branchId,
+        companyId,
+        allowLegacyUnscoped: companyScope.allowLegacyUnscoped,
+      }),
       getVisibleBarberById(supabase, barberId, {
         branchId,
         companyId,
         allowLegacyUnscoped: companyScope.allowLegacyUnscoped,
       }),
     ])
-    const { data: service, error: serviceError } = serviceResult
+    const { service, error: serviceError } = serviceResult
     if (serviceError || !service) {
       return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
     }
@@ -209,6 +211,7 @@ export async function POST(req: NextRequest) {
         service_id: serviceId,
         branch_id: branchId ?? null,
         company_id: companyId,
+        service_price: service.price,
         date,
         start_time: startTime,
         end_time: endTime,

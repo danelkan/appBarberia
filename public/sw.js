@@ -6,7 +6,12 @@ self.addEventListener('push', event => {
     tag: 'felito-notification',
   }
 
-  const data = event.data ? event.data.json() : fallback
+  let data = fallback
+  try {
+    data = event.data ? event.data.json() : fallback
+  } catch {
+    data = fallback
+  }
   const title = data.title || fallback.title
   const options = {
     body: data.body || fallback.body,

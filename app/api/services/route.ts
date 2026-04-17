@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { buildCompanyScopeFilter, resolveBranchCompanyScope, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { buildCompanyScopeFilter, canAccessBranch, resolveBranchCompanyScope, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { applyBranchPrice, attachBranchPrices } from '@/lib/service-pricing'
 import { createServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -30,8 +31,15 @@ export async function GET(req: NextRequest) {
       ? await resolveBranchCompanyScope(supabase, branchIdParam)
       : await resolveSingleCompanyLegacyScope(supabase, companyIdParam)
   const effectiveCompanyId = authCompanyId ?? publicCompanyScope.companyId
+  if (auth && auth.role !== 'superadmin' && branchIdParam) {
+    const allowed = await canAccessBranch(auth, supabase, branchIdParam)
+    if (!allowed) return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+  }
 
-  let query = supabase.from('services').select('*').eq('active', true).order('price')
+  let query = supabase.from('services').select('*').order('price')
+  if (!auth || !searchParams.get('include_inactive')) {
+    query = query.eq('active', true)
+  }
   if (effectiveCompanyId) {
     query = auth
       ? query.eq('company_id', effectiveCompanyId)
@@ -46,8 +54,12 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  const servicesWithPrices = await attachBranchPrices(supabase, data ?? [], auth ? null : branchIdParam)
+  const services = (branchIdParam
+    ? servicesWithPrices.map(service => applyBranchPrice(service, branchIdParam))
+    : servicesWithPrices).map(service => auth ? service : { ...service, branch_prices: undefined })
 
-  const response = NextResponse.json({ services: data })
+  const response = NextResponse.json({ services })
   
   // Add rate limit headers
   const headers = getRateLimitHeaders(rateLimit)
@@ -88,9 +100,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Empresa no resuelta para este usuario' }, { status: 400 })
   }
 
+  const { branch_prices, ...serviceInput } = result.data
+  if (branch_prices && auth.role !== 'superadmin') {
+    for (const branchPrice of branch_prices) {
+      const allowed = await canAccessBranch(auth, supabase, branchPrice.branch_id)
+      if (!allowed) return NextResponse.json({ error: 'No tenés acceso a una de las sucursales' }, { status: 403 })
+    }
+  }
   const { data, error } = await supabase
     .from('services')
-    .insert({ ...result.data, company_id: companyId })
+    .insert({ ...serviceInput, company_id: companyId })
     .select('*')
     .single()
 
@@ -98,7 +117,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const response = NextResponse.json({ service: data })
+  if (branch_prices && branch_prices.length > 0) {
+    const rows = branch_prices.map(price => ({
+      company_id: companyId,
+      service_id: data.id,
+      branch_id: price.branch_id,
+      price: price.price,
+    }))
+    const { error: priceError } = await supabase
+      .from('service_branch_prices')
+      .upsert(rows, { onConflict: 'service_id,branch_id' })
+    if (priceError) return NextResponse.json({ error: priceError.message }, { status: 500 })
+  }
+
+  const [service] = await attachBranchPrices(supabase, [data])
+  const response = NextResponse.json({ service })
   
   // Add rate limit headers
   const headers = getRateLimitHeaders(rateLimit)

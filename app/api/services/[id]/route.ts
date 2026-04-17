@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
+import { attachBranchPrices } from '@/lib/service-pricing'
 import { updateServiceSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -41,10 +42,17 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const supabase = createSupabaseAdmin()
   const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+  const { branch_prices, ...serviceInput } = result.data
+  if (branch_prices && auth.role !== 'superadmin') {
+    for (const branchPrice of branch_prices) {
+      const allowed = await canAccessBranch(auth, supabase, branchPrice.branch_id)
+      if (!allowed) return NextResponse.json({ error: 'No tenés acceso a una de las sucursales' }, { status: 403 })
+    }
+  }
 
   let query = supabase
     .from('services')
-    .update(result.data)
+    .update(serviceInput)
     .eq('id', id)
 
   if (companyId) {
@@ -59,7 +67,30 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const response = NextResponse.json({ service: data })
+  if (branch_prices) {
+    const { error: deleteError } = await supabase
+      .from('service_branch_prices')
+      .delete()
+      .eq('service_id', id)
+    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
+
+    if (branch_prices.length > 0) {
+      const effectiveCompanyId = companyId ?? data.company_id
+      const rows = branch_prices.map(price => ({
+        company_id: effectiveCompanyId,
+        service_id: id,
+        branch_id: price.branch_id,
+        price: price.price,
+      }))
+      const { error: priceError } = await supabase
+        .from('service_branch_prices')
+        .insert(rows)
+      if (priceError) return NextResponse.json({ error: priceError.message }, { status: 500 })
+    }
+  }
+
+  const [service] = await attachBranchPrices(supabase, [data])
+  const response = NextResponse.json({ service })
   
   // Add rate limit headers
   const headers = getRateLimitHeaders(rateLimit)

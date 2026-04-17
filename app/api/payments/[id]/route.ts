@@ -29,7 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     .select(`
       *,
       appointment:appointments(
-        id, date, start_time, end_time, branch_id, barber_id,
+        id, date, start_time, end_time, branch_id, barber_id, service_price,
         client:clients(first_name, last_name, email, phone),
         barber:barbers(name),
         service:services(name, price, duration_minutes),

@@ -100,10 +100,13 @@ export async function PATCH(
 
   // Send cancellation email
   if (status === 'cancelada' && appointment.client) {
+    const pricedService = appointment.service
+      ? { ...appointment.service, price: appointment.service_price ?? appointment.service.price }
+      : appointment.service
     sendCancellationEmail(
       appointment.client,
       appointment.barber,
-      appointment.service,
+      pricedService,
       appointment
     ).catch(console.error)
   }

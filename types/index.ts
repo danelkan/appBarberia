@@ -148,6 +148,9 @@ export interface Service {
   id: string
   name: string
   price: number
+  base_price?: number
+  effective_price?: number
+  branch_prices?: { branch_id: string; price: number }[]
   duration_minutes: number
   active: boolean
   created_at: string
@@ -180,6 +183,7 @@ export interface Appointment {
   barber_id: string
   service_id: string
   branch_id?: string | null
+  service_price?: number | null
   date: string
   start_time: string
   end_time: string

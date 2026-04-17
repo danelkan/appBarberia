@@ -70,6 +70,7 @@ interface InstantForm {
   client_email: string
   service_id:   string
   barber_id:    string
+  branch_id:    string
   date:         string
   start_time:   string
 }
@@ -106,7 +107,7 @@ function getEventStyle(appointment: Appointment, bounds: { start: number; end: n
 }
 
 export default function AgendaPage() {
-  const { user, activeBranch, can } = useAdmin()
+  const { user, activeBranch, branches, can } = useAdmin()
   const router = useRouter()
   const [view, setView]             = useState<ViewMode>('day')
   const [currentDate, setCurrentDate] = useState(() => {
@@ -144,6 +145,7 @@ export default function AgendaPage() {
   const [barbers,   setBarbers]   = useState<Barber[]>([])
   const [services,  setServices]  = useState<Service[]>([])
   const [loadingMeta, setLoadingMeta] = useState(false)
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
 
   const isBarber = user?.role === 'barber'
 
@@ -191,23 +193,28 @@ export default function AgendaPage() {
 
   useEffect(() => { void fetchAppointments() }, [fetchAppointments])
 
-  const fetchMeta = useCallback(async (showButtonLoading = false) => {
+  const fetchMeta = useCallback(async (showButtonLoading = false, includeServices = false) => {
     if (showButtonLoading) setLoadingMeta(true)
     try {
       const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
       const [barbersRes, servicesRes] = await Promise.all([
         fetch(`/api/barbers${branchQuery}`, { cache: 'no-store' }),
-        fetch('/api/services', { cache: 'no-store' }),
+        includeServices ? fetch(`/api/services${branchQuery}`, { cache: 'no-store' }) : Promise.resolve(null),
       ])
 
-      if (barbersRes.status === 401 || servicesRes.status === 401) {
+      if (barbersRes.status === 401 || servicesRes?.status === 401) {
         router.replace('/login')
         return
       }
 
-      const [barbersData, servicesData] = await Promise.all([barbersRes.json(), servicesRes.json()])
+      const [barbersData, servicesData] = await Promise.all([
+        barbersRes.json(),
+        servicesRes ? servicesRes.json() : Promise.resolve(null),
+      ])
       setBarbers(barbersRes.ok ? (barbersData.barbers ?? []) : [])
-      setServices(servicesRes.ok ? (servicesData.services ?? []) : [])
+      if (servicesRes) {
+        setServices(servicesRes.ok ? (servicesData.services ?? []) : [])
+      }
     } finally {
       if (showButtonLoading) setLoadingMeta(false)
     }
@@ -219,9 +226,18 @@ export default function AgendaPage() {
     setCurrentDate(d => addDays(d, view === 'day' ? direction : direction * 7))
   }
 
+  function handleAgendaTouchEnd(point: { x: number; y: number }) {
+    if (!touchStart) return
+    const delta = point.x - touchStart.x
+    const verticalDelta = point.y - touchStart.y
+    setTouchStart(null)
+    if (Math.abs(delta) < 72 || Math.abs(delta) < Math.abs(verticalDelta) * 1.6) return
+    navigate(delta < 0 ? 1 : -1)
+  }
+
   function openPayment(appointment: Appointment) {
     setSelected(appointment)
-    setPayAmount(String(appointment.service?.price ?? ''))
+    setPayAmount(String(appointment.service_price ?? appointment.service?.price ?? ''))
     setPayMethod('efectivo')
     setPayError('')
     setPaidId(null)
@@ -286,7 +302,7 @@ export default function AgendaPage() {
   }
 
   async function openInstantModal() {
-    await fetchMeta(true)
+    await fetchMeta(true, true)
 
     // Default time = current time rounded to next 15-min
     const now = new Date()
@@ -305,6 +321,7 @@ export default function AgendaPage() {
       client_email: '',
       service_id:   '',
       barber_id:    defaultBarberId,
+      branch_id:    activeBranch?.id ?? branches[0]?.id ?? '',
       date:         defaultDate,
       start_time:   defaultTime,
     })
@@ -317,6 +334,7 @@ export default function AgendaPage() {
     if (!instantForm.client_name.trim()) { setInstantError('El nombre del cliente es obligatorio'); return }
     if (!instantForm.service_id)         { setInstantError('Seleccioná un servicio'); return }
     if (!instantForm.barber_id)          { setInstantError('Seleccioná un barbero'); return }
+    if (!instantForm.branch_id && !activeBranch?.id) { setInstantError('Seleccioná una sucursal'); return }
     if (!instantForm.date)               { setInstantError('Seleccioná una fecha'); return }
     if (!instantForm.start_time)         { setInstantError('Ingresá la hora'); return }
 
@@ -328,7 +346,7 @@ export default function AgendaPage() {
       client_email: instantForm.client_email.trim() || null,
       service_id:   instantForm.service_id,
       barber_id:    instantForm.barber_id,
-      branch_id:    activeBranch?.id ?? null,
+      branch_id:    instantForm.branch_id || activeBranch?.id || null,
       date:         instantForm.date,
       start_time:   instantForm.start_time,
     }
@@ -366,6 +384,20 @@ export default function AgendaPage() {
     if (!activeBranch) return barbers
     return barbers.filter(b => !b.branches || b.branches.some((br: any) => br.id === activeBranch.id) || (b.branch_ids ?? []).includes(activeBranch.id))
   }, [barbers, activeBranch])
+
+  const modalBarbers = useMemo(() => {
+    const branchId = instantForm?.branch_id || activeBranch?.id
+    if (!branchId) return filteredBarbers
+    return barbers.filter(b => !b.branches || b.branches.some((br: any) => br.id === branchId) || (b.branch_ids ?? []).includes(branchId))
+  }, [activeBranch?.id, barbers, filteredBarbers, instantForm?.branch_id])
+
+  const getServicePriceForInstantBranch = useCallback((service: Service) => {
+    const branchId = instantForm?.branch_id || activeBranch?.id
+    const branchPrice = branchId
+      ? service.branch_prices?.find(price => price.branch_id === branchId)
+      : undefined
+    return Number(branchPrice?.price ?? service.price)
+  }, [activeBranch?.id, instantForm?.branch_id])
 
   const calendarResources = useMemo<CalendarResource[]>(() => {
     if (isBarber) {
@@ -451,6 +483,17 @@ export default function AgendaPage() {
           empty={appointments.length === 0}
           onCreate={openInstantModal}
         >
+          <MobileAgenda
+            currentDate={currentDate}
+            weekDays={weekDays}
+            view={view}
+            groupedByDay={groupedByDay}
+            showBarber={!isBarber}
+            onOpen={setSelected}
+            onSelectDate={setCurrentDate}
+            onTouchStart={setTouchStart}
+            onTouchEnd={handleAgendaTouchEnd}
+          />
           <DayCalendar
             date={format(currentDate, 'yyyy-MM-dd')}
             appointments={groupedByDay[format(currentDate, 'yyyy-MM-dd')] ?? []}
@@ -467,6 +510,17 @@ export default function AgendaPage() {
           empty={appointments.length === 0}
           onCreate={openInstantModal}
         >
+          <MobileAgenda
+            currentDate={currentDate}
+            weekDays={weekDays}
+            view={view}
+            groupedByDay={groupedByDay}
+            showBarber={!isBarber}
+            onOpen={setSelected}
+            onSelectDate={setCurrentDate}
+            onTouchStart={setTouchStart}
+            onTouchEnd={handleAgendaTouchEnd}
+          />
           <WeekCalendar
             days={weekDays}
             groupedByDay={groupedByDay}
@@ -501,6 +555,7 @@ export default function AgendaPage() {
                 <div className="grid gap-3 text-sm text-slate-600">
                   <DetailRow label="Cliente"  value={clientName || '-'} />
                   <DetailRow label="Servicio" value={selected.service?.name ?? '-'} />
+                  <DetailRow label="Precio" value={formatPrice(Number(selected.service_price ?? selected.service?.price ?? 0))} />
                   {!isBarber && <DetailRow label="Barbero" value={selected.barber?.name ?? '-'} />}
                   <DetailRow label="Fecha"    value={formatDate(selected.date)} />
                   <DetailRow label="Hora"     value={`${selected.start_time.slice(0, 5)} – ${selected.end_time.slice(0, 5)}`} />
@@ -587,12 +642,12 @@ export default function AgendaPage() {
               {selected?.client?.first_name} {selected?.client?.last_name} · {selected?.service?.name}
             </div>
             <div>
-              <label className="label">Monto</label>
+              <label className="label">Monto según sucursal</label>
               <input
                 type="number"
                 value={payAmount}
-                onChange={e => setPayAmount(e.target.value)}
-                className="input"
+                readOnly
+                className="input bg-slate-50"
               />
             </div>
             <div>
@@ -716,6 +771,22 @@ export default function AgendaPage() {
               </div>
             </div>
 
+            {!activeBranch && branches.length > 1 && (
+              <div>
+                <label className="label">Sucursal *</label>
+                <select
+                  value={instantForm.branch_id}
+                  onChange={e => setInstantForm(f => f ? { ...f, branch_id: e.target.value, barber_id: '' } : f)}
+                  className="input"
+                >
+                  <option value="">Seleccioná sucursal</option>
+                  {branches.map(branch => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Service */}
             <div>
               <label className="label">Servicio *</label>
@@ -734,7 +805,7 @@ export default function AgendaPage() {
                   >
                     <p className="font-semibold">{service.name}</p>
                     <p className={cn('text-xs', instantForm.service_id === service.id ? 'text-slate-300' : 'text-slate-400')}>
-                      {formatPrice(service.price)} · {service.duration_minutes} min
+                      {formatPrice(getServicePriceForInstantBranch(service))} · {service.duration_minutes} min
                     </p>
                   </button>
                 ))}
@@ -746,7 +817,7 @@ export default function AgendaPage() {
               <div>
                 <label className="label">Barbero *</label>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {filteredBarbers.map(barber => (
+                  {modalBarbers.map(barber => (
                     <button
                       key={barber.id}
                       type="button"
@@ -875,6 +946,170 @@ function CalendarLines({
   )
 }
 
+function MobileAgenda({
+  currentDate,
+  weekDays,
+  view,
+  groupedByDay,
+  showBarber,
+  onOpen,
+  onSelectDate,
+  onTouchStart,
+  onTouchEnd,
+}: {
+  currentDate: Date
+  weekDays: Date[]
+  view: ViewMode
+  groupedByDay: Record<string, Appointment[]>
+  showBarber: boolean
+  onOpen: (appointment: Appointment) => void
+  onSelectDate: (date: Date) => void
+  onTouchStart: (point: { x: number; y: number }) => void
+  onTouchEnd: (point: { x: number; y: number }) => void
+}) {
+  const dateKey = format(currentDate, 'yyyy-MM-dd')
+  const dayAppointments = groupedByDay[dateKey] ?? []
+  const totalForWeek = weekDays.reduce((sum, day) => sum + (groupedByDay[format(day, 'yyyy-MM-dd')] ?? []).length, 0)
+
+  return (
+    <div className="space-y-3 md:hidden">
+      <div
+        className="rounded-[22px] border border-stone-200 bg-white px-3 py-3 shadow-sm"
+        onTouchStart={event => {
+          const touch = event.touches[0]
+          if (touch) onTouchStart({ x: touch.clientX, y: touch.clientY })
+        }}
+        onTouchEnd={event => {
+          const touch = event.changedTouches[0]
+          if (touch) onTouchEnd({ x: touch.clientX, y: touch.clientY })
+        }}
+        style={{ touchAction: 'pan-y' }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+            Deslizá para cambiar {view === 'week' ? 'semana' : 'día'}
+          </p>
+          <p className="text-xs font-bold text-stone-700">{dayAppointments.length} turno{dayAppointments.length !== 1 ? 's' : ''}</p>
+        </div>
+      </div>
+
+      {view === 'week' && (
+        <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]" style={{ touchAction: 'pan-x pan-y' }}>
+          {weekDays.map(day => {
+            const key = format(day, 'yyyy-MM-dd')
+            const active = key === dateKey
+            const count = groupedByDay[key]?.length ?? 0
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => onSelectDate(day)}
+                className={cn(
+                  'min-w-[72px] rounded-2xl border px-3 py-2 text-center transition',
+                  active
+                    ? 'border-stone-950 bg-stone-950 text-white'
+                    : 'border-stone-200 bg-white text-stone-700'
+                )}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">
+                  {format(day, 'EEE', { locale: es })}
+                </p>
+                <p className="mt-0.5 text-lg font-bold">{format(day, 'd', { locale: es })}</p>
+                <p className="text-[10px] font-semibold opacity-70">{count} turno{count !== 1 ? 's' : ''}</p>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="rounded-[24px] border border-stone-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-4 py-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              {view === 'week' ? `${totalForWeek} en la semana` : 'Vista móvil'}
+            </p>
+            <p className="mt-0.5 text-base font-semibold capitalize text-stone-950">
+              {format(currentDate, "EEEE d 'de' MMM", { locale: es })}
+            </p>
+          </div>
+          <span className="rounded-full bg-lime-50 px-3 py-1 text-xs font-bold text-lime-700">
+            {dayAppointments.length}
+          </span>
+        </div>
+
+        {dayAppointments.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-stone-500">
+            Sin turnos para este día.
+          </div>
+        ) : (
+          <div className="divide-y divide-stone-100">
+            {dayAppointments.map(appointment => (
+              <MobileAppointmentRow
+                key={appointment.id}
+                appointment={appointment}
+                showBarber={showBarber}
+                onOpen={onOpen}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MobileAppointmentRow({
+  appointment,
+  showBarber,
+  onOpen,
+}: {
+  appointment: Appointment
+  showBarber: boolean
+  onOpen: (appointment: Appointment) => void
+}) {
+  const clientName = `${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || 'Cliente'
+  const price = Number(appointment.service_price ?? appointment.service?.price ?? 0)
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(appointment)}
+      className="grid w-full grid-cols-[64px_1fr] gap-3 px-4 py-3 text-left transition active:bg-stone-50"
+    >
+      <div className="rounded-2xl bg-stone-950 px-2 py-2 text-center text-white">
+        <p className="text-sm font-bold tabular-nums">{appointment.start_time.slice(0, 5)}</p>
+        <p className="mt-0.5 text-[10px] font-semibold text-white/60">{appointment.end_time.slice(0, 5)}</p>
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-stone-950">{clientName}</p>
+            <p className="mt-0.5 truncate text-xs font-medium text-stone-500">{appointment.service?.name ?? 'Servicio'}</p>
+          </div>
+          <p className="shrink-0 text-xs font-bold text-stone-700">{formatPrice(price)}</p>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {showBarber && (
+            <span className="rounded-full bg-stone-100 px-2 py-1 text-[11px] font-semibold text-stone-600">
+              {appointment.barber?.name ?? 'Barbero'}
+            </span>
+          )}
+          {appointment.branch?.name && (
+            <span className="rounded-full bg-lime-50 px-2 py-1 text-[11px] font-semibold text-lime-700">
+              {appointment.branch.name}
+            </span>
+          )}
+          {appointment.payment && (
+            <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+              Cobrado
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  )
+}
+
 function DayCalendar({
   appointments,
   resources,
@@ -897,7 +1132,7 @@ function DayCalendar({
   const gridTemplateColumns = `72px repeat(${safeResources.length}, minmax(190px, 1fr))`
 
   return (
-    <div className="overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm">
+    <div className="hidden overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm md:block">
       <div className="overflow-x-auto">
         <div className="min-w-[720px]" style={{ width: safeResources.length > 3 ? `${72 + safeResources.length * 220}px` : undefined }}>
           <div className="grid border-b border-stone-200 bg-stone-50" style={{ gridTemplateColumns }}>
@@ -959,7 +1194,7 @@ function WeekCalendar({
   const gridTemplateColumns = '72px repeat(7, minmax(150px, 1fr))'
 
   return (
-    <div className="overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm">
+    <div className="hidden overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm md:block">
       <div className="overflow-x-auto">
         <div className="min-w-[1120px]">
           <div className="grid border-b border-stone-200 bg-stone-50" style={{ gridTemplateColumns }}>

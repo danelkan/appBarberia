@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { type AuthRoleContext, requireAuth, requireAdminAuth, requirePermission, unauthorizedResponse, forbiddenResponse, hasPermission } from '@/lib/api-auth'
-import { buildCompanyScopeFilter, resolveCompanyIdFromBranch, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { buildCompanyScopeFilter, resolveAccessibleBranchIds, resolveCompanyIdFromBranch, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,8 +60,9 @@ export async function GET(req: NextRequest) {
       } else {
         return NextResponse.json({ branches: [] })
       }
-      if (auth.branch_ids.length > 0) {
-        query = query.in('id', auth.branch_ids)
+      const accessibleBranchIds = await resolveAccessibleBranchIds(auth, supabase)
+      if (accessibleBranchIds.length > 0) {
+        query = query.in('id', accessibleBranchIds)
       }
     }
 

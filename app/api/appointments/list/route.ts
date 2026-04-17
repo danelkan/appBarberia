@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from('appointments')
     .select(`
-      id, date, start_time, end_time, status,
+      id, date, start_time, end_time, status, service_price,
       client:clients(id, first_name, last_name, email, phone),
       barber:barbers(id, name, photo_url),
       service:services(id, name, price, duration_minutes)

@@ -55,7 +55,7 @@ describe('company identifier parsing', () => {
 })
 
 describe('branch access scope', () => {
-  it('treats explicit branch_ids as a real non-superadmin restriction', async () => {
+  it('treats explicit branch_ids as a real branch-scoped admin restriction', async () => {
     const auth = {
       role: 'admin',
       branch_ids: ['cordon'],
@@ -70,5 +70,28 @@ describe('branch access scope', () => {
     } as any
 
     await expect(resolveAccessibleBranchIds(auth, supabase)).resolves.toEqual(['cordon'])
+  })
+
+  it('lets company admins with management permissions see every company branch', async () => {
+    const auth = {
+      role: 'admin',
+      company_id: 'company-a',
+      branch_ids: ['punta'],
+      permissions: ['manage_branches'],
+      active: true,
+      session: { user: { id: 'u1' } },
+    } as AuthRoleContext
+    const supabase = {
+      from: (table: string) => {
+        expect(table).toBe('branches')
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ data: [{ id: 'cordon' }, { id: 'punta' }] }),
+          }),
+        }
+      },
+    } as any
+
+    await expect(resolveAccessibleBranchIds(auth, supabase)).resolves.toEqual(['cordon', 'punta'])
   })
 })

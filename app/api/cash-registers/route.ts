@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { buildCashSummary, createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { cashRegisterQuerySchema, openCashRegisterSchema } from '@/lib/validations'
 
 export const dynamic = 'force-dynamic'
@@ -50,10 +50,15 @@ export async function GET(req: NextRequest) {
   const effectiveCompanyId = resolvedCompanyId ?? company_id ?? null
   if (effectiveCompanyId) query = query.eq('company_id', effectiveCompanyId)
 
+  if (branch_id && auth.role !== 'superadmin') {
+    const allowed = await canAccessBranch(auth, supabase, branch_id)
+    if (!allowed) return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+  }
+
   if (status) query = query.eq('status', status)
   if (branch_id) query = query.eq('branch_id', branch_id)
-  // Barbers: scope to their branches at DB level — no in-memory post-filter
-  if (auth.role === 'barber' && auth.branch_ids.length > 0) {
+  // Any explicitly branch-scoped user is restricted at DB level.
+  if (auth.role !== 'superadmin' && auth.branch_ids.length > 0) {
     query = query.in('branch_id', auth.branch_ids)
   }
   if (opened_by_user_id) query = query.eq('opened_by_user_id', opened_by_user_id)
@@ -149,6 +154,13 @@ export async function POST(req: NextRequest) {
 
   if (resolvedCompanyId && branch.company_id !== resolvedCompanyId) {
     return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+  }
+
+  if (auth.role !== 'superadmin') {
+    const allowed = await canAccessBranch(auth, supabase, branch_id)
+    if (!allowed) {
+      return NextResponse.json({ error: 'No tenés acceso a esta sucursal' }, { status: 403 })
+    }
   }
 
   if (auth.role === 'barber' && !auth.branch_ids.includes(branch_id)) {

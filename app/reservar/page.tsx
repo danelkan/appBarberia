@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin, formatSupabaseError } from '@/lib/supabase'
 import { buildCompanyScopeFilter, resolveBranchCompanyScope, resolveCompanyRecordByIdentifier } from '@/lib/tenant'
+import { attachBranchPrices } from '@/lib/service-pricing'
 import BookingFlow from '@/components/booking/booking-flow'
 
 interface BookingPageProps {
@@ -72,7 +73,7 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
     selectedBranch = branch
 
     const results = await Promise.all([
-      (() => {
+      (async () => {
         let query = supabase
           .from('services')
           .select('*')
@@ -80,7 +81,10 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
           .order('price')
 
         query = query.or(buildCompanyScopeFilter('company_id', effectiveCompanyId, companyScope.allowLegacyUnscoped))
-        return query
+        const result = await query
+        if (result.error) return result
+        const pricedServices = await attachBranchPrices(supabase, result.data ?? [], branchId)
+        return { data: pricedServices, error: null }
       })(),
       listVisibleBarbers(supabase, {
         branchId,

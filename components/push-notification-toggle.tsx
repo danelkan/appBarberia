@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Bell, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type PushState = 'unsupported' | 'disabled' | 'ready' | 'enabled' | 'loading' | 'error'
+type PushState = 'unsupported' | 'disabled' | 'ready' | 'enabled' | 'loading' | 'error' | 'install'
 
 function urlBase64ToUint8Array(value: string) {
   const padding = '='.repeat((4 - (value.length % 4)) % 4)
@@ -22,16 +22,30 @@ export function PushNotificationToggle({ className }: { className?: string }) {
   const [message, setMessage] = useState('Preparando notificaciones')
   const supported = useMemo(() => {
     if (typeof window === 'undefined') return false
-    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext
+  }, [])
+
+  const needsIosInstall = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    const ua = window.navigator.userAgent
+    const isIos = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && 'ontouchend' in document)
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true
+    return isIos && !standalone
   }, [])
 
   useEffect(() => {
     let mounted = true
 
     async function check() {
+      if (needsIosInstall) {
+        setState('install')
+        setMessage('En iPhone instalá la app')
+        return
+      }
+
       if (!supported) {
         setState('unsupported')
-        setMessage('Este navegador no soporta push')
+        setMessage(window.isSecureContext ? 'Este navegador no soporta push' : 'Push requiere HTTPS')
         return
       }
 
@@ -41,7 +55,15 @@ export function PushNotificationToggle({ className }: { className?: string }) {
 
       if (!keyData?.enabled) {
         setState('disabled')
-        setMessage('Push pendiente de configurar')
+        setMessage(keyData?.message ?? 'Push pendiente de configurar')
+        return
+      }
+
+      const healthRes = await fetch('/api/push/subscriptions', { cache: 'no-store' }).catch(() => null)
+      if (!healthRes?.ok) {
+        const healthData = await healthRes?.json().catch(() => null)
+        setState('error')
+        setMessage(healthData?.error ?? 'Falta preparar la tabla push')
         return
       }
 
@@ -62,10 +84,10 @@ export function PushNotificationToggle({ className }: { className?: string }) {
     return () => {
       mounted = false
     }
-  }, [supported])
+  }, [needsIosInstall, supported])
 
   async function enablePush() {
-    if (!supported || state === 'loading') return
+    if (!supported || state === 'loading' || state === 'install') return
     setState('loading')
     setMessage('Activando...')
 
@@ -74,7 +96,7 @@ export function PushNotificationToggle({ className }: { className?: string }) {
       const keyData = await keyRes.json()
       if (!keyData?.enabled || !keyData.publicKey) {
         setState('disabled')
-        setMessage('Push pendiente de configurar')
+        setMessage(keyData?.message ?? 'Push pendiente de configurar')
         return
       }
 
@@ -98,24 +120,27 @@ export function PushNotificationToggle({ className }: { className?: string }) {
         body: JSON.stringify(subscription),
       })
 
-      if (!res.ok) throw new Error('Subscription failed')
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error ?? 'Subscription failed')
+      }
 
       setState('enabled')
       setMessage('Notificaciones activas')
-    } catch {
+    } catch (error) {
       setState('error')
-      setMessage('No se pudo activar')
+      setMessage(error instanceof Error ? error.message : 'No se pudo activar')
     }
   }
 
-  const inactive = state === 'unsupported' || state === 'disabled'
+  const inactive = state === 'unsupported' || state === 'disabled' || state === 'install'
   const Icon = state === 'enabled' ? Bell : BellOff
 
   return (
     <button
       type="button"
       onClick={enablePush}
-      disabled={state === 'loading' || state === 'unsupported' || state === 'disabled'}
+      disabled={state === 'loading' || state === 'unsupported' || state === 'disabled' || state === 'install'}
       className={cn(
         'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition',
         state === 'enabled'
