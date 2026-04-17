@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
   const company = company_id
     ? await admin
         .from('companies')
-        .select('id, name')
+        .select('id, name, slug')
         .eq('id', company_id)
         .maybeSingle()
     : { data: null }

@@ -27,51 +27,50 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
     redirect('/')
   }
 
-  let selectedBranch
   let services
   let branchBarbers
   let publicCompanyKey: string | null = null
   let companyScope = { companyId: null as string | null, allowLegacyUnscoped: false }
 
-  try {
-    const { data: branch } = await supabase
-      .from('branches')
-      .select('id, name, address, company_id')
-      .eq('id', branchId)
-      .eq('active', true)
+  const { data: branch } = await supabase
+    .from('branches')
+    .select('id, name, address, company_id')
+    .eq('id', branchId)
+    .eq('active', true)
+    .maybeSingle()
+
+  if (!branch) {
+    redirect('/')
+  }
+
+  companyScope = await resolveBranchCompanyScope(supabase, branch.id)
+  const effectiveCompanyId = branch.company_id ?? companyScope.companyId
+
+  if (!effectiveCompanyId) {
+    redirect('/')
+  }
+
+  if (companyParam) {
+    const company = await resolveCompanyRecordByIdentifier(supabase, companyParam)
+
+    if (!company || company.id !== effectiveCompanyId) {
+      redirect('/')
+    }
+
+    publicCompanyKey = company.slug ?? company.id
+  } else {
+    const { data: company } = await supabase
+      .from('companies')
+      .select('id, slug')
+      .eq('id', effectiveCompanyId)
       .maybeSingle()
 
-    if (!branch) {
-      redirect('/')
-    }
+    publicCompanyKey = company?.slug ?? company?.id ?? effectiveCompanyId
+  }
 
-    companyScope = await resolveBranchCompanyScope(supabase, branch.id)
-    const effectiveCompanyId = branch.company_id ?? companyScope.companyId
+  const selectedBranch = branch
 
-    if (!effectiveCompanyId) {
-      redirect('/')
-    }
-
-    if (companyParam) {
-      const company = await resolveCompanyRecordByIdentifier(supabase, companyParam)
-
-      if (!company || company.id !== effectiveCompanyId) {
-        redirect('/')
-      }
-
-      publicCompanyKey = company.slug ?? company.id
-    } else {
-      const { data: company } = await supabase
-        .from('companies')
-        .select('id, slug')
-        .eq('id', effectiveCompanyId)
-        .maybeSingle()
-
-      publicCompanyKey = company?.slug ?? company?.id ?? effectiveCompanyId
-    }
-
-    selectedBranch = branch
-
+  try {
     const results = await Promise.all([
       (async () => {
         let query = supabase
@@ -100,10 +99,6 @@ export default async function BookingPage({ searchParams }: BookingPageProps) {
   } catch (error) {
     console.error('[booking] Failed to load booking data from Supabase:', formatSupabaseError(error))
     throw new Error('Unable to load booking data from Supabase')
-  }
-
-  if (!selectedBranch) {
-    redirect('/')
   }
 
   const barbersForBranch = (branchBarbers ?? [])

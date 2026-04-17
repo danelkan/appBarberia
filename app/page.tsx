@@ -53,6 +53,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const hasVisibleBranches = Boolean((branches ?? []).length)
   const publicCompanyKey = selectedCompany?.slug ?? selectedCompany?.id ?? null
+  const myAppointmentsHref = publicCompanyKey
+    ? `/mis-turnos?company=${encodeURIComponent(publicCompanyKey)}`
+    : '/mis-turnos'
 
   return (
     <main className="flex min-h-screen flex-col px-4 py-5 sm:px-6">
@@ -113,7 +116,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
           <div className="mt-5 text-center">
             <Link
-              href="/mis-turnos"
+              href={myAppointmentsHref}
               className="text-sm text-slate-400 underline-offset-4 transition hover:text-slate-700 hover:underline"
             >
               Ver o cancelar mis turnos

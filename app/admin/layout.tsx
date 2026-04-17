@@ -232,6 +232,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const currentNavItem = getActiveAdminNavItem(pathname, visibleNav)
   const isDashboard = currentNavItem?.href === '/admin/dashboard'
   const overlayOpacity = mobileOpen ? Math.max(0, 0.34 * (1 - (Math.abs(drawerOffset) / DRAWER_WIDTH_PX))) : 0
+  const publicCompanyKey = user?.company?.slug ?? user?.company_id ?? null
+  const publicBookingHref = activeBranch
+    ? `/reservar?branch=${encodeURIComponent(activeBranch.id)}${publicCompanyKey ? `&company=${encodeURIComponent(publicCompanyKey)}` : ''}`
+    : publicCompanyKey
+      ? `/?company=${encodeURIComponent(publicCompanyKey)}`
+      : '/'
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -443,6 +449,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <LogOut className="h-4 w-4" />
             Cerrar sesión
           </Button>
+          <Link
+            href={publicBookingHref}
+            onClick={() => setMobileOpen(false)}
+            className="mt-2 inline-flex w-full items-center justify-center rounded-2xl border border-lime-200 bg-lime-50 px-4 py-3 text-sm font-semibold text-stone-900 transition hover:bg-lime-100"
+          >
+            Ver reserva pública
+          </Link>
         </div>
       </div>
     </div>
@@ -536,8 +549,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     Volver a Resumen
                   </Link>
                 )}
-                <Link href="/" className="text-sm font-medium text-stone-500 transition hover:text-stone-950">
-                Ver reserva pública
+                <Link href={publicBookingHref} className="text-sm font-medium text-stone-500 transition hover:text-stone-950">
+                  Ver reserva pública
                 </Link>
               </div>
             </div>

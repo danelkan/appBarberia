@@ -55,9 +55,11 @@ function buildWhatsAppUrl(rawPhone: string | null | undefined, message: string):
 
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
 const HOUR_HEIGHT = 72
+const MOBILE_HOUR_HEIGHT = 96
 const DEFAULT_START_MINUTES = 8 * 60
 const DEFAULT_END_MINUTES = 21 * 60
 const MIN_EVENT_HEIGHT = 42
+const MOBILE_MIN_EVENT_HEIGHT = 72
 
 interface CalendarResource {
   id: string
@@ -104,6 +106,52 @@ function getEventStyle(appointment: Appointment, bounds: { start: number; end: n
   const top = ((start - bounds.start) / 60) * HOUR_HEIGHT
   const height = Math.max(((end - start) / 60) * HOUR_HEIGHT - 6, MIN_EVENT_HEIGHT)
   return { top, height }
+}
+
+function getMobileTimelineBounds(appointments: Appointment[]) {
+  if (appointments.length === 0) {
+    return { start: 9 * 60, end: 18 * 60 }
+  }
+
+  const starts = appointments.map(appointment => toMinutes(appointment.start_time))
+  const ends = appointments.map(appointment => toMinutes(appointment.end_time))
+  const earliest = Math.min(...starts)
+  const latest = Math.max(...ends)
+  const start = Math.max(0, Math.floor(Math.max(0, earliest - 30) / 60) * 60)
+  const end = Math.min(24 * 60, Math.max(Math.ceil((latest + 30) / 60) * 60, start + (3 * 60)))
+
+  return { start, end }
+}
+
+function getMobileEventStyle(appointment: Appointment, bounds: { start: number; end: number }) {
+  const start = Math.max(toMinutes(appointment.start_time), bounds.start)
+  const end = Math.min(toMinutes(appointment.end_time), bounds.end)
+  const top = ((start - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
+  const height = Math.max(((end - start) / 60) * MOBILE_HOUR_HEIGHT - 8, MOBILE_MIN_EVENT_HEIGHT)
+  return { top, height }
+}
+
+function getMobileEventLayouts(appointments: Appointment[], bounds: { start: number; end: number }) {
+  const sorted = [...appointments].sort((a, b) => a.start_time.localeCompare(b.start_time))
+  const laneEnds: number[] = []
+  const positioned = sorted.map(appointment => {
+    const start = toMinutes(appointment.start_time)
+    const end = toMinutes(appointment.end_time)
+    let lane = laneEnds.findIndex(laneEnd => laneEnd <= start)
+    if (lane === -1) lane = laneEnds.length
+    laneEnds[lane] = end
+    return { appointment, start, end, lane, lanes: 1, ...getMobileEventStyle(appointment, bounds) }
+  })
+
+  return positioned.map(item => {
+    const lanes = Math.max(
+      1,
+      ...positioned
+        .filter(other => item.start < other.end && other.start < item.end)
+        .map(other => other.lane + 1)
+    )
+    return { ...item, lanes }
+  })
 }
 
 export default function AgendaPage() {
@@ -970,11 +1018,18 @@ function MobileAgenda({
   const dateKey = format(currentDate, 'yyyy-MM-dd')
   const dayAppointments = groupedByDay[dateKey] ?? []
   const totalForWeek = weekDays.reduce((sum, day) => sum + (groupedByDay[format(day, 'yyyy-MM-dd')] ?? []).length, 0)
+  const bounds = getMobileTimelineBounds(dayAppointments)
+  const timelineHeight = ((bounds.end - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
+  const hours = Array.from(
+    { length: Math.floor((bounds.end - bounds.start) / 60) + 1 },
+    (_, index) => bounds.start + (index * 60)
+  )
+  const eventLayouts = getMobileEventLayouts(dayAppointments, bounds)
 
   return (
-    <div className="space-y-3 md:hidden">
+    <div className="space-y-3 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] md:hidden" style={{ touchAction: 'pan-y' }}>
       <div
-        className="rounded-[22px] border border-stone-200 bg-white px-3 py-3 shadow-sm"
+        className="rounded-[22px] border border-stone-200 bg-white px-4 py-3 shadow-sm"
         onTouchStart={event => {
           const touch = event.touches[0]
           if (touch) onTouchStart({ x: touch.clientX, y: touch.clientY })
@@ -986,71 +1041,81 @@ function MobileAgenda({
         style={{ touchAction: 'pan-y' }}
       >
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
-            Deslizá para cambiar {view === 'week' ? 'semana' : 'día'}
-          </p>
-          <p className="text-xs font-bold text-stone-700">{dayAppointments.length} turno{dayAppointments.length !== 1 ? 's' : ''}</p>
-        </div>
-      </div>
-
-      {view === 'week' && (
-        <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]" style={{ touchAction: 'pan-x pan-y' }}>
-          {weekDays.map(day => {
-            const key = format(day, 'yyyy-MM-dd')
-            const active = key === dateKey
-            const count = groupedByDay[key]?.length ?? 0
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => onSelectDate(day)}
-                className={cn(
-                  'min-w-[72px] rounded-2xl border px-3 py-2 text-center transition',
-                  active
-                    ? 'border-stone-950 bg-stone-950 text-white'
-                    : 'border-stone-200 bg-white text-stone-700'
-                )}
-              >
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">
-                  {format(day, 'EEE', { locale: es })}
-                </p>
-                <p className="mt-0.5 text-lg font-bold">{format(day, 'd', { locale: es })}</p>
-                <p className="text-[10px] font-semibold opacity-70">{count} turno{count !== 1 ? 's' : ''}</p>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      <div className="rounded-[24px] border border-stone-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-4 py-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-              {view === 'week' ? `${totalForWeek} en la semana` : 'Vista móvil'}
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">
+              {view === 'week' ? `${totalForWeek} en la semana` : 'Agenda móvil'}
             </p>
-            <p className="mt-0.5 text-base font-semibold capitalize text-stone-950">
+            <p className="mt-0.5 truncate text-base font-semibold capitalize text-stone-950">
               {format(currentDate, "EEEE d 'de' MMM", { locale: es })}
             </p>
           </div>
-          <span className="rounded-full bg-lime-50 px-3 py-1 text-xs font-bold text-lime-700">
+          <p className="shrink-0 rounded-full bg-lime-50 px-3 py-1 text-xs font-bold text-lime-700">
             {dayAppointments.length}
-          </span>
+          </p>
         </div>
+      </div>
 
+      <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ touchAction: 'pan-x pan-y' }}>
+        {weekDays.map(day => {
+          const key = format(day, 'yyyy-MM-dd')
+          const active = key === dateKey
+          const count = groupedByDay[key]?.length ?? 0
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onSelectDate(day)}
+              className={cn(
+                'min-w-[70px] rounded-2xl border px-3 py-2 text-center transition active:scale-[0.98]',
+                active
+                  ? 'border-stone-950 bg-stone-950 text-white'
+                  : 'border-stone-200 bg-white text-stone-700'
+              )}
+            >
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">
+                {format(day, 'EEE', { locale: es })}
+              </p>
+              <p className="mt-0.5 text-lg font-bold">{format(day, 'd', { locale: es })}</p>
+              <p className="text-[10px] font-semibold opacity-70">{count}</p>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="rounded-[24px] border border-stone-200 bg-white shadow-sm">
         {dayAppointments.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-stone-500">
+          <div className="px-4 py-10 text-center text-sm text-stone-500">
             Sin turnos para este día.
           </div>
         ) : (
-          <div className="divide-y divide-stone-100">
-            {dayAppointments.map(appointment => (
-              <MobileAppointmentRow
-                key={appointment.id}
-                appointment={appointment}
-                showBarber={showBarber}
-                onOpen={onOpen}
-              />
-            ))}
+          <div className="px-3 pb-5 pt-4">
+            <div className="relative" style={{ height: timelineHeight }}>
+              {hours.map(hour => {
+                const top = ((hour - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
+                return (
+                  <div key={hour} className="absolute left-0 right-0" style={{ top }}>
+                    <p className="-translate-y-2 pr-3 text-right text-xs font-semibold tabular-nums text-stone-400" style={{ width: 52 }}>
+                      {fromMinutes(hour)}
+                    </p>
+                    <div className="absolute left-[56px] right-0 top-0 border-t border-stone-100" />
+                  </div>
+                )
+              })}
+              <div className="absolute inset-y-0 left-[56px] right-0">
+                {eventLayouts.map(layout => (
+                  <MobileTimelineEvent
+                    key={layout.appointment.id}
+                    appointment={layout.appointment}
+                    showBarber={showBarber}
+                    onOpen={onOpen}
+                    top={layout.top}
+                    height={layout.height}
+                    lane={layout.lane}
+                    lanes={layout.lanes}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1058,52 +1123,58 @@ function MobileAgenda({
   )
 }
 
-function MobileAppointmentRow({
+function MobileTimelineEvent({
   appointment,
   showBarber,
   onOpen,
+  top,
+  height,
+  lane,
+  lanes,
 }: {
   appointment: Appointment
   showBarber: boolean
   onOpen: (appointment: Appointment) => void
+  top: number
+  height: number
+  lane: number
+  lanes: number
 }) {
   const clientName = `${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || 'Cliente'
   const price = Number(appointment.service_price ?? appointment.service?.price ?? 0)
+  const laneWidth = 100 / lanes
+  const left = `calc(${lane * laneWidth}% + ${lane > 0 ? 3 : 0}px)`
+  const width = `calc(${laneWidth}% - ${lanes > 1 ? 6 : 0}px)`
 
   return (
     <button
       type="button"
       onClick={() => onOpen(appointment)}
-      className="grid w-full grid-cols-[64px_1fr] gap-3 px-4 py-3 text-left transition active:bg-stone-50"
+      className="absolute overflow-hidden rounded-2xl border border-lime-200 bg-lime-100 px-3 py-3 text-left shadow-sm ring-1 ring-lime-200/60 transition active:scale-[0.99]"
+      style={{ top, height, left, width }}
+      aria-label={`${clientName}, ${appointment.start_time.slice(0, 5)} a ${appointment.end_time.slice(0, 5)}`}
     >
-      <div className="rounded-2xl bg-stone-950 px-2 py-2 text-center text-white">
-        <p className="text-sm font-bold tabular-nums">{appointment.start_time.slice(0, 5)}</p>
-        <p className="mt-0.5 text-[10px] font-semibold text-white/60">{appointment.end_time.slice(0, 5)}</p>
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-stone-950">{clientName}</p>
-            <p className="mt-0.5 truncate text-xs font-medium text-stone-500">{appointment.service?.name ?? 'Servicio'}</p>
-          </div>
-          <p className="shrink-0 text-xs font-bold text-stone-700">{formatPrice(price)}</p>
+      <div className="flex h-full min-w-0 flex-col">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <p className="min-w-0 truncate text-sm font-bold text-stone-950">{clientName}</p>
+          <p className="shrink-0 text-[11px] font-bold tabular-nums text-stone-700">
+            {appointment.start_time.slice(0, 5)}
+          </p>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {showBarber && (
-            <span className="rounded-full bg-stone-100 px-2 py-1 text-[11px] font-semibold text-stone-600">
-              {appointment.barber?.name ?? 'Barbero'}
-            </span>
-          )}
-          {appointment.branch?.name && (
-            <span className="rounded-full bg-lime-50 px-2 py-1 text-[11px] font-semibold text-lime-700">
-              {appointment.branch.name}
-            </span>
-          )}
-          {appointment.payment && (
-            <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-              Cobrado
-            </span>
-          )}
+        <p className="mt-1 truncate text-xs font-semibold tabular-nums text-stone-700">
+          {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)}
+        </p>
+        <p className="mt-1 truncate text-xs font-medium text-stone-700">
+          {showBarber && appointment.barber?.name ? `${appointment.barber.name}: ` : ''}
+          {appointment.service?.name ?? 'Servicio'}
+        </p>
+        <div className="mt-auto flex min-w-0 items-center justify-between gap-2 pt-2">
+          <p className="truncate text-[11px] font-semibold text-lime-800">
+            {appointment.branch?.name ?? (appointment.payment ? 'Cobrado' : 'Reservado')}
+          </p>
+          <p className="shrink-0 text-[11px] font-bold text-stone-800">
+            {formatPrice(price)}
+          </p>
         </div>
       </div>
     </button>

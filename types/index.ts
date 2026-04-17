@@ -276,7 +276,7 @@ export interface UserWithRole {
   permissions: Permission[]
   active: boolean
   created_at?: string
-  company?: Pick<Company, 'id' | 'name'> | null
+  company?: Pick<Company, 'id' | 'name' | 'slug'> | null
   branches?: Pick<Branch, 'id' | 'name'>[]
   barber?: Pick<Barber, 'id' | 'name' | 'email'> | null
 }
