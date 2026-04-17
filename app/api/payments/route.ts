@@ -31,21 +31,8 @@ async function resolveScopedAppointmentIds(input: {
   }
 
   if (auth?.role === 'barber') {
-    const orFilters: string[] = []
-    if (auth.barber_id) {
-      orFilters.push(`barber_id.eq.${auth.barber_id}`)
-    }
-    if (auth.branch_ids.length > 0) {
-      const sanitizedBranchIds = auth.branch_ids
-        .join(',')
-      orFilters.push(`branch_id.in.(${sanitizedBranchIds})`)
-    }
-
-    if (orFilters.length === 0) {
-      return []
-    }
-
-    query = query.or(orFilters.join(','))
+    if (!auth.barber_id) return []
+    query = query.eq('barber_id', auth.barber_id)
   }
 
   const { data } = await query
@@ -104,13 +91,8 @@ export async function POST(req: NextRequest) {
     }, { status: 400 })
   }
 
-  if (auth.role === 'barber') {
-    const branchAllowed = !appointment.branch_id || auth.branch_ids.includes(appointment.branch_id)
-    const ownsAppointment = appointment.barber_id === auth.barber_id
-
-    if (!branchAllowed && !ownsAppointment) {
-      return NextResponse.json({ error: 'No tenés permisos para registrar este cobro' }, { status: 403 })
-    }
+  if (auth.role === 'barber' && appointment.barber_id !== auth.barber_id) {
+    return NextResponse.json({ error: 'No tenés permisos para registrar este cobro' }, { status: 403 })
   }
 
   if (!appointment.branch_id) {
