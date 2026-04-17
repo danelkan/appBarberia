@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { addDays, format, startOfWeek } from 'date-fns'
@@ -192,10 +193,23 @@ export default function AgendaPage() {
   const [instantForm,   setInstantForm]   = useState<InstantForm | null>(null)
   const [instantSaving, setInstantSaving] = useState(false)
   const [instantError,  setInstantError]  = useState('')
-  const [barbers,   setBarbers]   = useState<Barber[]>([])
-  const [services,  setServices]  = useState<Service[]>([])
-  const [loadingMeta, setLoadingMeta] = useState(false)
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
+
+  const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
+  const swrFetcher = (url: string) => fetch(url).then(r => r.json())
+  const { data: barbersData, isLoading: loadingBarbers } = useSWR(
+    `/api/barbers${branchQuery}`,
+    swrFetcher,
+    { dedupingInterval: 30_000, revalidateOnFocus: false }
+  )
+  const { data: servicesData, isLoading: loadingServices } = useSWR(
+    `/api/services${branchQuery}`,
+    swrFetcher,
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  )
+  const barbers: Barber[] = barbersData?.barbers ?? []
+  const services: Service[] = servicesData?.services ?? []
+  const loadingMeta = loadingBarbers || loadingServices
 
   const isBarber = user?.role === 'barber'
 
@@ -242,35 +256,6 @@ export default function AgendaPage() {
   }, [activeBranch, currentDate, isBarber, router, user, view])
 
   useEffect(() => { void fetchAppointments() }, [fetchAppointments])
-
-  const fetchMeta = useCallback(async (showButtonLoading = false, includeServices = false) => {
-    if (showButtonLoading) setLoadingMeta(true)
-    try {
-      const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
-      const [barbersRes, servicesRes] = await Promise.all([
-        fetch(`/api/barbers${branchQuery}`, { cache: 'no-store' }),
-        includeServices ? fetch(`/api/services${branchQuery}`, { cache: 'no-store' }) : Promise.resolve(null),
-      ])
-
-      if (barbersRes.status === 401 || servicesRes?.status === 401) {
-        router.replace('/login')
-        return
-      }
-
-      const [barbersData, servicesData] = await Promise.all([
-        barbersRes.json(),
-        servicesRes ? servicesRes.json() : Promise.resolve(null),
-      ])
-      setBarbers(barbersRes.ok ? (barbersData.barbers ?? []) : [])
-      if (servicesRes) {
-        setServices(servicesRes.ok ? (servicesData.services ?? []) : [])
-      }
-    } finally {
-      if (showButtonLoading) setLoadingMeta(false)
-    }
-  }, [activeBranch, router])
-
-  useEffect(() => { void fetchMeta(false) }, [fetchMeta])
 
   function navigate(direction: 1 | -1) {
     setCurrentDate(d => addDays(d, view === 'day' ? direction : direction * 7))
@@ -351,9 +336,7 @@ export default function AgendaPage() {
     setClientCreated(data.client)
   }
 
-  async function openInstantModal() {
-    await fetchMeta(true, true)
-
+  function openInstantModal() {
     // Default time = current time rounded to next 15-min
     const now = new Date()
     const mins = now.getMinutes()

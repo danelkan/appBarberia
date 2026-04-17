@@ -93,6 +93,26 @@ async function getAuthSession(req: NextRequest): Promise<AuthContext | null> {
   return { session: { user }, response }
 }
 
+type ResolvedRole = Omit<AuthRoleContext, 'session' | 'response'>
+
+const roleCache = new Map<string, { data: ResolvedRole; expiresAt: number }>()
+const ROLE_CACHE_TTL_MS = 30_000
+
+function getCachedRole(userId: string): ResolvedRole | null {
+  const entry = roleCache.get(userId)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) { roleCache.delete(userId); return null }
+  return entry.data
+}
+
+function setCachedRole(userId: string, data: ResolvedRole) {
+  roleCache.set(userId, { data, expiresAt: Date.now() + ROLE_CACHE_TTL_MS })
+}
+
+export function invalidateRoleCache(userId: string) {
+  roleCache.delete(userId)
+}
+
 async function getBranchIdsForBarber(admin: SupabaseClient, barberId?: string) {
   if (!barberId) return []
 
@@ -111,6 +131,9 @@ export async function resolveUserRole(
   userId: string,
   email?: string
 ): Promise<Omit<AuthRoleContext, 'session' | 'response'>> {
+  const cached = getCachedRole(userId)
+  if (cached) return cached
+
   const normalizedEmail = email?.toLowerCase()
   let role: AppRole = 'barber'
   let barber_id: string | undefined
@@ -162,7 +185,7 @@ export async function resolveUserRole(
   const barberBranchIds = await getBranchIdsForBarber(admin, barber_id)
   const branch_ids = unique([...assignedBranchIds, ...barberBranchIds])
 
-  return {
+  const result: ResolvedRole = {
     role,
     barber_id,
     branch_ids,
@@ -170,6 +193,9 @@ export async function resolveUserRole(
     permissions: getRolePermissions(role, permissions),
     active,
   }
+
+  setCachedRole(userId, result)
+  return result
 }
 
 export async function requireAdminAuth(req: NextRequest): Promise<AuthRoleContext | null> {

@@ -126,20 +126,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           return
         }
 
-        const [meRes, branchesRes] = await Promise.all([
-          fetch('/api/auth/me', { cache: 'no-store' }),
-          fetch('/api/branches?all=1', { cache: 'no-store' }),
-        ])
+        const bootstrapRes = await fetch('/api/auth/bootstrap', { cache: 'no-store' })
 
-        if (!meRes.ok) {
+        if (!bootstrapRes.ok) {
           router.replace('/login')
           return
         }
 
-        const [{ user: nextUser }, { branches: nextBranches }] = await Promise.all([
-          meRes.json(),
-          branchesRes.json(),
-        ])
+        const { user: nextUser, branches: nextBranches } = await bootstrapRes.json()
 
         if (!mounted) return
 
