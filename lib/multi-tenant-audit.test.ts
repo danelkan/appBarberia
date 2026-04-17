@@ -19,6 +19,13 @@ describe('multi-tenant regression audit', () => {
     const source = readRepoFile('app/api/appointments/[id]/route.ts')
 
     expect(source).toContain("query = query.eq('company_id', companyId)")
+    expect(source).toContain('canAccessBranch')
+  })
+
+  it('keeps cancelled appointments out of operational appointment lists by default', () => {
+    const source = readRepoFile('app/api/appointments/route.ts')
+
+    expect(source).toContain("query = query.neq('status', 'cancelada')")
   })
 
   it('prevents public appointment management from running without tenant context', () => {

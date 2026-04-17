@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
+import { canAccessBranch, resolveAccessibleBranchIds, resolveCompanyId } from '@/lib/tenant'
 import { clientQuerySchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -54,10 +54,14 @@ export async function GET(req: NextRequest) {
   // Determine which branch(es) to filter by.
   // Barbers are always scoped to their own branches regardless of query param.
   // Admins can optionally filter by branch_id param.
-  const filterBranchIds: string[] | null =
-    auth.role === 'barber'
-      ? auth.branch_ids.length > 0 ? auth.branch_ids : null
-      : branch_id ? [branch_id] : null
+  const scopedBranchIds = auth.role !== 'superadmin'
+    ? await resolveAccessibleBranchIds(auth, supabase)
+    : []
+  const filterBranchIds: string[] | null = branch_id
+    ? [branch_id]
+    : auth.role === 'barber' || auth.branch_ids.length > 0
+      ? scopedBranchIds
+      : null
 
   // If a branch filter is active, resolve client IDs that have appointments there
   let allowedClientIds: string[] | null = null
@@ -72,6 +76,7 @@ export async function GET(req: NextRequest) {
       .select('client_id')
       .eq('company_id', effectiveBranchCompanyId ?? '')
       .in('branch_id', filterBranchIds)
+      .neq('status', 'cancelada')
 
     const allIds = (appts ?? [])
       .map((a: { client_id: string | null }) => a.client_id)

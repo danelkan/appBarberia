@@ -2,26 +2,23 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { addDays, format, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   ArrowRight,
-  Calendar,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   DollarSign,
   MessageCircle,
   Plus,
   Receipt,
-  UserRound,
   XCircle,
   Zap,
 } from 'lucide-react'
-import { Badge, Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
+import { Badge, Button, Input, Modal, PageHeader, Spinner } from '@/components/ui'
 import { cn, formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
 import { useAdmin } from '../layout'
 import { PAYMENT_METHOD_LABELS, type Appointment, type Barber, type Client, type PaymentMethod, type Service } from '@/types'
@@ -57,6 +54,15 @@ function buildWhatsAppUrl(rawPhone: string | null | undefined, message: string):
 }
 
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
+const HOUR_HEIGHT = 72
+const DEFAULT_START_MINUTES = 8 * 60
+const DEFAULT_END_MINUTES = 21 * 60
+const MIN_EVENT_HEIGHT = 42
+
+interface CalendarResource {
+  id: string
+  name: string
+}
 
 interface InstantForm {
   client_name:  string
@@ -68,11 +74,49 @@ interface InstantForm {
   start_time:   string
 }
 
+function toMinutes(time: string) {
+  const [hours, minutes] = time.slice(0, 5).split(':').map(Number)
+  return (hours * 60) + minutes
+}
+
+function fromMinutes(minutes: number) {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+}
+
+function getCalendarBounds(appointments: Appointment[]) {
+  const starts = appointments.map(appointment => toMinutes(appointment.start_time))
+  const ends = appointments.map(appointment => toMinutes(appointment.end_time))
+  const minStart = starts.length > 0 ? Math.min(...starts) : DEFAULT_START_MINUTES
+  const maxEnd = ends.length > 0 ? Math.max(...ends) : DEFAULT_END_MINUTES
+
+  return {
+    start: Math.min(DEFAULT_START_MINUTES, Math.floor(minStart / 60) * 60),
+    end: Math.max(DEFAULT_END_MINUTES, Math.ceil(maxEnd / 60) * 60),
+  }
+}
+
+function getEventStyle(appointment: Appointment, bounds: { start: number; end: number }) {
+  const start = Math.max(toMinutes(appointment.start_time), bounds.start)
+  const end = Math.min(toMinutes(appointment.end_time), bounds.end)
+  const top = ((start - bounds.start) / 60) * HOUR_HEIGHT
+  const height = Math.max(((end - start) / 60) * HOUR_HEIGHT - 6, MIN_EVENT_HEIGHT)
+  return { top, height }
+}
+
 export default function AgendaPage() {
   const { user, activeBranch, can } = useAdmin()
   const router = useRouter()
   const [view, setView]             = useState<ViewMode>('day')
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(() => {
+    const dateParam = typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('date')
+    return dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
+      ? new Date(`${dateParam}T00:00:00`)
+      : new Date()
+  })
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]       = useState(true)
 
@@ -137,7 +181,7 @@ export default function AgendaPage() {
       }
       if (!res.ok) throw new Error('No se pudieron cargar los turnos')
       const data = await res.json()
-      setAppointments(data.appointments ?? [])
+      setAppointments((data.appointments ?? []).filter((appointment: Appointment) => appointment.status !== 'cancelada'))
     } catch {
       setAppointments([])
     } finally {
@@ -146,6 +190,30 @@ export default function AgendaPage() {
   }, [activeBranch, currentDate, isBarber, router, user, view])
 
   useEffect(() => { void fetchAppointments() }, [fetchAppointments])
+
+  const fetchMeta = useCallback(async (showButtonLoading = false) => {
+    if (showButtonLoading) setLoadingMeta(true)
+    try {
+      const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
+      const [barbersRes, servicesRes] = await Promise.all([
+        fetch(`/api/barbers${branchQuery}`, { cache: 'no-store' }),
+        fetch('/api/services', { cache: 'no-store' }),
+      ])
+
+      if (barbersRes.status === 401 || servicesRes.status === 401) {
+        router.replace('/login')
+        return
+      }
+
+      const [barbersData, servicesData] = await Promise.all([barbersRes.json(), servicesRes.json()])
+      setBarbers(barbersRes.ok ? (barbersData.barbers ?? []) : [])
+      setServices(servicesRes.ok ? (servicesData.services ?? []) : [])
+    } finally {
+      if (showButtonLoading) setLoadingMeta(false)
+    }
+  }, [activeBranch, router])
+
+  useEffect(() => { void fetchMeta(false) }, [fetchMeta])
 
   function navigate(direction: 1 | -1) {
     setCurrentDate(d => addDays(d, view === 'day' ? direction : direction * 7))
@@ -176,6 +244,8 @@ export default function AgendaPage() {
   }
 
   async function cancelAppointment(appointment: Appointment) {
+    setAppointments(prev => prev.filter(item => item.id !== appointment.id))
+    setSelected(null)
     const res = await fetch(`/api/appointments/${appointment.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -184,9 +254,9 @@ export default function AgendaPage() {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       setPayError(data.error ?? 'No se pudo cancelar el turno')
+      await fetchAppointments()
       return
     }
-    setSelected(null)
     setPayError('')
     await fetchAppointments()
   }
@@ -216,25 +286,7 @@ export default function AgendaPage() {
   }
 
   async function openInstantModal() {
-    setLoadingMeta(true)
-    try {
-      const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
-      const [barbersRes, servicesRes] = await Promise.all([
-        fetch(`/api/barbers${branchQuery}`, { cache: 'no-store' }),
-        fetch('/api/services', { cache: 'no-store' }),
-      ])
-
-      if (barbersRes.status === 401 || servicesRes.status === 401) {
-        router.replace('/login')
-        return
-      }
-
-      const [barbersData, servicesData] = await Promise.all([barbersRes.json(), servicesRes.json()])
-      setBarbers(barbersRes.ok ? (barbersData.barbers ?? []) : [])
-      setServices(servicesRes.ok ? (servicesData.services ?? []) : [])
-    } finally {
-      setLoadingMeta(false)
-    }
+    await fetchMeta(true)
 
     // Default time = current time rounded to next 15-min
     const now = new Date()
@@ -303,7 +355,7 @@ export default function AgendaPage() {
 
     dates.forEach(date => {
       record[date] = appointments
-        .filter(a => a.date === date)
+        .filter(a => a.date === date && a.status !== 'cancelada')
         .sort((a, b) => a.start_time.localeCompare(b.start_time))
     })
     return record
@@ -314,6 +366,33 @@ export default function AgendaPage() {
     if (!activeBranch) return barbers
     return barbers.filter(b => !b.branches || b.branches.some((br: any) => br.id === activeBranch.id) || (b.branch_ids ?? []).includes(activeBranch.id))
   }, [barbers, activeBranch])
+
+  const calendarResources = useMemo<CalendarResource[]>(() => {
+    if (isBarber) {
+      return [{
+        id: user?.barber_id ?? 'mine',
+        name: user?.name ?? 'Mi agenda',
+      }]
+    }
+
+    const resources = new Map<string, string>()
+    filteredBarbers.forEach(barber => resources.set(barber.id, barber.name))
+    appointments.forEach(appointment => {
+      if (appointment.barber_id) {
+        resources.set(appointment.barber_id, appointment.barber?.name ?? 'Barbero')
+      }
+    })
+
+    return Array.from(resources.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [appointments, filteredBarbers, isBarber, user?.barber_id, user?.name])
+
+  const calendarBounds = useMemo(() => getCalendarBounds(appointments), [appointments])
+  const calendarHours = useMemo(() => {
+    const count = Math.ceil((calendarBounds.end - calendarBounds.start) / 60) + 1
+    return Array.from({ length: count }, (_, index) => calendarBounds.start + (index * 60))
+  }, [calendarBounds])
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -367,63 +446,37 @@ export default function AgendaPage() {
 
       {loading ? (
         <div className="flex justify-center py-20"><Spinner /></div>
-      ) : appointments.length === 0 ? (
-        <EmptyState
-          icon={<Calendar className="h-6 w-6" />}
-          title="Sin turnos en este período"
-          description="Usá 'Turno ya' para cargar uno en el momento."
-          action={
-            <Button onClick={openInstantModal}>
-              <Zap className="h-4 w-4" />
-              Turno ya
-            </Button>
-          }
-        />
       ) : view === 'day' ? (
-        <div className="space-y-3">
-          {(groupedByDay[format(currentDate, 'yyyy-MM-dd')] ?? []).map(a => (
-            <AppointmentCard
-              key={a.id}
-              appointment={a}
-              showBarber={!isBarber}
-              onOpen={() => setSelected(a)}
-              onPay={can('cash.add_movement') ? () => openPayment(a) : undefined}
-            />
-          ))}
-        </div>
+        <CalendarShell
+          empty={appointments.length === 0}
+          onCreate={openInstantModal}
+        >
+          <DayCalendar
+            date={format(currentDate, 'yyyy-MM-dd')}
+            appointments={groupedByDay[format(currentDate, 'yyyy-MM-dd')] ?? []}
+            resources={calendarResources}
+            hours={calendarHours}
+            bounds={calendarBounds}
+            showBarber={!isBarber}
+            onOpen={setSelected}
+            onPay={can('cash.add_movement') ? openPayment : undefined}
+          />
+        </CalendarShell>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {weekDays.map(day => {
-            const dateKey = format(day, 'yyyy-MM-dd')
-            const dayAppointments = groupedByDay[dateKey] ?? []
-            return (
-              <div key={dateKey} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  {format(day, 'EEE', { locale: es })}
-                </p>
-                <p className="mt-1 text-lg font-semibold text-slate-950">
-                  {format(day, 'd MMM', { locale: es })}
-                </p>
-                <div className="mt-4 space-y-3">
-                  {dayAppointments.length === 0 ? (
-                    <p className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500">Sin turnos</p>
-                  ) : (
-                    dayAppointments.map(a => (
-                      <AppointmentCard
-                        key={a.id}
-                        appointment={a}
-                        compact
-                        showBarber={!isBarber}
-                        onOpen={() => setSelected(a)}
-                        onPay={can('cash.add_movement') ? () => openPayment(a) : undefined}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <CalendarShell
+          empty={appointments.length === 0}
+          onCreate={openInstantModal}
+        >
+          <WeekCalendar
+            days={weekDays}
+            groupedByDay={groupedByDay}
+            hours={calendarHours}
+            bounds={calendarBounds}
+            showBarber={!isBarber}
+            onOpen={setSelected}
+            onPay={can('cash.add_movement') ? openPayment : undefined}
+          />
+        </CalendarShell>
       )}
 
       {/* Appointment detail modal */}
@@ -757,67 +810,235 @@ export default function AgendaPage() {
   )
 }
 
-function AppointmentCard({
-  appointment,
-  showBarber,
-  onOpen,
-  onPay,
-  compact,
+function CalendarShell({
+  children,
+  empty,
+  onCreate,
 }: {
-  appointment: Appointment
-  showBarber: boolean
-  onOpen: () => void
-  onPay?: () => void
-  compact?: boolean
+  children: ReactNode
+  empty: boolean
+  onCreate: () => void
 }) {
   return (
-    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-base font-semibold text-slate-950">
-              {appointment.client?.first_name} {appointment.client?.last_name}
-            </p>
-            <Badge className={STATUS_CONFIG[appointment.status].color}>
-              {STATUS_CONFIG[appointment.status].label}
-            </Badge>
-            {appointment.payment && (
-              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">Cobrado</Badge>
-            )}
+    <div className="space-y-4">
+      {empty && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-stone-300 bg-white/70 px-4 py-4 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+          <span>No hay turnos operativos en este período.</span>
+          <Button size="sm" onClick={onCreate}>
+            <Zap className="h-4 w-4" />
+            Turno ya
+          </Button>
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+function CalendarTimeColumn({
+  hours,
+  bounds,
+}: {
+  hours: number[]
+  bounds: { start: number; end: number }
+}) {
+  const height = ((bounds.end - bounds.start) / 60) * HOUR_HEIGHT
+
+  return (
+    <div className="relative border-r border-stone-200 bg-stone-50" style={{ height }}>
+      {hours.map(hour => {
+        const top = ((hour - bounds.start) / 60) * HOUR_HEIGHT
+        return (
+          <div key={hour} className="absolute left-0 right-0 -translate-y-2 px-3 text-right text-[11px] font-semibold text-stone-400" style={{ top }}>
+            {fromMinutes(hour)}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-            <span className="inline-flex items-center gap-1.5">
-              <Clock3 className="h-4 w-4" />
-              {appointment.start_time.slice(0, 5)}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Calendar className="h-4 w-4" />
-              {appointment.service?.name}
-            </span>
-            {showBarber && (
-              <span className="inline-flex items-center gap-1.5">
-                <UserRound className="h-4 w-4" />
-                {appointment.barber?.name}
-              </span>
-            )}
+        )
+      })}
+    </div>
+  )
+}
+
+function CalendarLines({
+  hours,
+  bounds,
+}: {
+  hours: number[]
+  bounds: { start: number; end: number }
+}) {
+  return (
+    <>
+      {hours.map(hour => {
+        const top = ((hour - bounds.start) / 60) * HOUR_HEIGHT
+        return <div key={hour} className="absolute left-0 right-0 border-t border-stone-100" style={{ top }} />
+      })}
+    </>
+  )
+}
+
+function DayCalendar({
+  appointments,
+  resources,
+  hours,
+  bounds,
+  showBarber,
+  onOpen,
+}: {
+  date: string
+  appointments: Appointment[]
+  resources: CalendarResource[]
+  hours: number[]
+  bounds: { start: number; end: number }
+  showBarber: boolean
+  onOpen: (appointment: Appointment) => void
+  onPay?: (appointment: Appointment) => void
+}) {
+  const safeResources = resources.length > 0 ? resources : [{ id: 'agenda', name: 'Agenda' }]
+  const height = ((bounds.end - bounds.start) / 60) * HOUR_HEIGHT
+  const gridTemplateColumns = `72px repeat(${safeResources.length}, minmax(190px, 1fr))`
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <div className="min-w-[720px]" style={{ width: safeResources.length > 3 ? `${72 + safeResources.length * 220}px` : undefined }}>
+          <div className="grid border-b border-stone-200 bg-stone-50" style={{ gridTemplateColumns }}>
+            <div className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">Hora</div>
+            {safeResources.map(resource => (
+              <div key={resource.id} className="border-l border-stone-200 px-4 py-3">
+                <p className="truncate text-sm font-semibold text-stone-950">{resource.name}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid" style={{ gridTemplateColumns }}>
+            <CalendarTimeColumn hours={hours} bounds={bounds} />
+            {safeResources.map(resource => {
+              const columnAppointments = appointments.filter(appointment => {
+                if (resource.id === 'agenda') return true
+                return appointment.barber_id === resource.id
+              })
+
+              return (
+                <div key={resource.id} className="relative border-l border-stone-100" style={{ height }}>
+                  <CalendarLines hours={hours} bounds={bounds} />
+                  {columnAppointments.map(appointment => (
+                    <CalendarEvent
+                      key={appointment.id}
+                      appointment={appointment}
+                      bounds={bounds}
+                      showBarber={showBarber}
+                      onOpen={onOpen}
+                    />
+                  ))}
+                </div>
+              )
+            })}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
 
-        {!compact && !appointment.payment && onPay && appointment.status !== 'cancelada' && (
-          <Button size="sm" onClick={onPay}>
-            <DollarSign className="h-4 w-4" />
-            Cobrar
-          </Button>
+function WeekCalendar({
+  days,
+  groupedByDay,
+  hours,
+  bounds,
+  showBarber,
+  onOpen,
+}: {
+  days: Date[]
+  groupedByDay: Record<string, Appointment[]>
+  hours: number[]
+  bounds: { start: number; end: number }
+  showBarber: boolean
+  onOpen: (appointment: Appointment) => void
+  onPay?: (appointment: Appointment) => void
+}) {
+  const height = ((bounds.end - bounds.start) / 60) * HOUR_HEIGHT
+  const gridTemplateColumns = '72px repeat(7, minmax(150px, 1fr))'
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <div className="min-w-[1120px]">
+          <div className="grid border-b border-stone-200 bg-stone-50" style={{ gridTemplateColumns }}>
+            <div className="px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">Hora</div>
+            {days.map(day => (
+              <div key={day.toISOString()} className="border-l border-stone-200 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">
+                  {format(day, 'EEE', { locale: es })}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-stone-950">{format(day, 'd MMM', { locale: es })}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid" style={{ gridTemplateColumns }}>
+            <CalendarTimeColumn hours={hours} bounds={bounds} />
+            {days.map(day => {
+              const dateKey = format(day, 'yyyy-MM-dd')
+              const dayAppointments = groupedByDay[dateKey] ?? []
+              return (
+                <div key={dateKey} className="relative border-l border-stone-100" style={{ height }}>
+                  <CalendarLines hours={hours} bounds={bounds} />
+                  {dayAppointments.map(appointment => (
+                    <CalendarEvent
+                      key={appointment.id}
+                      appointment={appointment}
+                      bounds={bounds}
+                      showBarber={showBarber}
+                      onOpen={onOpen}
+                    />
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CalendarEvent({
+  appointment,
+  bounds,
+  showBarber,
+  onOpen,
+}: {
+  appointment: Appointment
+  bounds: { start: number; end: number }
+  showBarber: boolean
+  onOpen: (appointment: Appointment) => void
+}) {
+  const { top, height } = getEventStyle(appointment, bounds)
+  const clientName = `${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || 'Cliente'
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(appointment)}
+      className="absolute left-2 right-2 overflow-hidden rounded-xl border border-lime-200 bg-lime-50 px-3 py-2 text-left shadow-sm transition hover:border-lime-300 hover:bg-lime-100 focus:outline-none focus:ring-2 focus:ring-stone-950/20"
+      style={{ top, height }}
+      title={`${clientName} · ${appointment.start_time.slice(0, 5)}-${appointment.end_time.slice(0, 5)}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-bold text-stone-950">{clientName}</p>
+          <p className="mt-0.5 truncate text-[11px] font-semibold text-lime-800">
+            {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)}
+          </p>
+        </div>
+        {appointment.payment && (
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Pago</span>
         )}
       </div>
-
-      <button
-        onClick={onOpen}
-        className="mt-4 text-sm font-semibold text-slate-700 transition hover:text-slate-950"
-      >
-        Ver detalle →
-      </button>
-    </div>
+      <p className="mt-1 truncate text-[11px] font-medium text-stone-600">{appointment.service?.name ?? 'Servicio'}</p>
+      {showBarber && (
+        <p className="mt-0.5 truncate text-[11px] text-stone-500">{appointment.barber?.name ?? 'Barbero'}</p>
+      )}
+    </button>
   )
 }
 

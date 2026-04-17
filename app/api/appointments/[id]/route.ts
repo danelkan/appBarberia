@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendCancellationEmail } from '@/lib/emails'
-import { requireAdminAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
+import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { updateAppointmentStatusSchema } from '@/lib/validations'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
@@ -18,13 +18,11 @@ export async function PATCH(
     return rateLimitResponse(rateLimit)!
   }
 
-  // Authentication required - only admins can update status
-  const auth = await requireAdminAuth(req)
+  // Authentication required - staff can update only within their scoped agenda.
+  const auth = await requireAuth(req)
   if (!auth) {
     return unauthorizedResponse()
   }
-  const denied = requirePermission(auth, 'edit_appointments')
-  if (denied) return denied
 
   const { id } = params
 
@@ -43,9 +41,40 @@ export async function PATCH(
   }
 
   const { status } = result.data
+  const permission = status === 'cancelada' ? 'cancel_appointments' : 'edit_appointments'
+  const denied = requirePermission(auth, permission)
+  if (denied) return denied
 
   const supabase = createSupabaseAdmin()
   const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let existingQuery = supabase
+    .from('appointments')
+    .select('id, branch_id, barber_id, company_id')
+    .eq('id', id)
+
+  if (companyId) {
+    existingQuery = existingQuery.eq('company_id', companyId)
+  }
+
+  const { data: existingAppointment, error: existingError } = await existingQuery.single()
+  if (existingError || !existingAppointment) {
+    const statusCode = (existingError as { code?: string } | null)?.code === 'PGRST116' ? 404 : 500
+    return NextResponse.json({
+      error: statusCode === 404 ? 'Turno no encontrado' : existingError?.message ?? 'Turno no encontrado',
+    }, { status: statusCode })
+  }
+
+  if (auth.role !== 'superadmin' && existingAppointment.branch_id) {
+    const allowed = await canAccessBranch(auth, supabase, existingAppointment.branch_id)
+    if (!allowed) {
+      return NextResponse.json({ error: 'No tenés acceso a la sucursal de este turno' }, { status: 403 })
+    }
+  }
+
+  if (auth.role === 'barber' && existingAppointment.barber_id !== auth.barber_id) {
+    return NextResponse.json({ error: 'No podés modificar turnos de otro barbero' }, { status: 403 })
+  }
 
   let query = supabase
     .from('appointments')
@@ -100,8 +129,8 @@ export async function DELETE(
     return rateLimitResponse(rateLimit)!
   }
 
-  // Authentication required - only admins can delete
-  const auth = await requireAdminAuth(req)
+  // Authentication required - staff can delete only within their scoped agenda.
+  const auth = await requireAuth(req)
   if (!auth) {
     return unauthorizedResponse()
   }
@@ -118,6 +147,34 @@ export async function DELETE(
 
   const supabase = createSupabaseAdmin()
   const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
+
+  let existingQuery = supabase
+    .from('appointments')
+    .select('id, branch_id, barber_id, company_id')
+    .eq('id', id)
+
+  if (companyId) {
+    existingQuery = existingQuery.eq('company_id', companyId)
+  }
+
+  const { data: existingAppointment, error: existingError } = await existingQuery.single()
+  if (existingError || !existingAppointment) {
+    const statusCode = (existingError as { code?: string } | null)?.code === 'PGRST116' ? 404 : 500
+    return NextResponse.json({
+      error: statusCode === 404 ? 'Turno no encontrado' : existingError?.message ?? 'Turno no encontrado',
+    }, { status: statusCode })
+  }
+
+  if (auth.role !== 'superadmin' && existingAppointment.branch_id) {
+    const allowed = await canAccessBranch(auth, supabase, existingAppointment.branch_id)
+    if (!allowed) {
+      return NextResponse.json({ error: 'No tenés acceso a la sucursal de este turno' }, { status: 403 })
+    }
+  }
+
+  if (auth.role === 'barber' && existingAppointment.barber_id !== auth.barber_id) {
+    return NextResponse.json({ error: 'No podés eliminar turnos de otro barbero' }, { status: 403 })
+  }
 
   let query = supabase
     .from('appointments')

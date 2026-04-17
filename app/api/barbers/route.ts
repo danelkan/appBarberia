@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAssignedBranchIdsByBarber, listVisibleBarbers } from '@/lib/barbers'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth } from '@/lib/api-auth'
-import { resolveBranchCompanyScope, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { canAccessBranch, resolveAccessibleBranchIds, resolveBranchCompanyScope, resolveCompanyId, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 import { checkRateLimit, RateLimitConfigs, rateLimitResponse, getRateLimitHeaders } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +36,16 @@ export async function GET(req: NextRequest) {
   if (auth && auth.role !== 'superadmin' && !companyId) {
     return NextResponse.json({ barbers: [] })
   }
+  if (auth && auth.role !== 'superadmin' && branchId) {
+    const branchAllowed = await canAccessBranch(auth, supabase, branchId)
+    if (!branchAllowed) {
+      return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+    }
+  }
+
+  const accessibleBranchIds = auth && auth.role !== 'superadmin'
+    ? await resolveAccessibleBranchIds(auth, supabase)
+    : null
 
   const { barbers: data, userRoles: activeRoles, branchLinks } = await listVisibleBarbers(
     supabase,
@@ -85,6 +95,9 @@ export async function GET(req: NextRequest) {
       branches,
       branch_ids: assignedBranchIds,
     }
+  }).filter(barber => {
+    if (!accessibleBranchIds || accessibleBranchIds.length === 0) return true
+    return (barber.branch_ids ?? []).some((id: string) => accessibleBranchIds.includes(id))
   })
 
   const response = NextResponse.json({ barbers })

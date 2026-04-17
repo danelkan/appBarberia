@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildCompanyScopeFilter, getSingleCompanyLegacyScope, isUuidLike } from '@/lib/tenant'
+import { buildCompanyScopeFilter, getSingleCompanyLegacyScope, isUuidLike, resolveAccessibleBranchIds } from '@/lib/tenant'
+import type { AuthRoleContext } from '@/lib/api-auth'
 
 describe('single-company legacy scope', () => {
   it('enables the legacy fallback when there is exactly one active company', () => {
@@ -50,5 +51,24 @@ describe('company identifier parsing', () => {
 
   it('does not treat slugs as UUIDs', () => {
     expect(isUuidLike('felito-studios')).toBe(false)
+  })
+})
+
+describe('branch access scope', () => {
+  it('treats explicit branch_ids as a real non-superadmin restriction', async () => {
+    const auth = {
+      role: 'admin',
+      branch_ids: ['cordon'],
+      permissions: [],
+      active: true,
+      session: { user: { id: 'u1' } },
+    } as AuthRoleContext
+    const supabase = {
+      from: () => {
+        throw new Error('explicit branch scope should not query all company branches')
+      },
+    } as any
+
+    await expect(resolveAccessibleBranchIds(auth, supabase)).resolves.toEqual(['cordon'])
   })
 })

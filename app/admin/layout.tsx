@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { Button, Spinner } from '@/components/ui'
 import { BrandLogo, BrandWordmark } from '@/components/brand-logo'
+import { PushNotificationToggle } from '@/components/push-notification-toggle'
 import { getActiveAdminNavItem, shouldCloseDrawerSwipe } from '@/lib/admin-shell'
 import { hasResolvedPermission } from '@/lib/permissions'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
@@ -466,6 +467,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   Resumen
                 </Link>
               )}
+              <PushNotificationToggle className="px-2 sm:px-3" />
               <button
                 onClick={() => setMobileOpen(current => !current)}
                 className="rounded-xl border border-stone-200 bg-white p-2 text-stone-700 shadow-sm"
@@ -528,6 +530,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                <PushNotificationToggle />
                 {!isDashboard && (
                   <Link href="/admin/dashboard" className="hidden rounded-full border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:text-stone-950 sm:inline-flex">
                     Volver a Resumen

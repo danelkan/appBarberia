@@ -3,7 +3,8 @@ import { getVisibleBarberById } from '@/lib/barbers'
 import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
-import { resolveCompanyId } from '@/lib/tenant'
+import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
+import { notifyBarberForAppointment } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +48,15 @@ export async function POST(req: NextRequest) {
 
   if (!companyId) {
     return NextResponse.json({ error: 'No se pudo resolver la empresa del usuario' }, { status: 400 })
+  }
+
+  const branchAllowed = await canAccessBranch(auth, supabase, branch_id)
+  if (!branchAllowed) {
+    return NextResponse.json({ error: 'No tenés acceso a esa sucursal' }, { status: 403 })
+  }
+
+  if (auth.role === 'barber' && barber_id !== auth.barber_id) {
+    return NextResponse.json({ error: 'No podés crear turnos para otro barbero' }, { status: 403 })
   }
 
   const [{ data: service, error: serviceError }, barber] = await Promise.all([
@@ -170,6 +180,14 @@ export async function POST(req: NextRequest) {
   if (apptError || !appointment) {
     return NextResponse.json({ error: 'Error creando turno' }, { status: 500 })
   }
+
+  notifyBarberForAppointment(supabase, {
+    appointment,
+    barber,
+    service,
+    branchId: branch_id,
+    companyId,
+  }).catch(console.error)
 
   return NextResponse.json({ appointment }, { status: 201 })
 }

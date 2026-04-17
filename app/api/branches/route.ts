@@ -60,6 +60,9 @@ export async function GET(req: NextRequest) {
       } else {
         return NextResponse.json({ branches: [] })
       }
+      if (auth.branch_ids.length > 0) {
+        query = query.in('id', auth.branch_ids)
+      }
     }
 
     const { data, error } = await query

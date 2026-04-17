@@ -3,6 +3,7 @@ import { unstable_noStore as noStore } from 'next/cache'
 import Link from 'next/link'
 import { ArrowRight, MapPin } from 'lucide-react'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { buildCompanyScopeFilter, resolveCompanyRecordByIdentifier, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
 import { BrandLogo } from '@/components/brand-logo'
 
 export const dynamic = 'force-dynamic'
@@ -13,18 +14,45 @@ export const metadata: Metadata = {
   description: 'Elegí sucursal y reservá online en Felito Barber Studio, Montevideo.',
 }
 
-export default async function HomePage() {
+interface HomePageProps {
+  searchParams: {
+    company?: string
+  }
+}
+
+export default async function HomePage({ searchParams }: HomePageProps) {
   noStore()
 
   const supabase = createSupabaseAdmin()
+  const companyParam = searchParams.company?.trim()
 
-  const { data: branches } = await supabase
-    .from('branches')
-    .select('id, name, address')
+  const { data: activeCompanies } = await supabase
+    .from('companies')
+    .select('id, slug, name')
     .eq('active', true)
-    .order('name')
+
+  const requestedCompany = companyParam
+    ? await resolveCompanyRecordByIdentifier(supabase, companyParam)
+    : null
+  const selectedCompany = requestedCompany
+    ? (activeCompanies ?? []).find(company => company.id === requestedCompany.id) ?? null
+    : (activeCompanies ?? []).length === 1 ? activeCompanies![0] : null
+
+  const companyScope = selectedCompany
+    ? await resolveSingleCompanyLegacyScope(supabase, selectedCompany.id)
+    : { companyId: null, allowLegacyUnscoped: false }
+
+  const { data: branches } = selectedCompany
+    ? await supabase
+        .from('branches')
+        .select('id, name, address')
+        .eq('active', true)
+        .or(buildCompanyScopeFilter('company_id', selectedCompany.id, companyScope.allowLegacyUnscoped))
+        .order('name')
+    : { data: [] }
 
   const hasVisibleBranches = Boolean((branches ?? []).length)
+  const publicCompanyKey = selectedCompany?.slug ?? selectedCompany?.id ?? null
 
   return (
     <main className="flex min-h-screen flex-col px-4 py-5 sm:px-6">
@@ -54,14 +82,16 @@ export default async function HomePage() {
             {!hasVisibleBranches ? (
               <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-base font-medium text-slate-700">
-                  No encontramos sucursales activas.
+                  {selectedCompany
+                    ? 'No encontramos sucursales activas.'
+                    : 'Accedé desde el enlace propio de tu barbería para ver sus sucursales.'}
                 </p>
               </div>
             ) : (
               (branches ?? []).map(branch => (
                 <Link
                   key={branch.id}
-                  href={`/reservar?branch=${branch.id}`}
+                  href={`/reservar?branch=${branch.id}${publicCompanyKey ? `&company=${encodeURIComponent(publicCompanyKey)}` : ''}`}
                   className="group flex items-center gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition duration-150 hover:border-slate-300 hover:shadow-md active:scale-[0.99]"
                 >
                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 transition group-hover:bg-slate-950 group-hover:text-white">

@@ -157,7 +157,7 @@ export async function resolveAccessibleBranchIds(
     return (branches ?? []).map((branch: { id: string }) => branch.id)
   }
 
-  if (auth.role === 'barber' && auth.branch_ids.length > 0) {
+  if (auth.branch_ids.length > 0) {
     return auth.branch_ids
   }
 

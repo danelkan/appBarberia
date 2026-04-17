@@ -3,6 +3,7 @@ import { getVisibleBarberById } from '@/lib/barbers'
 import { calcEndTime, isSlotAvailable } from '@/lib/booking-availability'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { sendBookingEmails } from '@/lib/emails'
+import { notifyBarberForAppointment } from '@/lib/push'
 import { applyAuthCookies, type AuthRoleContext, requireAuth, unauthorizedResponse } from '@/lib/api-auth'
 import { buildCompanyScopeFilter, canAccessBranch, resolveAccessibleBranchIds, resolveBranchCompanyScope, resolveCompanyId } from '@/lib/tenant'
 import { createAppointmentSchema, appointmentQuerySchema } from '@/lib/validations'
@@ -43,8 +44,11 @@ export async function GET(req: NextRequest) {
 
   // Barbers may only see their own appointments
   const effectiveBarberId = auth.role === 'barber'
-    ? (auth.barber_id ?? barberId)
+    ? auth.barber_id
     : barberId
+  if (auth.role === 'barber' && !effectiveBarberId) {
+    return applyAuthCookies(NextResponse.json({ appointments: [] }), auth)
+  }
 
   const supabase = createSupabaseAdmin()
   const companyId = auth.role === 'superadmin' ? null : await resolveCompanyId(auth, supabase)
@@ -83,7 +87,8 @@ export async function GET(req: NextRequest) {
   if (effectiveBarberId)         query = query.eq('barber_id', effectiveBarberId)
   if (allowedBranchIds)          query = query.in('branch_id', allowedBranchIds)
   else if (branchId)             query = query.eq('branch_id', branchId)
-  if (status)                    query = query.eq('status', status)
+  if (status && status !== 'all') query = query.eq('status', status)
+  if (!status)                    query = query.neq('status', 'cancelada')
 
   const { data, error } = await query
 
@@ -227,6 +232,15 @@ export async function POST(req: NextRequest) {
         companyKey: companyId,
       })
     }
+
+    notifyBarberForAppointment(supabase, {
+      appointment,
+      barber,
+      service,
+      branchId,
+      companyId,
+      client: fullClient ?? undefined,
+    }).catch(console.error)
 
     const response = NextResponse.json({ appointment, success: true })
     const headers = getRateLimitHeaders(rateLimit)
