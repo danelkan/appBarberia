@@ -507,7 +507,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 'absolute inset-y-0 left-0 w-[88%] max-w-sm overflow-hidden bg-[#fcfbf7] shadow-2xl transition-transform duration-200 ease-out',
                 mobileOpen ? 'translate-x-0' : '-translate-x-full'
               )}
-              style={{ transform: `translateX(${mobileOpen ? drawerOffset : -DRAWER_WIDTH_PX}px)` }}
+              style={mobileOpen ? { transform: `translateX(${drawerOffset}px)` } : undefined}
               onTouchStart={handleDrawerTouchStart}
               onTouchMove={handleDrawerTouchMove}
               onTouchEnd={handleDrawerTouchEnd}

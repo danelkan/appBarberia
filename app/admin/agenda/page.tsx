@@ -467,10 +467,6 @@ export default function AgendaPage() {
           subtitle={activeBranch ? activeBranch.name : undefined}
           action={
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={openInstantModal} loading={loadingMeta}>
-                <Zap className="h-4 w-4" />
-                <span className="hidden sm:inline">Turno ya</span>
-              </Button>
               <Button variant="outline" size="sm" onClick={openClientModal}>
                 <Plus className="h-4 w-4" />
                 <span className="hidden sm:inline">Cliente</span>
@@ -932,12 +928,8 @@ function CalendarShell({
   return (
     <div className="space-y-4">
       {empty && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-stone-300 bg-white/70 px-4 py-4 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+        <div className="hidden rounded-2xl border border-dashed border-stone-300 bg-white/70 px-4 py-4 text-sm text-stone-600 md:block">
           <span>No hay turnos operativos en este período.</span>
-          <Button size="sm" onClick={onCreate}>
-            <Zap className="h-4 w-4" />
-            Turno ya
-          </Button>
         </div>
       )}
       {children}
