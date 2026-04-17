@@ -9,9 +9,11 @@ import { addDays, format, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   ArrowRight,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   DollarSign,
+  Filter,
   MessageCircle,
   Plus,
   Receipt,
@@ -55,7 +57,7 @@ function buildWhatsAppUrl(rawPhone: string | null | undefined, message: string):
 
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
 const HOUR_HEIGHT = 72
-const MOBILE_HOUR_HEIGHT = 96
+const MOBILE_HOUR_HEIGHT = 104
 const DEFAULT_START_MINUTES = 8 * 60
 const DEFAULT_END_MINUTES = 21 * 60
 const MIN_EVENT_HEIGHT = 42
@@ -110,15 +112,15 @@ function getEventStyle(appointment: Appointment, bounds: { start: number; end: n
 
 function getMobileTimelineBounds(appointments: Appointment[]) {
   if (appointments.length === 0) {
-    return { start: 9 * 60, end: 18 * 60 }
+    return { start: 8 * 60, end: 21 * 60 }
   }
 
   const starts = appointments.map(appointment => toMinutes(appointment.start_time))
   const ends = appointments.map(appointment => toMinutes(appointment.end_time))
   const earliest = Math.min(...starts)
   const latest = Math.max(...ends)
-  const start = Math.max(0, Math.floor(Math.max(0, earliest - 30) / 60) * 60)
-  const end = Math.min(24 * 60, Math.max(Math.ceil((latest + 30) / 60) * 60, start + (3 * 60)))
+  const start = Math.min(DEFAULT_START_MINUTES, Math.max(0, Math.floor(Math.max(0, earliest - 30) / 60) * 60))
+  const end = Math.max(DEFAULT_END_MINUTES, Math.min(24 * 60, Math.max(Math.ceil((latest + 30) / 60) * 60, start + (3 * 60))))
 
   return { start, end }
 }
@@ -475,41 +477,43 @@ export default function AgendaPage() {
   }, [calendarBounds])
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <PageHeader
-        title={isBarber ? 'Mi agenda' : 'Agenda'}
-        subtitle={activeBranch ? activeBranch.name : undefined}
-        action={
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={openInstantModal} loading={loadingMeta}>
-              <Zap className="h-4 w-4" />
-              <span className="hidden sm:inline">Turno ya</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={openClientModal}>
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Cliente</span>
-            </Button>
-            <div className="flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-              {(['day', 'week'] as ViewMode[]).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setView(mode)}
-                  className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
-                    view === mode
-                      ? 'bg-slate-950 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
-                  }`}
-                >
-                  {mode === 'day' ? 'Día' : 'Semana'}
-                </button>
-              ))}
+    <div className="mx-auto max-w-7xl px-0 py-0 md:px-4 md:py-6 lg:px-8">
+      <div className="hidden md:block">
+        <PageHeader
+          title={isBarber ? 'Mi agenda' : 'Agenda'}
+          subtitle={activeBranch ? activeBranch.name : undefined}
+          action={
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={openInstantModal} loading={loadingMeta}>
+                <Zap className="h-4 w-4" />
+                <span className="hidden sm:inline">Turno ya</span>
+              </Button>
+              <Button variant="outline" size="sm" onClick={openClientModal}>
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Cliente</span>
+              </Button>
+              <div className="flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+                {(['day', 'week'] as ViewMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setView(mode)}
+                    className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                      view === mode
+                        ? 'bg-slate-950 text-white'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                    }`}
+                  >
+                    {mode === 'day' ? 'Día' : 'Semana'}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        }
-      />
+          }
+        />
+      </div>
 
       {/* Date navigation */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="mb-6 hidden flex-wrap items-center justify-between gap-3 rounded-[28px] border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex">
         <p className="text-base font-semibold capitalize text-slate-950">{titleDate}</p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
@@ -538,6 +542,8 @@ export default function AgendaPage() {
             groupedByDay={groupedByDay}
             showBarber={!isBarber}
             onOpen={setSelected}
+            onCreate={openInstantModal}
+            onToggleView={() => setView(current => current === 'day' ? 'week' : 'day')}
             onSelectDate={setCurrentDate}
             onTouchStart={setTouchStart}
             onTouchEnd={handleAgendaTouchEnd}
@@ -565,6 +571,8 @@ export default function AgendaPage() {
             groupedByDay={groupedByDay}
             showBarber={!isBarber}
             onOpen={setSelected}
+            onCreate={openInstantModal}
+            onToggleView={() => setView(current => current === 'day' ? 'week' : 'day')}
             onSelectDate={setCurrentDate}
             onTouchStart={setTouchStart}
             onTouchEnd={handleAgendaTouchEnd}
@@ -1001,6 +1009,8 @@ function MobileAgenda({
   groupedByDay,
   showBarber,
   onOpen,
+  onCreate,
+  onToggleView,
   onSelectDate,
   onTouchStart,
   onTouchEnd,
@@ -1011,13 +1021,14 @@ function MobileAgenda({
   groupedByDay: Record<string, Appointment[]>
   showBarber: boolean
   onOpen: (appointment: Appointment) => void
+  onCreate: () => void
+  onToggleView: () => void
   onSelectDate: (date: Date) => void
   onTouchStart: (point: { x: number; y: number }) => void
   onTouchEnd: (point: { x: number; y: number }) => void
 }) {
   const dateKey = format(currentDate, 'yyyy-MM-dd')
   const dayAppointments = groupedByDay[dateKey] ?? []
-  const totalForWeek = weekDays.reduce((sum, day) => sum + (groupedByDay[format(day, 'yyyy-MM-dd')] ?? []).length, 0)
   const bounds = getMobileTimelineBounds(dayAppointments)
   const timelineHeight = ((bounds.end - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
   const hours = Array.from(
@@ -1025,11 +1036,12 @@ function MobileAgenda({
     (_, index) => bounds.start + (index * 60)
   )
   const eventLayouts = getMobileEventLayouts(dayAppointments, bounds)
+  const monthLabel = format(currentDate, "d MMM yyyy", { locale: es })
 
   return (
-    <div className="space-y-3 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] md:hidden" style={{ touchAction: 'pan-y' }}>
+    <div className="relative min-h-[calc(100dvh-64px)] bg-white pb-[calc(env(safe-area-inset-bottom,0px)+116px)] md:hidden" style={{ touchAction: 'pan-y' }}>
       <div
-        className="rounded-[22px] border border-stone-200 bg-white px-4 py-3 shadow-sm"
+        className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-5 pb-4 pt-5 backdrop-blur"
         onTouchStart={event => {
           const touch = event.touches[0]
           if (touch) onTouchStart({ x: touch.clientX, y: touch.clientY })
@@ -1040,68 +1052,87 @@ function MobileAgenda({
         }}
         style={{ touchAction: 'pan-y' }}
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">
-              {view === 'week' ? `${totalForWeek} en la semana` : 'Agenda móvil'}
-            </p>
-            <p className="mt-0.5 truncate text-base font-semibold capitalize text-stone-950">
-              {format(currentDate, "EEEE d 'de' MMM", { locale: es })}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <CalendarDays className="h-6 w-6 shrink-0 text-stone-950" />
+            <p className="truncate text-[1.35rem] font-semibold leading-none text-stone-950">
+              {monthLabel}
             </p>
           </div>
-          <p className="shrink-0 rounded-full bg-lime-50 px-3 py-1 text-xs font-bold text-lime-700">
-            {dayAppointments.length}
-          </p>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onSelectDate(new Date())}
+              className="rounded-2xl p-2 text-stone-950 transition active:bg-stone-100"
+              aria-label="Ir a hoy"
+            >
+              <CalendarDays className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleView}
+              className="rounded-2xl p-2 text-stone-950 transition active:bg-stone-100"
+              aria-label={view === 'week' ? 'Cambiar a vista diaria' : 'Cambiar a vista semanal'}
+            >
+              <Filter className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-7 gap-1">
+          {weekDays.map(day => {
+            const key = format(day, 'yyyy-MM-dd')
+            const active = key === dateKey
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => onSelectDate(day)}
+                className="flex min-w-0 flex-col items-center gap-3 py-1 text-center transition active:scale-[0.98]"
+              >
+                <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+                  {format(day, 'EEE', { locale: es }).replace('.', '')}
+                </span>
+                <span
+                  className={cn(
+                    'flex h-14 w-14 items-center justify-center rounded-full text-base font-semibold tabular-nums transition',
+                    active
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-stone-950'
+                  )}
+                >
+                  {format(day, 'd', { locale: es })}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="mt-2 flex justify-center">
+          <ChevronRight className="h-7 w-7 rotate-90 text-stone-950" />
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ touchAction: 'pan-x pan-y' }}>
-        {weekDays.map(day => {
-          const key = format(day, 'yyyy-MM-dd')
-          const active = key === dateKey
-          const count = groupedByDay[key]?.length ?? 0
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onSelectDate(day)}
-              className={cn(
-                'min-w-[70px] rounded-2xl border px-3 py-2 text-center transition active:scale-[0.98]',
-                active
-                  ? 'border-stone-950 bg-stone-950 text-white'
-                  : 'border-stone-200 bg-white text-stone-700'
-              )}
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">
-                {format(day, 'EEE', { locale: es })}
-              </p>
-              <p className="mt-0.5 text-lg font-bold">{format(day, 'd', { locale: es })}</p>
-              <p className="text-[10px] font-semibold opacity-70">{count}</p>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="rounded-[24px] border border-stone-200 bg-white shadow-sm">
+      <div className="bg-white">
         {dayAppointments.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-stone-500">
+          <div className="px-5 py-14 text-center text-sm text-stone-500">
             Sin turnos para este día.
           </div>
         ) : (
-          <div className="px-3 pb-5 pt-4">
+          <div className="px-3 pb-7 pt-6">
             <div className="relative" style={{ height: timelineHeight }}>
               {hours.map(hour => {
                 const top = ((hour - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
                 return (
                   <div key={hour} className="absolute left-0 right-0" style={{ top }}>
-                    <p className="-translate-y-2 pr-3 text-right text-xs font-semibold tabular-nums text-stone-400" style={{ width: 52 }}>
+                    <p className="-translate-y-2 pr-3 text-right text-xl font-medium tabular-nums text-stone-400" style={{ width: 78 }}>
                       {fromMinutes(hour)}
                     </p>
-                    <div className="absolute left-[56px] right-0 top-0 border-t border-stone-100" />
+                    <div className="absolute left-[82px] right-0 top-0 border-t border-stone-200" />
+                    <div className="absolute left-[82px] right-0 top-[calc(50%+52px)] border-t border-stone-200/80" />
                   </div>
                 )
               })}
-              <div className="absolute inset-y-0 left-[56px] right-0">
+              <div className="absolute inset-y-0 left-[82px] right-0">
                 {eventLayouts.map(layout => (
                   <MobileTimelineEvent
                     key={layout.appointment.id}
@@ -1119,6 +1150,15 @@ function MobileAgenda({
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={onCreate}
+        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+28px)] right-6 z-30 flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-600 text-white shadow-[0_14px_34px_rgba(37,99,235,0.38)] transition active:scale-95"
+        aria-label="Crear turno"
+      >
+        <Plus className="h-9 w-9" />
+      </button>
     </div>
   )
 }
@@ -1150,30 +1190,28 @@ function MobileTimelineEvent({
     <button
       type="button"
       onClick={() => onOpen(appointment)}
-      className="absolute overflow-hidden rounded-2xl border border-lime-200 bg-lime-100 px-3 py-3 text-left shadow-sm ring-1 ring-lime-200/60 transition active:scale-[0.99]"
+      className="absolute overflow-hidden rounded-[18px] border border-[#b9dc56] bg-[#d9f57d] pl-5 pr-3 text-left shadow-sm transition active:scale-[0.99]"
       style={{ top, height, left, width }}
       aria-label={`${clientName}, ${appointment.start_time.slice(0, 5)} a ${appointment.end_time.slice(0, 5)}`}
     >
-      <div className="flex h-full min-w-0 flex-col">
-        <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="min-w-0 truncate text-sm font-bold text-stone-950">{clientName}</p>
-          <p className="shrink-0 text-[11px] font-bold tabular-nums text-stone-700">
-            {appointment.start_time.slice(0, 5)}
-          </p>
+      <span className="absolute inset-y-0 left-0 w-1.5 bg-[#8bc80e]" />
+      <div className="flex h-full min-w-0 gap-3 py-3">
+        <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#bee735]">
+          <span className="relative h-4 w-5 rounded-sm bg-stone-950">
+            <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-t-full border-2 border-stone-950 border-b-0" />
+          </span>
         </div>
-        <p className="mt-1 truncate text-xs font-semibold tabular-nums text-stone-700">
-          {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)}
-        </p>
-        <p className="mt-1 truncate text-xs font-medium text-stone-700">
-          {showBarber && appointment.barber?.name ? `${appointment.barber.name}: ` : ''}
-          {appointment.service?.name ?? 'Servicio'}
-        </p>
-        <div className="mt-auto flex min-w-0 items-center justify-between gap-2 pt-2">
-          <p className="truncate text-[11px] font-semibold text-lime-800">
-            {appointment.branch?.name ?? (appointment.payment ? 'Cobrado' : 'Reservado')}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="min-w-0 truncate text-[17px] font-bold leading-tight text-stone-950">{clientName}</p>
+          <p className="mt-2 truncate text-base font-medium tabular-nums leading-tight text-stone-950">
+            {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)}
           </p>
-          <p className="shrink-0 text-[11px] font-bold text-stone-800">
-            {formatPrice(price)}
+          <p className="mt-1 truncate text-[15px] font-medium leading-tight text-stone-950">
+            {showBarber && appointment.barber?.name ? `${appointment.barber.name}: ` : ''}
+            {appointment.service?.name ?? 'Servicio'}
+          </p>
+          <p className="mt-auto truncate pt-2 text-[12px] font-semibold text-stone-700">
+            {appointment.branch?.name ?? formatPrice(price)}
           </p>
         </div>
       </div>
