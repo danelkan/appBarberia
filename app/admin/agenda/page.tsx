@@ -1131,10 +1131,10 @@ function MobileAgenda({
       <button
         type="button"
         onClick={onCreate}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+28px)] right-6 z-30 flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-600 text-white shadow-[0_14px_34px_rgba(37,99,235,0.38)] transition active:scale-95"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+24px)] right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_8px_24px_rgba(37,99,235,0.35)] transition active:scale-95"
         aria-label="Crear turno"
       >
-        <Plus className="h-9 w-9" />
+        <Plus className="h-6 w-6" />
       </button>
     </div>
   )
