@@ -57,11 +57,11 @@ function buildWhatsAppUrl(rawPhone: string | null | undefined, message: string):
 
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
 const HOUR_HEIGHT = 72
-const MOBILE_HOUR_HEIGHT = 104
+const MOBILE_HOUR_HEIGHT = 64
 const DEFAULT_START_MINUTES = 8 * 60
 const DEFAULT_END_MINUTES = 21 * 60
 const MIN_EVENT_HEIGHT = 42
-const MOBILE_MIN_EVENT_HEIGHT = 72
+const MOBILE_MIN_EVENT_HEIGHT = 36
 
 interface CalendarResource {
   id: string
@@ -129,7 +129,7 @@ function getMobileEventStyle(appointment: Appointment, bounds: { start: number; 
   const start = Math.max(toMinutes(appointment.start_time), bounds.start)
   const end = Math.min(toMinutes(appointment.end_time), bounds.end)
   const top = ((start - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
-  const height = Math.max(((end - start) / 60) * MOBILE_HOUR_HEIGHT - 8, MOBILE_MIN_EVENT_HEIGHT)
+  const height = Math.max(((end - start) / 60) * MOBILE_HOUR_HEIGHT - 4, MOBILE_MIN_EVENT_HEIGHT)
   return { top, height }
 }
 
@@ -1118,21 +1118,21 @@ function MobileAgenda({
             Sin turnos para este día.
           </div>
         ) : (
-          <div className="px-3 pb-7 pt-6">
+          <div className="px-3 pb-7 pt-4">
             <div className="relative" style={{ height: timelineHeight }}>
               {hours.map(hour => {
                 const top = ((hour - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
                 return (
                   <div key={hour} className="absolute left-0 right-0" style={{ top }}>
-                    <p className="-translate-y-2 pr-3 text-right text-xl font-medium tabular-nums text-stone-400" style={{ width: 78 }}>
+                    <p className="-translate-y-[6px] pr-2 text-right text-[11px] font-medium tabular-nums text-stone-400" style={{ width: 44 }}>
                       {fromMinutes(hour)}
                     </p>
-                    <div className="absolute left-[82px] right-0 top-0 border-t border-stone-200" />
-                    <div className="absolute left-[82px] right-0 top-[calc(50%+52px)] border-t border-stone-200/80" />
+                    <div className="absolute left-[48px] right-0 top-0 border-t border-stone-200" />
+                    <div className="absolute left-[48px] right-0 top-8 border-t border-dashed border-stone-100" />
                   </div>
                 )
               })}
-              <div className="absolute inset-y-0 left-[82px] right-0">
+              <div className="absolute inset-y-0 left-[48px] right-0">
                 {eventLayouts.map(layout => (
                   <MobileTimelineEvent
                     key={layout.appointment.id}
@@ -1190,30 +1190,19 @@ function MobileTimelineEvent({
     <button
       type="button"
       onClick={() => onOpen(appointment)}
-      className="absolute overflow-hidden rounded-[18px] border border-[#b9dc56] bg-[#d9f57d] pl-5 pr-3 text-left shadow-sm transition active:scale-[0.99]"
+      className="absolute overflow-hidden rounded-r-xl border-l-[3px] border-green-500 bg-green-50 px-2 text-left transition active:scale-[0.99]"
       style={{ top, height, left, width }}
       aria-label={`${clientName}, ${appointment.start_time.slice(0, 5)} a ${appointment.end_time.slice(0, 5)}`}
     >
-      <span className="absolute inset-y-0 left-0 w-1.5 bg-[#8bc80e]" />
-      <div className="flex h-full min-w-0 gap-3 py-3">
-        <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#bee735]">
-          <span className="relative h-4 w-5 rounded-sm bg-stone-950">
-            <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-t-full border-2 border-stone-950 border-b-0" />
-          </span>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <p className="min-w-0 truncate text-[17px] font-bold leading-tight text-stone-950">{clientName}</p>
-          <p className="mt-2 truncate text-base font-medium tabular-nums leading-tight text-stone-950">
-            {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)}
-          </p>
-          <p className="mt-1 truncate text-[15px] font-medium leading-tight text-stone-950">
-            {showBarber && appointment.barber?.name ? `${appointment.barber.name}: ` : ''}
-            {appointment.service?.name ?? 'Servicio'}
-          </p>
-          <p className="mt-auto truncate pt-2 text-[12px] font-semibold text-stone-700">
-            {appointment.branch?.name ?? formatPrice(price)}
-          </p>
-        </div>
+      <div className="flex h-full flex-col justify-center gap-0.5 py-1">
+        <p className="truncate text-[12px] font-semibold leading-tight text-stone-900">{clientName}</p>
+        <p className="truncate text-[10px] leading-tight text-stone-500">
+          {appointment.start_time.slice(0, 5)}–{appointment.end_time.slice(0, 5)}
+          {appointment.service?.name ? ` · ${appointment.service.name}` : ''}
+        </p>
+        {showBarber && appointment.barber?.name && (
+          <p className="truncate text-[10px] leading-tight text-stone-400">{appointment.barber.name}</p>
+        )}
       </div>
     </button>
   )
