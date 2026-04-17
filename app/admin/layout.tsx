@@ -22,7 +22,7 @@ import {
 import { Button, Spinner } from '@/components/ui'
 import { BrandLogo, BrandWordmark } from '@/components/brand-logo'
 import { PushNotificationToggle } from '@/components/push-notification-toggle'
-import { getActiveAdminNavItem, shouldCloseDrawerSwipe } from '@/lib/admin-shell'
+import { getActiveAdminNavItem, shouldCloseDrawerSwipe, shouldOpenDrawerSwipe } from '@/lib/admin-shell'
 import { hasResolvedPermission } from '@/lib/permissions'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -70,6 +70,7 @@ const NAV_ITEMS = [
 const DRAWER_WIDTH_PX = 360
 const DRAWER_CLOSE_THRESHOLD_PX = 72
 const SWIPE_LOCK_DISTANCE_PX = 12
+const SWIPE_OPEN_EDGE_PX = 28
 const ACTIVE_BRANCH_STORAGE_PREFIX = 'app.activeBranch'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -85,11 +86,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [mobileOpen, setMobileOpen] = useState(false)
   const [branchOpen, setBranchOpen] = useState(false)
   const [drawerOffset, setDrawerOffset] = useState(0)
+  const [swipeOpenOffset, setSwipeOpenOffset] = useState(0)
   const gestureRef = useRef({
     startX: 0,
     startY: 0,
     startTime: 0,
     mode: 'idle' as 'idle' | 'pending' | 'horizontal' | 'vertical',
+    intent: 'none' as 'none' | 'open' | 'close',
   })
 
   const can = useMemo(
@@ -182,6 +185,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     setMobileOpen(false)
     setDrawerOffset(0)
+    setSwipeOpenOffset(0)
     setBranchOpen(false)
   }, [pathname])
 
@@ -231,7 +235,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   })
   const currentNavItem = getActiveAdminNavItem(pathname, visibleNav)
   const isDashboard = currentNavItem?.href === '/admin/dashboard'
-  const overlayOpacity = mobileOpen ? Math.max(0, 0.34 * (1 - (Math.abs(drawerOffset) / DRAWER_WIDTH_PX))) : 0
+  const overlayOpacity = mobileOpen
+    ? Math.max(0, 0.34 * (1 - (Math.abs(drawerOffset) / DRAWER_WIDTH_PX)))
+    : swipeOpenOffset > 0 ? 0.34 * (swipeOpenOffset / DRAWER_WIDTH_PX) : 0
   const publicCompanyKey = user?.company?.slug ?? user?.company_id ?? null
   const publicBookingHref = activeBranch
     ? `/reservar?branch=${encodeURIComponent(activeBranch.id)}${publicCompanyKey ? `&company=${encodeURIComponent(publicCompanyKey)}` : ''}`
@@ -248,7 +254,64 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setMobileOpen(false)
     setBranchOpen(false)
     setDrawerOffset(0)
+    setSwipeOpenOffset(0)
     gestureRef.current.mode = 'idle'
+    gestureRef.current.intent = 'none'
+  }
+
+  function handlePageTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    if (mobileOpen) return
+    const touch = event.touches[0]
+    if (touch.clientX > SWIPE_OPEN_EDGE_PX) return
+    gestureRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      startTime: Date.now(),
+      mode: 'pending',
+      intent: 'open',
+    }
+  }
+
+  function handlePageTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    if (mobileOpen || gestureRef.current.intent !== 'open' || gestureRef.current.mode === 'idle') return
+
+    const touch = event.touches[0]
+    const deltaX = touch.clientX - gestureRef.current.startX
+    const deltaY = touch.clientY - gestureRef.current.startY
+
+    if (gestureRef.current.mode === 'pending') {
+      if (Math.abs(deltaX) < SWIPE_LOCK_DISTANCE_PX && Math.abs(deltaY) < SWIPE_LOCK_DISTANCE_PX) return
+      gestureRef.current.mode =
+        deltaX > 0 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2
+          ? 'horizontal'
+          : 'vertical'
+    }
+
+    if (gestureRef.current.mode !== 'horizontal') return
+    event.preventDefault()
+    setSwipeOpenOffset(Math.min(Math.max(deltaX, 0), DRAWER_WIDTH_PX))
+  }
+
+  function handlePageTouchEnd() {
+    if (mobileOpen || gestureRef.current.intent !== 'open') return
+
+    const { mode, startTime } = gestureRef.current
+    const elapsed = Math.max(Date.now() - startTime, 1)
+    gestureRef.current.mode = 'idle'
+    gestureRef.current.intent = 'none'
+
+    if (mode !== 'horizontal') {
+      setSwipeOpenOffset(0)
+      return
+    }
+
+    if (shouldOpenDrawerSwipe({ swipeOffset: swipeOpenOffset, elapsedMs: elapsed })) {
+      setMobileOpen(true)
+      setSwipeOpenOffset(0)
+      return
+    }
+
+    setSwipeOpenOffset(0)
   }
 
   function handleDrawerTouchStart(event: React.TouchEvent<HTMLDivElement>) {
@@ -260,6 +323,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       startY: touch.clientY,
       startTime: Date.now(),
       mode: 'pending',
+      intent: 'close',
     }
   }
 
@@ -463,7 +527,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <AdminContext.Provider value={{ user, branches, activeBranch, setActiveBranch, can }}>
-      <div className="admin-theme min-h-screen bg-page text-stone-900">
+      <div
+        className="admin-theme min-h-screen bg-page text-stone-900"
+        onTouchStart={handlePageTouchStart}
+        onTouchMove={handlePageTouchMove}
+        onTouchEnd={handlePageTouchEnd}
+        onTouchCancel={handlePageTouchEnd}
+      >
         <div className="lg:hidden">
           <header className="safe-area-pt sticky top-0 z-40 border-b border-stone-200 bg-white/90 backdrop-blur">
             <div className="flex items-center gap-3 px-4 py-3">
@@ -513,7 +583,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 'absolute inset-y-0 left-0 w-[88%] max-w-sm overflow-hidden bg-[#fcfbf7] shadow-2xl transition-transform duration-200 ease-out',
                 mobileOpen ? 'translate-x-0' : '-translate-x-full'
               )}
-              style={{ transform: `translateX(${mobileOpen ? drawerOffset : -DRAWER_WIDTH_PX}px)` }}
+              style={{ transform: `translateX(${mobileOpen ? drawerOffset : (-DRAWER_WIDTH_PX + swipeOpenOffset)}px)` }}
               onTouchStart={handleDrawerTouchStart}
               onTouchMove={handleDrawerTouchMove}
               onTouchEnd={handleDrawerTouchEnd}
