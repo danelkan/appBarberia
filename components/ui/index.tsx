@@ -125,7 +125,7 @@ export function Modal({
             </button>
           </div>
         )}
-        <div className="overflow-y-auto overscroll-contain p-6" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="overflow-y-auto overscroll-contain p-6" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {children}
         </div>
       </div>
