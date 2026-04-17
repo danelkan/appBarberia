@@ -1096,42 +1096,36 @@ function MobileAgenda({
       </div>
 
       <div className="bg-white">
-        {dayAppointments.length === 0 ? (
-          <div className="px-5 py-14 text-center text-sm text-stone-500">
-            Sin turnos para este día.
-          </div>
-        ) : (
-          <div className="px-3 pb-7 pt-4">
-            <div className="relative" style={{ height: timelineHeight }}>
-              {hours.map(hour => {
-                const top = ((hour - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
-                return (
-                  <div key={hour} className="absolute left-0 right-0" style={{ top }}>
-                    <p className="-translate-y-[6px] pr-2 text-right text-[11px] font-medium tabular-nums text-stone-400" style={{ width: 44 }}>
-                      {fromMinutes(hour)}
-                    </p>
-                    <div className="absolute left-[48px] right-0 top-0 border-t border-stone-200" />
-                    <div className="absolute left-[48px] right-0 top-8 border-t border-dashed border-stone-100" />
-                  </div>
-                )
-              })}
-              <div className="absolute inset-y-0 left-[48px] right-0">
-                {eventLayouts.map(layout => (
-                  <MobileTimelineEvent
-                    key={layout.appointment.id}
-                    appointment={layout.appointment}
-                    showBarber={showBarber}
-                    onOpen={onOpen}
-                    top={layout.top}
-                    height={layout.height}
-                    lane={layout.lane}
-                    lanes={layout.lanes}
-                  />
-                ))}
-              </div>
+        <div className="px-3 pb-7 pt-4">
+          <div className="relative" style={{ height: timelineHeight }}>
+            {hours.map(hour => {
+              const top = ((hour - bounds.start) / 60) * MOBILE_HOUR_HEIGHT
+              return (
+                <div key={hour} className="absolute left-0 right-0" style={{ top }}>
+                  <p className="-translate-y-[6px] pr-2 text-right text-[11px] font-medium tabular-nums text-stone-400" style={{ width: 44 }}>
+                    {fromMinutes(hour)}
+                  </p>
+                  <div className="absolute left-[48px] right-0 top-0 border-t border-stone-200" />
+                  <div className="absolute left-[48px] right-0 top-8 border-t border-dashed border-stone-100" />
+                </div>
+              )
+            })}
+            <div className="absolute inset-y-0 left-[48px] right-0">
+              {eventLayouts.map(layout => (
+                <MobileTimelineEvent
+                  key={layout.appointment.id}
+                  appointment={layout.appointment}
+                  showBarber={showBarber}
+                  onOpen={onOpen}
+                  top={layout.top}
+                  height={layout.height}
+                  lane={layout.lane}
+                  lanes={layout.lanes}
+                />
+              ))}
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       <button
@@ -1177,14 +1171,16 @@ function MobileTimelineEvent({
       style={{ top, height, left, width }}
       aria-label={`${clientName}, ${appointment.start_time.slice(0, 5)} a ${appointment.end_time.slice(0, 5)}`}
     >
-      <div className="flex h-full flex-col justify-center gap-0.5 py-1">
-        <p className="truncate text-[12px] font-semibold leading-tight text-stone-900">{clientName}</p>
-        <p className="truncate text-[10px] leading-tight text-stone-500">
-          {appointment.start_time.slice(0, 5)}–{appointment.end_time.slice(0, 5)}
-          {appointment.service?.name ? ` · ${appointment.service.name}` : ''}
-        </p>
-        {showBarber && appointment.barber?.name && (
-          <p className="truncate text-[10px] leading-tight text-stone-400">{appointment.barber.name}</p>
+      <div className="flex h-full flex-col justify-center gap-0 py-0.5">
+        <p className="truncate text-[11px] font-semibold leading-tight text-stone-900">{clientName}</p>
+        {height > 40 && (
+          <p className="truncate text-[9px] leading-tight text-stone-500">
+            {appointment.start_time.slice(0, 5)}–{appointment.end_time.slice(0, 5)}
+            {appointment.service?.name ? ` · ${appointment.service.name}` : ''}
+          </p>
+        )}
+        {height > 56 && showBarber && appointment.barber?.name && (
+          <p className="truncate text-[9px] leading-tight text-stone-400">{appointment.barber.name}</p>
         )}
       </div>
     </button>
