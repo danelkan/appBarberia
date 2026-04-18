@@ -3,6 +3,7 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { createCashAuditLog, getOpenCashRegister, mapPaymentMethodToCashMethod } from '@/lib/cash'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +41,9 @@ async function resolveScopedAppointmentIds(input: {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req, 'payments:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.add_movement')
@@ -47,7 +51,8 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
-  const { appointment_id, amount, method, notes } = body
+  const { appointment_id, amount, method } = body
+  const notes = typeof body.notes === 'string' ? body.notes.replace(/<[^>]*>/g, '').trim().slice(0, 500) : null
 
   if (!appointment_id || !amount || !method) {
     return NextResponse.json({ error: 'Faltan datos del pago' }, { status: 400 })
@@ -202,6 +207,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const rl = checkRateLimit(req, 'payments:read', RateLimitConfigs.authedRead)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.view')

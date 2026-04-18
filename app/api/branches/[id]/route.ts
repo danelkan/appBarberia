@@ -18,9 +18,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
-  const { name, address, phone, active, company_id } = body
 
-  if (!name?.trim()) {
+  const stripHtml = (v: string) => v.replace(/<[^>]*>/g, '').trim()
+  const name    = typeof body.name    === 'string' ? stripHtml(body.name).slice(0, 100)  : ''
+  const address = typeof body.address === 'string' ? stripHtml(body.address).slice(0, 255) : null
+  const phone   = typeof body.phone   === 'string' ? stripHtml(body.phone).slice(0, 50)  : null
+  const { active, company_id } = body
+
+  if (!name) {
     return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
   }
 
@@ -53,9 +58,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   let query = supabase
     .from('branches')
     .update({
-      name: name.trim(),
-      address: address?.trim() || null,
-      phone: phone?.trim() || null,
+      name,
+      address: address || null,
+      phone: phone || null,
       active: Boolean(active),
       company_id: scopedCompanyId,
     })

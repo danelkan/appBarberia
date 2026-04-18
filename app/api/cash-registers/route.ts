@@ -4,10 +4,14 @@ import { buildCashSummary, createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { cashRegisterQuerySchema, openCashRegisterSchema } from '@/lib/validations'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
+  const rl = checkRateLimit(req, 'cash-registers:read', RateLimitConfigs.authedRead)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.view')
@@ -125,6 +129,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req, 'cash-registers:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.open')

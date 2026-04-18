@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 import { type AuthRoleContext, requireAuth, requireAdminAuth, requirePermission, unauthorizedResponse, forbiddenResponse, hasPermission } from '@/lib/api-auth'
 import { buildCompanyScopeFilter, resolveAccessibleBranchIds, resolveCompanyIdFromBranch, resolveSingleCompanyLegacyScope } from '@/lib/tenant'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,9 @@ async function getCompanyIdForAuth(supabase: ReturnType<typeof createSupabaseAdm
 }
 
 export async function GET(req: NextRequest) {
+  const rl = checkRateLimit(req, 'branches:read', RateLimitConfigs.read)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const { searchParams } = new URL(req.url)
   const includeInactive = searchParams.get('all') === '1'
   const companyIdParam = searchParams.get('company_id')
@@ -100,8 +104,12 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
-  const { name, address, phone, active, company_id } = body
-  if (!name?.trim()) return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
+  const stripHtml = (v: string) => v.replace(/<[^>]*>/g, '').trim()
+  const name    = typeof body.name    === 'string' ? stripHtml(body.name).slice(0, 100)  : ''
+  const address = typeof body.address === 'string' ? stripHtml(body.address).slice(0, 255) : null
+  const phone   = typeof body.phone   === 'string' ? stripHtml(body.phone).slice(0, 50)  : null
+  const { active, company_id } = body
+  if (!name) return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 })
 
   const supabase = createSupabaseAdmin()
   const scopedCompanyId = auth.role === 'superadmin'
@@ -134,7 +142,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('branches')
-    .insert({ name: name.trim(), address: address?.trim() || null, phone: phone?.trim() || null, active: active ?? true, company_id: scopedCompanyId })
+    .insert({ name, address: address || null, phone: phone || null, active: active ?? true, company_id: scopedCompanyId })
     .select('*')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

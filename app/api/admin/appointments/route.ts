@@ -6,12 +6,16 @@ import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-
 import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { notifyBarberForAppointment } from '@/lib/push'
 import { resolveServiceForBranch } from '@/lib/service-pricing'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 // POST /api/admin/appointments
-// Staff booking (admin + barbers): email is optional, no public rate limit
+// Staff booking (admin + barbers): email is optional
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req, 'admin-appointments:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'create_appointments')
@@ -20,10 +24,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
 
+  const stripHtml = (v: string) => v.replace(/<[^>]*>/g, '').trim()
+
   const {
-    client_name,
-    client_phone,
-    client_email,
     client_id: existingClientId,
     service_id,
     barber_id,
@@ -31,6 +34,9 @@ export async function POST(req: NextRequest) {
     date,
     start_time,
   } = body
+  const client_name  = typeof body.client_name  === 'string' ? stripHtml(body.client_name).slice(0, 100)  : ''
+  const client_phone = typeof body.client_phone === 'string' ? stripHtml(body.client_phone).slice(0, 50)  : ''
+  const client_email = typeof body.client_email === 'string' ? body.client_email.trim().toLowerCase() : ''
 
   if (!service_id || !barber_id || !date || !start_time) {
     return NextResponse.json({ error: 'Faltan campos obligatorios: servicio, barbero, fecha y hora' }, { status: 400 })

@@ -3,6 +3,7 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { canAccessBranch, resolveCompanyId } from '@/lib/tenant'
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +64,9 @@ function calcTotals(payments: any[]): {
 }
 
 export async function GET(req: NextRequest) {
+  const rl = checkRateLimit(req, 'payments:summary', RateLimitConfigs.authedRead)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.view')

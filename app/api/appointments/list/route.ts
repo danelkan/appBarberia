@@ -3,10 +3,16 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, unauthorizedResponse } from '@/lib/api-auth'
 import { canAccessBranch, resolveAccessibleBranchIds, resolveCompanyId } from '@/lib/tenant'
 import { appointmentQuerySchema } from '@/lib/validations'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
+const VALID_STATUSES = new Set(['all', 'pendiente', 'completada', 'cancelada'])
+
 export async function GET(req: NextRequest) {
+  const rl = checkRateLimit(req, 'appointments:list', RateLimitConfigs.authedRead)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
 
@@ -21,7 +27,8 @@ export async function GET(req: NextRequest) {
   }
   const { from, to } = queryResult.data
   const branchId = searchParams.get('branch_id') ?? undefined
-  const status = searchParams.get('status') ?? undefined
+  const statusRaw = searchParams.get('status') ?? undefined
+  const status = statusRaw && VALID_STATUSES.has(statusRaw) ? statusRaw : undefined
 
   const supabase = createSupabaseAdmin()
 

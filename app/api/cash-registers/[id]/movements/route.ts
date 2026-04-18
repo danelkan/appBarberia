@@ -4,12 +4,16 @@ import { createSupabaseAdmin } from '@/lib/supabase'
 import { createCashAuditLog } from '@/lib/cash'
 import { requireAuth, requirePermission, unauthorizedResponse } from '@/lib/api-auth'
 import { resolveCompanyId } from '@/lib/tenant'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const rl = checkRateLimit(req, 'cash-movements:read', RateLimitConfigs.authedRead)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.view')
@@ -58,6 +62,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const rl = checkRateLimit(req, 'cash-movements:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAuth(req)
   if (!auth) return unauthorizedResponse()
   const denied = requirePermission(auth, 'cash.add_movement')

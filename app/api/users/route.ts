@@ -10,6 +10,7 @@ import {
 } from '@/lib/api-auth'
 import { getRolePermissions } from '@/lib/permissions'
 import type { AppRole, Permission, WeeklyAvailability } from '@/types'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,6 +127,9 @@ function sanitizeBranchIdsForScope(branchIds: string[], scope: Awaited<ReturnTyp
 }
 
 export async function GET(req: NextRequest) {
+  const rl = checkRateLimit(req, 'users:read', RateLimitConfigs.authedRead)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
 
@@ -230,6 +234,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req, 'users:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
 
@@ -356,6 +363,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const rl = checkRateLimit(req, 'users:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
 
@@ -525,6 +535,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const rl = checkRateLimit(req, 'users:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await requireAdminAuth(req)
   if (!auth) return unauthorizedResponse()
 

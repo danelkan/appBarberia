@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
 import { applyAuthCookies } from '@/lib/api-auth'
 import { weeklyAvailabilitySchema } from '@/lib/validations'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +53,9 @@ async function findBarber(admin: ReturnType<typeof createSupabaseAdmin>, session
 
 // GET /api/barbers/me — returns the logged-in barber's own record
 export async function GET(req: NextRequest) {
+  const rl = checkRateLimit(req, 'barbers:me:read', RateLimitConfigs.authedRead)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await getSession(req)
   if (!auth.session) {
     return applyAuthCookies(NextResponse.json({ error: 'No autenticado' }, { status: 401 }), auth)
@@ -69,6 +73,9 @@ export async function GET(req: NextRequest) {
 
 // PUT /api/barbers/me — el barbero actualiza su propia disponibilidad
 export async function PUT(req: NextRequest) {
+  const rl = checkRateLimit(req, 'barbers:me:write', RateLimitConfigs.write)
+  if (!rl.allowed) return rateLimitResponse(rl)!
+
   const auth = await getSession(req)
   if (!auth.session) {
     return applyAuthCookies(NextResponse.json({ error: 'No autenticado' }, { status: 401 }), auth)
