@@ -1,5 +1,19 @@
 import { z } from 'zod'
 
+// ─── Sanitization helpers ──────────────────────────────────────────
+
+/** Strip HTML tags to prevent stored XSS in free-text fields */
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]*>/g, '').trim()
+}
+
+const safeString = (minLen: number, maxLen: number, label?: string) =>
+  z
+    .string()
+    .min(minLen, label ? `${label} es requerido` : `Mínimo ${minLen} caracteres`)
+    .max(maxLen, `Máximo ${maxLen} caracteres`)
+    .transform(stripHtml)
+
 // ─── Common Schemas ────────────────────────────────────────────────
 export const uuidSchema = z.string().uuid('Invalid ID format')
 
@@ -15,10 +29,10 @@ export const createAppointmentSchema = z.object({
   date:      dateSchema,
   startTime: timeSchema,
   client: z.object({
-    first_name: z.string().min(1, 'First name is required').max(100, 'First name too long'),
-    last_name: z.string().max(100, 'Last name too long').optional().default(''),
-    email: z.string().email('Invalid email format').max(255),
-    phone: z.string().min(1, 'Phone is required').max(50, 'Phone too long'),
+    first_name: safeString(1, 100, 'Nombre'),
+    last_name: z.string().max(100, 'Last name too long').transform(stripHtml).optional().default(''),
+    email: z.string().email('Invalid email format').max(255).toLowerCase(),
+    phone: z.string().min(1, 'Phone is required').max(50, 'Phone too long').transform(v => v.replace(/<[^>]*>/g, '').trim()),
     birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   }),
 })
@@ -53,7 +67,7 @@ export const weeklyAvailabilitySchema = z.object({
 
 // ─── Service Schemas ───────────────────────────────────────────────
 export const createServiceSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
+  name: safeString(1, 100, 'Nombre del servicio'),
   price: z.number().positive('Price must be positive').max(99999.99, 'Price too high'),
   duration_minutes: z.number().int().positive('Duration must be positive').max(480, 'Duration cannot exceed 8 hours'),
   active: z.boolean().optional().default(true),
@@ -64,7 +78,7 @@ export const createServiceSchema = z.object({
 })
 
 export const updateServiceSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: safeString(1, 100).optional(),
   price: z.number().positive().max(99999.99).optional(),
   duration_minutes: z.number().int().positive().max(480).optional(),
   active: z.boolean().optional(),
@@ -100,7 +114,7 @@ export const cashMovementSchema = z.object({
   type: z.enum(['income_service', 'income_product', 'income_extra', 'expense', 'adjustment']),
   payment_method: z.enum(['cash', 'card', 'transfer', 'other']),
   amount: z.coerce.number().positive('Amount must be greater than 0'),
-  description: z.string().min(1, 'Description is required').max(500),
+  description: safeString(1, 500, 'Descripción'),
   reference_type: z.string().max(100).optional().nullable(),
   reference_id: z.string().max(100).optional().nullable(),
 })

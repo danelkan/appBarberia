@@ -30,6 +30,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# IDE / tool-specific state (brainstorm sessions, temp files)
+.superpowers/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

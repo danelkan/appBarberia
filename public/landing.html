@@ -1,0 +1,2203 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Felito Barber Studio — Corte de Autor</title>
+  <meta name="description" content="Felito Barber Studio. Dos sedes en Montevideo. Cordón & Punta Carretas. Reservá tu turno online." />
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TYPOGRAPHY — Syne (display), Inter (body), Playfair Display (editorial)
+       Tight tracking, high-end editorial rhythm.
+  ═══════════════════════════════════════════════════════════ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet" />
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAILWIND CSS — Utility backbone. We override with custom CSS
+       for metallic effects not expressible in utility classes.
+  ═══════════════════════════════════════════════════════════ -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       GSAP + ScrollTrigger — Timeline-based orchestration.
+       ScrollTrigger enables scrub-linked parallax and reveal gates.
+  ═══════════════════════════════════════════════════════════ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       PAPER.JS — Organic fluid physics for the hero canvas.
+       We use it to render cursor-reactive metallic particle fields.
+  ═══════════════════════════════════════════════════════════ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.17/paper-full.min.js"></script>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       LUCIDE ICONS — Crisp 24px stroke icons, consistent weight.
+  ═══════════════════════════════════════════════════════════ -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+       DESIGN TOKENS — Metallic monochromatic palette.
+       Never generic — every value deliberate.
+    ═══════════════════════════════════════════════════════════ */
+    :root {
+      --bg-void:        #080809;   /* Deepest void — canvas background */
+      --bg-surface:     #0e0e10;   /* Primary surface */
+      --bg-raised:      #141416;   /* Cards, modals */
+      --bg-glass:       rgba(255, 255, 255, 0.035);
+
+      --metal-platinum: #e4e4ec;   /* Brightest highlight */
+      --metal-silver:   #b8b8c4;   /* Mid-range metallic */
+      --metal-dim:      #72727e;   /* Receded, sub-text */
+      --metal-border:   rgba(255, 255, 255, 0.07);
+      --metal-border-bright: rgba(255, 255, 255, 0.14);
+
+      --accent-gold:    #c4a35a;   /* Subtle warm accent — razor-edge */
+      --accent-gold-dim: rgba(196, 163, 90, 0.18);
+
+      --font-display:   'Syne', sans-serif;
+      --font-body:      'Inter', sans-serif;
+      --font-editorial: 'Playfair Display', serif;
+
+      /* Liquid metal gradient — used on borders and text */
+      --gradient-metal: linear-gradient(135deg, #c8c8d4 0%, #ffffff 30%, #a0a0b0 55%, #e0e0ea 80%, #b0b0bc 100%);
+      --gradient-gold:  linear-gradient(135deg, #b8943a 0%, #e8c96a 40%, #a07828 70%, #d4ad50 100%);
+    }
+
+    /* ─── RESET & BASE ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 16px; }
+
+    body {
+      background-color: var(--bg-void);
+      color: var(--metal-silver);
+      font-family: var(--font-body);
+      font-weight: 400;
+      line-height: 1.6;
+      overflow-x: hidden;
+      cursor: none; /* We replace with custom cursor */
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       GRAIN OVERLAY — SVG turbulence filter baked as a pseudo-
+       element on <body>. This single layer removes the flat
+       digital look and adds tactile depth to every surface.
+    ═══════════════════════════════════════════════════════════ */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0.028;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-size: 128px 128px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       CUSTOM CURSOR — Two-layer system:
+       1. .cursor-dot    → small precise dot (8px)
+       2. .cursor-ring   → larger lagging ring (40px)
+       mix-blend-mode: difference creates the light inversion
+       effect that makes it pop on both light and dark regions.
+    ═══════════════════════════════════════════════════════════ */
+    .cursor-dot {
+      position: fixed;
+      width: 8px;
+      height: 8px;
+      background: var(--metal-platinum);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 10000;
+      transform: translate(-50%, -50%);
+      transition: width 0.2s, height 0.2s, background 0.2s;
+      mix-blend-mode: difference;
+    }
+
+    .cursor-ring {
+      position: fixed;
+      width: 40px;
+      height: 40px;
+      border: 1px solid rgba(232, 232, 240, 0.5);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      transform: translate(-50%, -50%);
+      transition: width 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  height 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  border-color 0.3s;
+      mix-blend-mode: difference;
+    }
+
+    body.cursor-hover .cursor-dot  { width: 12px; height: 12px; background: var(--accent-gold); }
+    body.cursor-hover .cursor-ring { width: 60px; height: 60px; border-color: var(--accent-gold); }
+
+    /* ═══════════════════════════════════════════════════════════
+       PAPER.JS CANVAS — Covers the full hero. Positioned absolute
+       so content overlays it. z-index:0 keeps it behind text.
+    ═══════════════════════════════════════════════════════════ */
+    #hero-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       METALLIC TEXT GRADIENT — Applied to display headings.
+       Uses background-clip trick for true gradient text.
+    ═══════════════════════════════════════════════════════════ */
+    .text-metal {
+      background: var(--gradient-metal);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .text-gold {
+      background: var(--gradient-gold);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LIQUID METAL BUTTON — Signature interactive element.
+
+       Architecture:
+       - Outer wrapper: position:relative, overflow:visible
+       - Conic-gradient border: animated via @property or JS rotation
+       - Inner content: glassmorphism pill
+       - Hover: specular sweep + glow
+    ═══════════════════════════════════════════════════════════ */
+    @property --border-angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: false;
+    }
+
+    .btn-liquid {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 32px;
+      border-radius: 100px;
+      font-family: var(--font-display);
+      font-size: 0.875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: none;
+      text-decoration: none;
+      color: var(--metal-platinum);
+      background: var(--bg-raised);
+      border: 1px solid transparent;
+      /* Conic-gradient border via background-origin trick */
+      background-clip: padding-box;
+      isolation: isolate;
+      transition: color 0.3s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .btn-liquid::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      z-index: -1;
+      background: conic-gradient(
+        from var(--border-angle),
+        #c4a35a 0%, #ffffff 20%, #b8b8c4 40%,
+        #0e0e10 50%, #b8b8c4 60%, #ffffff 80%, #c4a35a 100%
+      );
+      animation: border-spin 4s linear infinite;
+      /* Soft outer glow */
+      filter: blur(0.5px);
+    }
+
+    .btn-liquid::after {
+      /* Inner fill to mask the conic border - creates the "pill" inset */
+      content: '';
+      position: absolute;
+      inset: 1px;
+      border-radius: calc(100px - 1px);
+      z-index: -1;
+      background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%);
+      /* Specular sheen via subtle radial highlight */
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08),
+                  inset 0 -1px 0 rgba(0,0,0,0.4);
+    }
+
+    @keyframes border-spin {
+      to { --border-angle: 360deg; }
+    }
+
+    /* Fallback for browsers without @property support */
+    @supports not (background: conic-gradient(from 1deg, red, red)) {
+      .btn-liquid::before {
+        background: linear-gradient(135deg, #c4a35a, #ffffff, #b8b8c4);
+        animation: none;
+      }
+    }
+
+    .btn-liquid:hover {
+      transform: translateY(-2px) scale(1.02);
+      color: #ffffff;
+    }
+
+    .btn-liquid:hover::after {
+      background: linear-gradient(135deg, #1e1e24 0%, #131318 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.14),
+                  inset 0 -1px 0 rgba(0,0,0,0.4),
+                  0 0 40px rgba(196, 163, 90, 0.12);
+    }
+
+    /* Ghost / secondary button */
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      border-radius: 100px;
+      font-family: var(--font-display);
+      font-size: 0.875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: none;
+      text-decoration: none;
+      color: var(--metal-dim);
+      border: 1px solid var(--metal-border-bright);
+      background: transparent;
+      transition: color 0.3s, border-color 0.3s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .btn-ghost:hover {
+      color: var(--metal-platinum);
+      border-color: rgba(255,255,255,0.28);
+      transform: translateY(-2px);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       GLASSMORPHISM CARD — Layered transparency + blur.
+       The key is the border gradient, not just the blur.
+    ═══════════════════════════════════════════════════════════ */
+    .glass-card {
+      background: var(--bg-glass);
+      border: 1px solid var(--metal-border);
+      border-radius: 20px;
+      backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.4s, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  box-shadow 0.4s;
+    }
+
+    .glass-card::before {
+      /* Top specular edge highlight — simulates real glass */
+      content: '';
+      position: absolute;
+      top: 0; left: 10%; right: 10%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+      border-radius: 50%;
+    }
+
+    .glass-card:hover {
+      border-color: var(--metal-border-bright);
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.06);
+    }
+
+    /* ─── 3D PARALLAX ON CARDS ───────────────────────────────── */
+    .parallax-card {
+      transform-style: preserve-3d;
+      perspective: 800px;
+    }
+
+    .parallax-card-inner {
+      transition: transform 0.1s ease-out;
+      transform-style: preserve-3d;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       NAVIGATION — Sticky glass nav. Starts transparent,
+       gains background on scroll (handled in GSAP).
+    ═══════════════════════════════════════════════════════════ */
+    #main-nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      padding: 0 5%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 72px;
+      transition: background 0.4s, border-color 0.4s;
+      border-bottom: 1px solid transparent;
+    }
+
+    #main-nav.scrolled {
+      background: rgba(8, 8, 9, 0.85);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border-bottom-color: var(--metal-border);
+    }
+
+    .nav-logo {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--metal-platinum);
+      text-decoration: none;
+      cursor: none;
+    }
+
+    .nav-logo span { color: var(--accent-gold); }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-family: var(--font-body);
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--metal-dim);
+      text-decoration: none;
+      cursor: none;
+      transition: color 0.3s;
+      position: relative;
+    }
+
+    .nav-links a::after {
+      content: '';
+      position: absolute;
+      bottom: -3px; left: 0;
+      width: 0; height: 1px;
+      background: var(--accent-gold);
+      transition: width 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .nav-links a:hover { color: var(--metal-silver); }
+    .nav-links a:hover::after { width: 100%; }
+
+    /* ═══════════════════════════════════════════════════════════
+       HERO SECTION
+    ═══════════════════════════════════════════════════════════ */
+    #hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      background: var(--bg-void);
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      padding: 0 5%;
+      max-width: 900px;
+    }
+
+    .hero-eyebrow {
+      font-family: var(--font-body);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--accent-gold);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      opacity: 0; /* GSAP will animate this */
+    }
+
+    .hero-eyebrow::before {
+      content: '';
+      width: 32px;
+      height: 1px;
+      background: var(--accent-gold);
+      flex-shrink: 0;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(3rem, 8vw, 7.5rem);
+      font-weight: 800;
+      line-height: 0.95;
+      letter-spacing: -0.02em;
+      margin-bottom: 32px;
+      opacity: 0; /* GSAP will animate this */
+    }
+
+    .hero-title .line { display: block; overflow: hidden; }
+    .hero-title .line-inner { display: block; } /* GSAP will slide up */
+
+    .hero-sub {
+      font-family: var(--font-editorial);
+      font-style: italic;
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: var(--metal-dim);
+      max-width: 520px;
+      line-height: 1.7;
+      margin-bottom: 48px;
+      opacity: 0; /* GSAP will animate this */
+    }
+
+    .hero-cta-group {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      opacity: 0; /* GSAP will animate this */
+    }
+
+    /* Scroll indicator */
+    .scroll-indicator {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+    }
+
+    .scroll-indicator span {
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--metal-dim);
+    }
+
+    .scroll-line {
+      width: 1px;
+      height: 48px;
+      background: linear-gradient(to bottom, var(--metal-dim), transparent);
+      animation: scroll-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes scroll-pulse {
+      0%, 100% { opacity: 0.3; transform: scaleY(1); }
+      50% { opacity: 1; transform: scaleY(0.7) translateY(12px); }
+    }
+
+    /* Location badge */
+    .location-badge {
+      position: absolute;
+      bottom: 40px;
+      right: 5%;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      opacity: 0;
+    }
+
+    .location-badge span:first-child {
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--metal-dim);
+    }
+
+    .location-badge span:last-child {
+      font-family: var(--font-editorial);
+      font-size: 0.9rem;
+      color: var(--metal-silver);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       SECTION SHARED STYLES
+    ═══════════════════════════════════════════════════════════ */
+    section { position: relative; }
+
+    .section-label {
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--accent-gold);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .section-label::before {
+      content: '';
+      width: 24px; height: 1px;
+      background: var(--accent-gold);
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      font-size: clamp(2rem, 5vw, 4rem);
+    }
+
+    /* Horizontal rule — metallic */
+    .rule-metal {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--metal-border-bright), transparent);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       ABOUT SECTION
+    ═══════════════════════════════════════════════════════════ */
+    #about {
+      padding: 160px 5%;
+      background: var(--bg-surface);
+    }
+
+    .about-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 768px) {
+      .about-grid { grid-template-columns: 1fr; gap: 48px; }
+      .nav-links { display: none; }
+    }
+
+    .about-image-wrap {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      aspect-ratio: 4/5;
+    }
+
+    .about-image-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: grayscale(100%) contrast(1.1) brightness(0.85);
+      transition: transform 6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .about-image-wrap:hover img { transform: scale(1.05); }
+
+    .about-image-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        to bottom,
+        transparent 40%,
+        rgba(8,8,9,0.7) 100%
+      );
+    }
+
+    .about-stat {
+      position: absolute;
+      bottom: 24px; left: 24px;
+      font-family: var(--font-display);
+    }
+
+    .about-stat-number {
+      font-size: 3rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .about-stat-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--metal-dim);
+      margin-top: 4px;
+    }
+
+    .about-body p {
+      color: var(--metal-dim);
+      line-height: 1.8;
+      margin-bottom: 20px;
+      font-size: 1rem;
+    }
+
+    .about-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 32px;
+    }
+
+    .about-tag {
+      padding: 6px 16px;
+      border-radius: 100px;
+      border: 1px solid var(--metal-border-bright);
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--metal-dim);
+      background: var(--bg-glass);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       SERVICES SECTION
+    ═══════════════════════════════════════════════════════════ */
+    #services {
+      padding: 160px 5%;
+      background: var(--bg-void);
+    }
+
+    .services-header {
+      max-width: 1200px;
+      margin: 0 auto 80px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .service-card {
+      padding: 36px 32px;
+      cursor: none;
+    }
+
+    .service-icon {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      border: 1px solid var(--metal-border-bright);
+      background: var(--bg-glass);
+      margin-bottom: 24px;
+      color: var(--accent-gold);
+    }
+
+    .service-name {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--metal-platinum);
+      margin-bottom: 10px;
+    }
+
+    .service-desc {
+      font-size: 0.875rem;
+      color: var(--metal-dim);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .service-price {
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .service-price-divider {
+      flex: 1;
+      height: 1px;
+      background: var(--metal-border);
+      margin: 0 12px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       LOCATIONS SECTION
+    ═══════════════════════════════════════════════════════════ */
+    #locations {
+      padding: 160px 5%;
+      background: var(--bg-surface);
+    }
+
+    .locations-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      max-width: 1200px;
+      margin: 64px auto 0;
+    }
+
+    @media (max-width: 768px) {
+      .locations-grid { grid-template-columns: 1fr; }
+    }
+
+    .location-card {
+      overflow: hidden;
+      cursor: none;
+    }
+
+    .location-img-wrap {
+      width: 100%;
+      aspect-ratio: 16/9;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .location-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: grayscale(100%) contrast(1.15) brightness(0.75);
+      transition: transform 6s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  filter 0.6s ease;
+      transform-origin: center center;
+    }
+
+    .location-card:hover .location-img-wrap img {
+      transform: scale(1.06);
+      filter: grayscale(80%) contrast(1.1) brightness(0.85);
+    }
+
+    .location-img-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 30%, rgba(8,8,9,0.85) 100%);
+    }
+
+    .location-body {
+      padding: 32px;
+    }
+
+    .location-sede {
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--accent-gold);
+      margin-bottom: 8px;
+    }
+
+    .location-name {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      color: var(--metal-platinum);
+      margin-bottom: 12px;
+    }
+
+    .location-address {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--metal-dim);
+      margin-bottom: 8px;
+    }
+
+    .location-address i, .location-address svg {
+      flex-shrink: 0;
+      color: var(--accent-gold);
+      margin-top: 2px;
+    }
+
+    .location-hours {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--metal-dim);
+      margin-bottom: 28px;
+    }
+
+    .location-hours svg { color: var(--accent-gold); flex-shrink: 0; }
+
+    /* ═══════════════════════════════════════════════════════════
+       GALLERY SECTION
+    ═══════════════════════════════════════════════════════════ */
+    #gallery {
+      padding: 160px 5%;
+      background: var(--bg-void);
+      overflow: hidden;
+    }
+
+    .gallery-strip {
+      display: flex;
+      gap: 16px;
+      margin-top: 64px;
+      /* Will animate with GSAP horizontal scroll */
+    }
+
+    .gallery-item {
+      flex-shrink: 0;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .gallery-item:nth-child(odd)  { width: 320px; height: 420px; }
+    .gallery-item:nth-child(even) { width: 260px; height: 340px; align-self: flex-end; }
+
+    .gallery-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: grayscale(100%) contrast(1.12) brightness(0.8);
+      transition: filter 0.6s ease, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .gallery-item:hover img {
+      filter: grayscale(60%) contrast(1.1) brightness(0.9);
+      transform: scale(1.04);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       MARQUEE BAND — Horizontal scrolling text band between sections.
+       Creates visual rhythm and shows brand personality.
+    ═══════════════════════════════════════════════════════════ */
+    .marquee-band {
+      overflow: hidden;
+      padding: 24px 0;
+      border-top: 1px solid var(--metal-border);
+      border-bottom: 1px solid var(--metal-border);
+      background: var(--bg-raised);
+    }
+
+    .marquee-track {
+      display: flex;
+      gap: 0;
+      white-space: nowrap;
+      animation: marquee-scroll 20s linear infinite;
+    }
+
+    .marquee-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 32px;
+      padding-right: 64px;
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--metal-dim);
+    }
+
+    .marquee-item span.dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--accent-gold);
+      flex-shrink: 0;
+    }
+
+    @keyframes marquee-scroll {
+      to { transform: translateX(-50%); }
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       FOOTER
+    ═══════════════════════════════════════════════════════════ */
+    footer {
+      padding: 80px 5% 48px;
+      background: var(--bg-void);
+      border-top: 1px solid var(--metal-border);
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 64px;
+      max-width: 1200px;
+      margin: 0 auto 64px;
+    }
+
+    @media (max-width: 768px) {
+      .footer-grid { grid-template-columns: 1fr; gap: 40px; }
+    }
+
+    .footer-brand p {
+      font-size: 0.875rem;
+      color: var(--metal-dim);
+      line-height: 1.8;
+      margin-top: 16px;
+      max-width: 320px;
+    }
+
+    .footer-heading {
+      font-family: var(--font-display);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--metal-silver);
+      margin-bottom: 20px;
+    }
+
+    .footer-links {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .footer-links a {
+      font-size: 0.875rem;
+      color: var(--metal-dim);
+      text-decoration: none;
+      cursor: none;
+      transition: color 0.3s;
+    }
+
+    .footer-links a:hover { color: var(--metal-silver); }
+
+    .footer-bottom {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-top: 32px;
+      border-top: 1px solid var(--metal-border);
+    }
+
+    .footer-bottom p {
+      font-size: 0.75rem;
+      color: var(--metal-dim);
+      letter-spacing: 0.05em;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       REVEAL ANIMATION CLASSES — Initial state.
+       GSAP ScrollTrigger will animate these to their final state.
+    ═══════════════════════════════════════════════════════════ */
+    .reveal-up {
+      opacity: 0;
+      transform: translateY(48px);
+    }
+
+    .reveal-left {
+      opacity: 0;
+      transform: translateX(-48px);
+    }
+
+    .reveal-right {
+      opacity: 0;
+      transform: translateX(48px);
+    }
+
+    .reveal-scale {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+
+    /* Chromatic aberration shimmer on hero title */
+    .chroma-text {
+      position: relative;
+    }
+
+    .chroma-text::before,
+    .chroma-text::after {
+      content: attr(data-text);
+      position: absolute;
+      inset: 0;
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      letter-spacing: inherit;
+      line-height: inherit;
+    }
+
+    .chroma-text::before {
+      color: rgba(196, 163, 90, 0.25);
+      transform: translateX(-2px);
+      clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+    }
+
+    .chroma-text::after {
+      color: rgba(160, 160, 200, 0.2);
+      transform: translateX(2px);
+      clip-path: polygon(0 45%, 100% 45%, 100% 100%, 0 100%);
+    }
+
+    /* Iridescent shimmer keyframe */
+    @keyframes iridescent-shift {
+      0%   { filter: hue-rotate(0deg) brightness(1); }
+      50%  { filter: hue-rotate(20deg) brightness(1.05); }
+      100% { filter: hue-rotate(0deg) brightness(1); }
+    }
+
+    .iridescent {
+      animation: iridescent-shift 8s ease-in-out infinite;
+    }
+
+    /* ─── NUMBER COUNTER ANIMATION ──────────────────────────── */
+    .counter { display: inline-block; }
+
+    /* ─── DIVIDER LINE ANIMATED ─────────────────────────────── */
+    .animated-rule {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-gold), transparent);
+      transform-origin: left;
+      transform: scaleX(0);
+    }
+
+    /* ─── STATUS BADGE ──────────────────────────────────────── */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      border: 1px solid rgba(74, 222, 128, 0.2);
+      background: rgba(74, 222, 128, 0.06);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #6ee7a0;
+    }
+
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #4ade80;
+      animation: pulse-green 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-green {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+      50% { box-shadow: 0 0 0 4px rgba(74, 222, 128, 0); }
+    }
+
+    /* ─── MOBILE MENU BUTTON ────────────────────────────────── */
+    .nav-mobile-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--metal-silver);
+      cursor: none;
+    }
+
+    @media (max-width: 768px) {
+      .nav-mobile-btn { display: flex; }
+    }
+
+    /* ─── SMOOTH SCROLLBAR AESTHETIC ───────────────────────── */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: var(--bg-void); }
+    ::-webkit-scrollbar-thumb { background: var(--metal-dim); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--metal-silver); }
+
+    /* ─── SELECTION COLOR ───────────────────────────────────── */
+    ::selection { background: rgba(196, 163, 90, 0.2); color: var(--metal-platinum); }
+
+  </style>
+
+  <script>
+    // Configure Tailwind with our custom tokens
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'metal': {
+              'platinum': '#e4e4ec',
+              'silver':   '#b8b8c4',
+              'dim':      '#72727e',
+            },
+            'bg': {
+              'void':    '#080809',
+              'surface': '#0e0e10',
+              'raised':  '#141416',
+            },
+            'accent': {
+              'gold':    '#c4a35a',
+            },
+          },
+        },
+      },
+    }
+  </script>
+</head>
+
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CUSTOM CURSOR — Two-layer precision cursor system.
+       Both layers are positioned via JS mousemove event.
+       The ring lags behind using lerp in the RAF loop.
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="cursor-dot"  id="cursor-dot"></div>
+  <div class="cursor-ring" id="cursor-ring"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       NAVIGATION
+  ═══════════════════════════════════════════════════════════ -->
+  <nav id="main-nav" role="navigation" aria-label="Navegación principal">
+    <a href="#hero" class="nav-logo">Felito<span>.</span></a>
+
+    <ul class="nav-links">
+      <li><a href="#about">Nosotros</a></li>
+      <li><a href="#services">Servicios</a></li>
+      <li><a href="#locations">Sedes</a></li>
+      <li><a href="#gallery">Galería</a></li>
+    </ul>
+
+    <a href="#locations" class="btn-liquid" style="padding: 10px 22px; font-size: 0.75rem;">
+      Reservar turno
+    </a>
+
+    <button class="nav-mobile-btn" aria-label="Menú">
+      <i data-lucide="menu" width="20" height="20"></i>
+    </button>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       HERO SECTION
+       Paper.js reactive particle field lives on #hero-canvas.
+       Text content overlays with z-index: 2.
+  ═══════════════════════════════════════════════════════════ -->
+  <section id="hero" aria-labelledby="hero-title">
+
+    <!-- Paper.js canvas fills the entire hero bg -->
+    <canvas id="hero-canvas" aria-hidden="true"></canvas>
+
+    <!-- Radial vignette over canvas for focus -->
+    <div aria-hidden="true" style="
+      position: absolute; inset: 0; z-index: 1;
+      background: radial-gradient(ellipse 80% 60% at 50% 50%, transparent 40%, rgba(8,8,9,0.7) 100%);
+    "></div>
+
+    <div class="hero-content">
+      <p class="hero-eyebrow" id="hero-eyebrow">
+        Establecido en Montevideo, Uruguay
+      </p>
+
+      <h1 class="hero-title" id="hero-title">
+        <span class="line">
+          <span class="line-inner text-metal chroma-text" data-text="El Arte">El Arte</span>
+        </span>
+        <span class="line" style="margin-left: 6vw;">
+          <span class="line-inner text-metal iridescent" data-text="del Corte">del Corte</span>
+        </span>
+        <span class="line" style="margin-left: 1vw;">
+          <span class="line-inner" style="color: var(--metal-dim);">Perfecto.</span>
+        </span>
+      </h1>
+
+      <p class="hero-sub">
+        Donde la navaja se convierte en instrumento, y cada corte es una declaración.
+        Dos sedes. Un solo estándar de excelencia.
+      </p>
+
+      <div class="hero-cta-group">
+        <a href="#locations" class="btn-liquid">
+          <i data-lucide="calendar" width="16" height="16"></i>
+          Reservar turno
+        </a>
+        <a href="#services" class="btn-ghost">
+          Ver servicios
+          <i data-lucide="arrow-right" width="14" height="14"></i>
+        </a>
+      </div>
+    </div>
+
+    <div class="scroll-indicator" id="scroll-indicator" aria-hidden="true">
+      <div class="scroll-line"></div>
+      <span>Scroll</span>
+    </div>
+
+    <div class="location-badge" id="location-badge" aria-hidden="true">
+      <span>Dos sedes en</span>
+      <span>Montevideo, UY</span>
+    </div>
+
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MARQUEE BAND #1 — Between hero and about
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="marquee-band" aria-hidden="true">
+    <div class="marquee-track">
+      <!-- Duplicated for seamless loop -->
+      <div class="marquee-item"><span class="dot"></span>Corte Clásico<span class="dot"></span>Degradé<span class="dot"></span>Barba Completa<span class="dot"></span>Color<span class="dot"></span>Cordón<span class="dot"></span>Punta Carretas<span class="dot"></span>Felito Barber Studio<span class="dot"></span>Est. Montevideo</div>
+      <div class="marquee-item"><span class="dot"></span>Corte Clásico<span class="dot"></span>Degradé<span class="dot"></span>Barba Completa<span class="dot"></span>Color<span class="dot"></span>Cordón<span class="dot"></span>Punta Carretas<span class="dot"></span>Felito Barber Studio<span class="dot"></span>Est. Montevideo</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       ABOUT SECTION
+  ═══════════════════════════════════════════════════════════ -->
+  <section id="about" aria-labelledby="about-title">
+    <div class="about-grid">
+
+      <!-- Image with overlaid stat counter -->
+      <div class="about-image-wrap reveal-left">
+        <img
+          src="https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=800&q=85&fit=crop"
+          alt="Barbero trabajando en Felito Barber Studio"
+          loading="lazy"
+        />
+        <div class="about-image-overlay"></div>
+        <div class="about-stat">
+          <div class="about-stat-number text-gold">
+            <span class="counter" data-target="8">0</span>+
+          </div>
+          <div class="about-stat-label">Años de experiencia</div>
+        </div>
+      </div>
+
+      <!-- Text content -->
+      <div class="about-body">
+        <p class="section-label reveal-up">Nuestra historia</p>
+        <h2 class="section-title text-metal reveal-up" id="about-title" style="margin-bottom: 32px;">
+          Más que<br/>una barbería.
+        </h2>
+
+        <p class="reveal-up" style="color: var(--metal-dim); line-height: 1.8; margin-bottom: 16px;">
+          Felito Barber Studio nació de una pasión simple: hacer que cada cliente salga
+          sintiéndose en su mejor versión. Desde nuestros inicios en Cordón hasta
+          la apertura de Punta Carretas, hemos construido una comunidad de hombres
+          que valoran el detalle.
+        </p>
+
+        <p class="reveal-up" style="color: var(--metal-dim); line-height: 1.8; margin-bottom: 32px;">
+          Cada herramienta en nuestras manos es elegida con criterio. Cada técnica,
+          perfeccionada con miles de horas de práctica. Esto no es solo un corte;
+          es un ritual.
+        </p>
+
+        <!-- Stats row -->
+        <div class="reveal-up" style="display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 36px;">
+          <div>
+            <div style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 800; line-height: 1;" class="text-metal">
+              <span class="counter" data-target="2">0</span>
+            </div>
+            <div style="font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--metal-dim); margin-top: 6px;">Sedes en Montevideo</div>
+          </div>
+          <div>
+            <div style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 800; line-height: 1;" class="text-metal">
+              <span class="counter" data-target="5000">0</span>+
+            </div>
+            <div style="font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--metal-dim); margin-top: 6px;">Clientes satisfechos</div>
+          </div>
+        </div>
+
+        <div class="animated-rule reveal-up" style="margin-bottom: 28px;"></div>
+
+        <div class="about-tags reveal-up">
+          <span class="about-tag">Precisión</span>
+          <span class="about-tag">Tradición</span>
+          <span class="about-tag">Detalle</span>
+          <span class="about-tag">Premium</span>
+          <span class="about-tag">Montevideo</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SERVICES SECTION
+  ═══════════════════════════════════════════════════════════ -->
+  <section id="services" aria-labelledby="services-title">
+    <div class="services-header">
+      <div>
+        <p class="section-label reveal-up">Lo que hacemos</p>
+        <h2 class="section-title text-metal reveal-up" id="services-title">
+          Servicios<br/>de autor.
+        </h2>
+      </div>
+      <p class="reveal-right" style="color: var(--metal-dim); max-width: 360px; font-size: 0.9rem; line-height: 1.8;">
+        Cada servicio está diseñado para potenciar lo mejor de cada cliente.
+        La navaja, el degradé, la barba — todo con la misma exigencia.
+      </p>
+    </div>
+
+    <div class="services-grid">
+
+      <!-- Service 1 -->
+      <article class="glass-card service-card parallax-card reveal-up">
+        <div class="parallax-card-inner">
+          <div class="service-icon">
+            <i data-lucide="scissors" width="20" height="20"></i>
+          </div>
+          <h3 class="service-name">Corte Clásico</h3>
+          <p class="service-desc">Corte a tijera o máquina con acabado perfecto. Incluye lavado, secado y styling profesional.</p>
+          <div class="service-price">
+            <span style="color: var(--metal-dim); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;">Desde</span>
+            <span class="service-price-divider"></span>
+            <span class="text-gold" style="font-size: 1rem;">$450</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Service 2 -->
+      <article class="glass-card service-card parallax-card reveal-up" style="transition-delay: 0.08s;">
+        <div class="parallax-card-inner">
+          <div class="service-icon">
+            <i data-lucide="zap" width="20" height="20"></i>
+          </div>
+          <h3 class="service-name">Degradé & Fade</h3>
+          <p class="service-desc">Transiciones impecables, degradados suaves de piel a cabello. La firma de nuestra técnica.</p>
+          <div class="service-price">
+            <span style="color: var(--metal-dim); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;">Desde</span>
+            <span class="service-price-divider"></span>
+            <span class="text-gold" style="font-size: 1rem;">$520</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Service 3 -->
+      <article class="glass-card service-card parallax-card reveal-up" style="transition-delay: 0.16s;">
+        <div class="parallax-card-inner">
+          <div class="service-icon">
+            <i data-lucide="sparkles" width="20" height="20"></i>
+          </div>
+          <h3 class="service-name">Barba Completa</h3>
+          <p class="service-desc">Perfilado, afeitado con navaja recta y hot towel. Un ritual de cuidado para la barba perfecta.</p>
+          <div class="service-price">
+            <span style="color: var(--metal-dim); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;">Desde</span>
+            <span class="service-price-divider"></span>
+            <span class="text-gold" style="font-size: 1rem;">$380</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Service 4 -->
+      <article class="glass-card service-card parallax-card reveal-up" style="transition-delay: 0.24s;">
+        <div class="parallax-card-inner">
+          <div class="service-icon">
+            <i data-lucide="crown" width="20" height="20"></i>
+          </div>
+          <h3 class="service-name">Combo Premium</h3>
+          <p class="service-desc">Corte + barba completa + cejas + hidratación facial. La experiencia completa Felito.</p>
+          <div class="service-price">
+            <span style="color: var(--metal-dim); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;">Desde</span>
+            <span class="service-price-divider"></span>
+            <span class="text-gold" style="font-size: 1rem;">$780</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Service 5 -->
+      <article class="glass-card service-card parallax-card reveal-up" style="transition-delay: 0.32s;">
+        <div class="parallax-card-inner">
+          <div class="service-icon">
+            <i data-lucide="droplets" width="20" height="20"></i>
+          </div>
+          <h3 class="service-name">Color & Mechas</h3>
+          <p class="service-desc">Coloración profesional, mechas balayage y decoloraciones. Consultoría de color incluida.</p>
+          <div class="service-price">
+            <span style="color: var(--metal-dim); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;">Desde</span>
+            <span class="service-price-divider"></span>
+            <span class="text-gold" style="font-size: 1rem;">$900</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Service 6 -->
+      <article class="glass-card service-card parallax-card reveal-up" style="transition-delay: 0.40s;">
+        <div class="parallax-card-inner">
+          <div class="service-icon">
+            <i data-lucide="shield-check" width="20" height="20"></i>
+          </div>
+          <h3 class="service-name">Tratamiento Capilar</h3>
+          <p class="service-desc">Hidratación profunda, keratina y reconstrucción para cabellos dañados. Resultado desde la primera sesión.</p>
+          <div class="service-price">
+            <span style="color: var(--metal-dim); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;">Desde</span>
+            <span class="service-price-divider"></span>
+            <span class="text-gold" style="font-size: 1rem;">$650</span>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MARQUEE BAND #2
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="marquee-band" aria-hidden="true" style="animation: none;">
+    <div class="marquee-track" style="animation-direction: reverse;">
+      <div class="marquee-item"><span class="dot"></span>Reservá Online<span class="dot"></span>Sin Espera<span class="dot"></span>Equipo Profesional<span class="dot"></span>Productos Premium<span class="dot"></span>Ambiente Premium<span class="dot"></span>Tu Mejor Versión<span class="dot"></span>Felito Barber Studio</div>
+      <div class="marquee-item"><span class="dot"></span>Reservá Online<span class="dot"></span>Sin Espera<span class="dot"></span>Equipo Profesional<span class="dot"></span>Productos Premium<span class="dot"></span>Ambiente Premium<span class="dot"></span>Tu Mejor Versión<span class="dot"></span>Felito Barber Studio</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       LOCATIONS SECTION — Two booking cards with Liquid Metal CTAs
+  ═══════════════════════════════════════════════════════════ -->
+  <section id="locations" aria-labelledby="locations-title">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 0 5%;">
+
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 24px;">
+        <div>
+          <p class="section-label reveal-up">Dónde encontrarnos</p>
+          <h2 class="section-title text-metal reveal-up" id="locations-title">
+            Dos sedes.<br/>Una identidad.
+          </h2>
+        </div>
+        <div class="status-badge reveal-up">
+          <span class="status-dot"></span>
+          Agenda disponible hoy
+        </div>
+      </div>
+
+    </div>
+
+    <div class="locations-grid" style="padding: 0 5%;">
+
+      <!-- SEDE 1: CORDÓN -->
+      <article class="glass-card location-card parallax-card reveal-left">
+        <div class="parallax-card-inner">
+          <div class="location-img-wrap">
+            <img
+              src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=800&q=85&fit=crop"
+              alt="Sede Cordón — Felito Barber Studio"
+              loading="lazy"
+            />
+            <div class="location-img-overlay"></div>
+          </div>
+          <div class="location-body">
+            <p class="location-sede">Sede 01</p>
+            <h3 class="location-name">Cordón</h3>
+            <div class="location-address">
+              <i data-lucide="map-pin" width="14" height="14"></i>
+              <span>Barrio Cordón, Montevideo</span>
+            </div>
+            <div class="location-hours">
+              <i data-lucide="clock" width="14" height="14"></i>
+              <span>Lun – Sáb: 9:00 – 20:00</span>
+            </div>
+            <a
+              href="https://book.weibook.co/branch/felito-barber-studio-sede-1"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-liquid"
+              style="display: inline-flex; width: 100%; justify-content: center;"
+            >
+              <i data-lucide="calendar-check" width="16" height="16"></i>
+              Reservar en Cordón
+            </a>
+          </div>
+        </div>
+      </article>
+
+      <!-- SEDE 2: PUNTA CARRETAS -->
+      <article class="glass-card location-card parallax-card reveal-right">
+        <div class="parallax-card-inner">
+          <div class="location-img-wrap">
+            <img
+              src="https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=800&q=85&fit=crop"
+              alt="Sede Punta Carretas — Felito Barber Studio"
+              loading="lazy"
+            />
+            <div class="location-img-overlay"></div>
+          </div>
+          <div class="location-body">
+            <p class="location-sede">Sede 02</p>
+            <h3 class="location-name">Punta Carretas</h3>
+            <div class="location-address">
+              <i data-lucide="map-pin" width="14" height="14"></i>
+              <span>Barrio Punta Carretas, Montevideo</span>
+            </div>
+            <div class="location-hours">
+              <i data-lucide="clock" width="14" height="14"></i>
+              <span>Lun – Sáb: 9:00 – 20:00</span>
+            </div>
+            <a
+              href="https://book.weibook.co/branch/felito-barber-studio-punta-carretas"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-liquid"
+              style="display: inline-flex; width: 100%; justify-content: center;"
+            >
+              <i data-lucide="calendar-check" width="16" height="16"></i>
+              Reservar en Punta Carretas
+            </a>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       GALLERY SECTION — Horizontal scrolling strip
+  ═══════════════════════════════════════════════════════════ -->
+  <section id="gallery" aria-label="Galería de trabajos">
+    <div style="max-width: 1200px; margin: 0 auto;">
+      <p class="section-label reveal-up">Nuestro trabajo</p>
+      <h2 class="section-title text-metal reveal-up" style="margin-bottom: 0;">
+        La navaja<br/>habla sola.
+      </h2>
+    </div>
+
+    <div class="gallery-strip" id="gallery-strip">
+      <div class="gallery-item">
+        <img src="https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=600&q=80&fit=crop" alt="Corte degradé" loading="lazy" />
+      </div>
+      <div class="gallery-item">
+        <img src="https://images.unsplash.com/photo-1605497788044-5a32c7078486?w=500&q=80&fit=crop" alt="Barba perfilada" loading="lazy" />
+      </div>
+      <div class="gallery-item">
+        <img src="https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=600&q=80&fit=crop" alt="Barbero trabajando" loading="lazy" />
+      </div>
+      <div class="gallery-item">
+        <img src="https://images.unsplash.com/photo-1622287162716-f311baa1a2b8?w=500&q=80&fit=crop" alt="Fade clásico" loading="lazy" />
+      </div>
+      <div class="gallery-item">
+        <img src="https://images.unsplash.com/photo-1614252369475-531eba835eb1?w=600&q=80&fit=crop" alt="Interior barbería" loading="lazy" />
+      </div>
+      <div class="gallery-item">
+        <img src="https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=500&q=80&fit=crop" alt="Tijeras profesionales" loading="lazy" />
+      </div>
+      <div class="gallery-item">
+        <img src="https://images.unsplash.com/photo-1572932491814-4833690788ad?w=600&q=80&fit=crop" alt="Corte moderno" loading="lazy" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CTA BAND — Full-width booking call to action
+  ═══════════════════════════════════════════════════════════ -->
+  <section style="padding: 120px 5%; background: var(--bg-raised); position: relative; overflow: hidden; border-top: 1px solid var(--metal-border); border-bottom: 1px solid var(--metal-border);">
+
+    <!-- Decorative radial glow -->
+    <div aria-hidden="true" style="
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(196,163,90,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    "></div>
+
+    <div style="max-width: 800px; margin: 0 auto; text-align: center; position: relative; z-index: 1;">
+      <p class="section-label reveal-up" style="justify-content: center; margin-bottom: 24px;">¿Listo para el cambio?</p>
+      <h2 class="reveal-up" style="
+        font-family: var(--font-editorial);
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        font-weight: 600;
+        font-style: italic;
+        color: var(--metal-platinum);
+        line-height: 1.2;
+        margin-bottom: 20px;
+      ">
+        "El estilo no se improvisa.<br/>Se construye con cada corte."
+      </h2>
+      <p class="reveal-up" style="color: var(--metal-dim); margin-bottom: 48px; font-size: 0.9rem;">
+        Elegí tu sede y reservá tu turno online en segundos.
+      </p>
+      <div class="reveal-up" style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+        <a
+          href="https://book.weibook.co/branch/felito-barber-studio-sede-1"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-liquid"
+        >
+          <i data-lucide="map-pin" width="16" height="16"></i>
+          Cordón
+        </a>
+        <a
+          href="https://book.weibook.co/branch/felito-barber-studio-punta-carretas"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-liquid"
+        >
+          <i data-lucide="map-pin" width="16" height="16"></i>
+          Punta Carretas
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       FOOTER
+  ═══════════════════════════════════════════════════════════ -->
+  <footer role="contentinfo">
+    <div class="footer-grid">
+
+      <div class="footer-brand">
+        <a href="#hero" class="nav-logo" style="display: inline-block; margin-bottom: 0;">
+          Felito<span style="color: var(--accent-gold);">.</span>
+        </a>
+        <p>
+          Barbería de autor en Montevideo. Dos sedes para servirte:
+          Cordón y Punta Carretas. Excelencia en cada corte.
+        </p>
+      </div>
+
+      <div>
+        <h4 class="footer-heading">Sedes</h4>
+        <ul class="footer-links">
+          <li><a href="https://book.weibook.co/branch/felito-barber-studio-sede-1" target="_blank" rel="noopener">Cordón — Reservar</a></li>
+          <li><a href="https://book.weibook.co/branch/felito-barber-studio-punta-carretas" target="_blank" rel="noopener">Punta Carretas — Reservar</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4 class="footer-heading">Navegación</h4>
+        <ul class="footer-links">
+          <li><a href="#about">Nosotros</a></li>
+          <li><a href="#services">Servicios</a></li>
+          <li><a href="#locations">Sedes</a></li>
+          <li><a href="#gallery">Galería</a></li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 Felito Barber Studio. Todos los derechos reservados.</p>
+      <p style="color: var(--metal-dim);">Ingeniado con precisión · Montevideo, UY</p>
+    </div>
+  </footer>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       JAVASCRIPT — All interaction, physics, and animation logic.
+       Organized into clearly labeled sections.
+  ═══════════════════════════════════════════════════════════ -->
+  <script>
+    /* ─────────────────────────────────────────────────────────
+       1. LUCIDE ICONS — Initialize after DOM is ready
+    ───────────────────────────────────────────────────────── */
+    lucide.createIcons();
+
+    /* ─────────────────────────────────────────────────────────
+       2. CUSTOM CURSOR SYSTEM
+       Two elements: dot (precise) and ring (lagging).
+       We use requestAnimationFrame with linear interpolation
+       (lerp) for the ring to create organic lag.
+    ───────────────────────────────────────────────────────── */
+    const cursorDot  = document.getElementById('cursor-dot');
+    const cursorRing = document.getElementById('cursor-ring');
+
+    let mouseX = window.innerWidth  / 2;
+    let mouseY = window.innerHeight / 2;
+    let ringX  = mouseX;
+    let ringY  = mouseY;
+
+    document.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      // Dot follows immediately — no lag
+      cursorDot.style.left = mouseX + 'px';
+      cursorDot.style.top  = mouseY + 'px';
+    });
+
+    /* Ring lags behind using lerp in the RAF loop */
+    function animateCursor() {
+      ringX += (mouseX - ringX) * 0.1; // 0.1 = lag factor
+      ringY += (mouseY - ringY) * 0.1;
+      cursorRing.style.left = ringX + 'px';
+      cursorRing.style.top  = ringY + 'px';
+      requestAnimationFrame(animateCursor);
+    }
+    animateCursor();
+
+    /* Enlarge cursor on interactive elements */
+    const interactiveEls = document.querySelectorAll('a, button, .glass-card, .parallax-card');
+    interactiveEls.forEach(el => {
+      el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+      el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       3. PAPER.JS — CURSOR-REACTIVE PARTICLE FIELD
+       Philosophy: We create a field of metallic "dust" particles.
+       Each particle has a home position. When the cursor moves
+       nearby, particles are repelled (like magnetic field lines).
+       They return home using a spring force — creating organic,
+       fluid-like motion that feels alive.
+    ───────────────────────────────────────────────────────── */
+    paper.setup('hero-canvas');
+
+    const NUM_PARTICLES = 120;
+    const REPEL_RADIUS  = 120;   // px — cursor influence radius
+    const REPEL_FORCE   = 3.5;   // strength of repulsion
+    const SPRING_FORCE  = 0.06;  // how fast particles return home
+    const DAMPING       = 0.82;  // velocity damping (0-1)
+
+    /* Metallic particle colors — platinum/silver tones */
+    const PARTICLE_COLORS = [
+      new paper.Color(0.9, 0.9, 0.93, 0.5),  // platinum
+      new paper.Color(0.72, 0.72, 0.77, 0.35), // silver
+      new paper.Color(0.77, 0.64, 0.35, 0.25), // gold accent
+      new paper.Color(0.85, 0.85, 0.90, 0.2),  // light silver
+    ];
+
+    const particles = [];
+
+    /* Seeded grid layout for particles — more intentional than random */
+    function initParticles() {
+      const cols = Math.ceil(Math.sqrt(NUM_PARTICLES * (paper.view.size.width / paper.view.size.height)));
+      const rows = Math.ceil(NUM_PARTICLES / cols);
+      const xStep = paper.view.size.width  / cols;
+      const yStep = paper.view.size.height / rows;
+
+      for (let i = 0; i < NUM_PARTICLES; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+
+        /* Jitter around grid position for organic feel */
+        const homeX = xStep * col + xStep * 0.5 + (Math.random() - 0.5) * xStep * 0.8;
+        const homeY = yStep * row + yStep * 0.5 + (Math.random() - 0.5) * yStep * 0.8;
+
+        const color  = PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)];
+        const size   = Math.random() * 1.8 + 0.4; // 0.4 – 2.2px radius
+
+        const circle = new paper.Path.Circle({
+          center: [homeX, homeY],
+          radius: size,
+          fillColor: color,
+        });
+
+        particles.push({
+          path:    circle,
+          homeX,   homeY,
+          x:       homeX,
+          y:       homeY,
+          vx:      0,
+          vy:      0,
+          size,
+        });
+      }
+    }
+
+    /* Draw connection lines between close particles — creates a mesh */
+    const connectionGroup = new paper.Group();
+
+    let cursorPaperX = -999;
+    let cursorPaperY = -999;
+
+    /* Track cursor in Paper.js coordinate space */
+    paper.view.element.addEventListener('mousemove', (e) => {
+      const rect = paper.view.element.getBoundingClientRect();
+      cursorPaperX = e.clientX - rect.left;
+      cursorPaperY = e.clientY - rect.top;
+    });
+
+    initParticles();
+
+    /* Main physics loop — runs every frame via Paper.js onFrame */
+    paper.view.onFrame = function(event) {
+      /* Clear old connection lines */
+      connectionGroup.removeChildren();
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+
+        /* Spring force toward home position */
+        const dx = p.homeX - p.x;
+        const dy = p.homeY - p.y;
+        p.vx += dx * SPRING_FORCE;
+        p.vy += dy * SPRING_FORCE;
+
+        /* Cursor repulsion — if within radius, push away */
+        const cdx = p.x - cursorPaperX;
+        const cdy = p.y - cursorPaperY;
+        const dist = Math.sqrt(cdx * cdx + cdy * cdy);
+
+        if (dist < REPEL_RADIUS && dist > 0) {
+          /* Repulsion falls off with distance (1/dist²-ish) */
+          const force = (REPEL_RADIUS - dist) / REPEL_RADIUS;
+          p.vx += (cdx / dist) * force * REPEL_FORCE;
+          p.vy += (cdy / dist) * force * REPEL_FORCE;
+        }
+
+        /* Apply damping to bleed off excess velocity */
+        p.vx *= DAMPING;
+        p.vy *= DAMPING;
+
+        /* Integrate position */
+        p.x += p.vx;
+        p.y += p.vy;
+        p.path.position = new paper.Point(p.x, p.y);
+
+        /* Draw mesh connections to nearby particles */
+        for (let j = i + 1; j < particles.length; j++) {
+          const q = particles[j];
+          const edx = p.x - q.x;
+          const edy = p.y - q.y;
+          const edist = Math.sqrt(edx * edx + edy * edy);
+          const MAX_CONN = 80; // max connection distance
+
+          if (edist < MAX_CONN) {
+            const alpha = (1 - edist / MAX_CONN) * 0.07; // very faint
+            const line = new paper.Path.Line(
+              new paper.Point(p.x, p.y),
+              new paper.Point(q.x, q.y)
+            );
+            line.strokeColor = new paper.Color(0.85, 0.85, 0.90, alpha);
+            line.strokeWidth = 0.5;
+            connectionGroup.addChild(line);
+          }
+        }
+      }
+    };
+
+    /* Resize handler — re-initialize on window resize */
+    paper.view.onResize = function() {
+      particles.forEach(p => p.path.remove());
+      particles.length = 0;
+      connectionGroup.removeChildren();
+      initParticles();
+    };
+
+    /* ─────────────────────────────────────────────────────────
+       4. GSAP REGISTRATION & HERO ENTRANCE TIMELINE
+       We build a master timeline that staggers all hero elements.
+       Line-by-line text reveal uses clipPath animation.
+    ───────────────────────────────────────────────────────── */
+    gsap.registerPlugin(ScrollTrigger);
+
+    /* Hero master timeline — fires immediately on page load */
+    const heroTL = gsap.timeline({ delay: 0.3 });
+
+    /* Eyebrow fades up */
+    heroTL.to('#hero-eyebrow', {
+      opacity: 1,
+      y: 0,
+      duration: 0.8,
+      ease: 'power3.out',
+    }, 0);
+
+    /* Hero title lines slide up from below — staggered */
+    heroTL.fromTo('.hero-title .line-inner',
+      { y: '105%' },
+      {
+        y: '0%',
+        duration: 1,
+        stagger: 0.12,
+        ease: 'power4.out',
+      },
+      0.2
+    );
+
+    /* Title wrapper fades in (avoids flash during line slide) */
+    heroTL.to('.hero-title', {
+      opacity: 1,
+      duration: 0.1,
+    }, 0.2);
+
+    /* Subtitle */
+    heroTL.to('.hero-sub', {
+      opacity: 1,
+      y: 0,
+      duration: 0.9,
+      ease: 'power3.out',
+    }, 0.7);
+
+    /* CTA group */
+    heroTL.to('.hero-cta-group', {
+      opacity: 1,
+      y: 0,
+      duration: 0.8,
+      ease: 'power3.out',
+    }, 0.9);
+
+    /* Scroll indicator */
+    heroTL.to('#scroll-indicator', {
+      opacity: 1,
+      duration: 1,
+      ease: 'power2.out',
+    }, 1.2);
+
+    /* Location badge */
+    heroTL.to('#location-badge', {
+      opacity: 1,
+      duration: 0.8,
+      ease: 'power2.out',
+    }, 1.1);
+
+    /* ─────────────────────────────────────────────────────────
+       5. NAVIGATION SCROLL STATE
+       Changes nav background on scroll using ScrollTrigger.
+    ───────────────────────────────────────────────────────── */
+    ScrollTrigger.create({
+      start: 'top -80',
+      end: '99999',
+      toggleClass: { className: 'scrolled', targets: '#main-nav' },
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       6. SCROLL-TRIGGERED REVEAL ANIMATIONS
+       Each .reveal-* class is animated to its natural state
+       when scrolled into view. Staggered children get extra delay.
+    ───────────────────────────────────────────────────────── */
+    /* Generic reveal: up */
+    gsap.utils.toArray('.reveal-up').forEach((el, i) => {
+      gsap.to(el, {
+        opacity: 1,
+        y: 0,
+        duration: 0.9,
+        ease: 'power3.out',
+        scrollTrigger: {
+          trigger: el,
+          start: 'top 88%',
+          end: 'top 60%',
+          toggleActions: 'play none none none',
+        },
+      });
+    });
+
+    /* From left */
+    gsap.utils.toArray('.reveal-left').forEach(el => {
+      gsap.to(el, {
+        opacity: 1,
+        x: 0,
+        duration: 1.1,
+        ease: 'power3.out',
+        scrollTrigger: {
+          trigger: el,
+          start: 'top 85%',
+          toggleActions: 'play none none none',
+        },
+      });
+    });
+
+    /* From right */
+    gsap.utils.toArray('.reveal-right').forEach(el => {
+      gsap.to(el, {
+        opacity: 1,
+        x: 0,
+        duration: 1.1,
+        ease: 'power3.out',
+        scrollTrigger: {
+          trigger: el,
+          start: 'top 85%',
+          toggleActions: 'play none none none',
+        },
+      });
+    });
+
+    /* Scale in */
+    gsap.utils.toArray('.reveal-scale').forEach(el => {
+      gsap.to(el, {
+        opacity: 1,
+        scale: 1,
+        duration: 1,
+        ease: 'back.out(1.4)',
+        scrollTrigger: {
+          trigger: el,
+          start: 'top 85%',
+          toggleActions: 'play none none none',
+        },
+      });
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       7. ANIMATED RULE (divider lines)
+       Scales from 0 to 1 on scrub.
+    ───────────────────────────────────────────────────────── */
+    gsap.utils.toArray('.animated-rule').forEach(el => {
+      gsap.to(el, {
+        scaleX: 1,
+        duration: 1.2,
+        ease: 'power3.out',
+        scrollTrigger: {
+          trigger: el,
+          start: 'top 90%',
+          toggleActions: 'play none none none',
+        },
+      });
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       8. NUMBER COUNTER ANIMATION
+       Counts up from 0 to target when scrolled into view.
+    ───────────────────────────────────────────────────────── */
+    gsap.utils.toArray('.counter').forEach(el => {
+      const target = parseInt(el.getAttribute('data-target'), 10);
+      ScrollTrigger.create({
+        trigger: el,
+        start: 'top 85%',
+        once: true,
+        onEnter: () => {
+          gsap.to({ val: 0 }, {
+            val: target,
+            duration: target > 100 ? 2 : 1,
+            ease: 'power2.out',
+            onUpdate: function() {
+              el.textContent = Math.round(this.targets()[0].val).toLocaleString('es-UY');
+            },
+          });
+        },
+      });
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       9. GALLERY HORIZONTAL SCROLL STRIP
+       GSAP ScrollTrigger scrub-links horizontal movement.
+       As user scrolls down, gallery moves right-to-left.
+    ───────────────────────────────────────────────────────── */
+    const galleryStrip = document.getElementById('gallery-strip');
+    if (galleryStrip) {
+      /* Calculate how far we need to scroll the strip */
+      const getGalleryDistance = () => galleryStrip.scrollWidth - window.innerWidth * 0.9;
+
+      const galleryAnim = gsap.to(galleryStrip, {
+        x: () => -getGalleryDistance(),
+        ease: 'none',
+        scrollTrigger: {
+          trigger: '#gallery',
+          start: 'top center',
+          end: () => `+=${getGalleryDistance()}`,
+          pin: true,
+          scrub: 1.5, /* scrub: 1.5 = 1.5s lag for smooth feel */
+          invalidateOnRefresh: true,
+        },
+      });
+    }
+
+    /* ─────────────────────────────────────────────────────────
+       10. 3D PARALLAX ON CARDS (mousemove tilt effect)
+       Each .parallax-card responds to mouse position within it.
+       Uses CSS perspective + rotateX/Y for the tilt illusion.
+    ───────────────────────────────────────────────────────── */
+    document.querySelectorAll('.parallax-card').forEach(card => {
+      const inner = card.querySelector('.parallax-card-inner');
+      if (!inner) return;
+
+      const MAX_TILT = 8; // degrees
+
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        /* Normalize mouse position within card: -1 to +1 */
+        const nx = ((e.clientX - rect.left) / rect.width  - 0.5) * 2;
+        const ny = ((e.clientY - rect.top)  / rect.height - 0.5) * 2;
+
+        /* rotateY = horizontal tilt, rotateX = vertical tilt (inverted) */
+        gsap.to(inner, {
+          rotateY:  nx * MAX_TILT,
+          rotateX: -ny * MAX_TILT,
+          duration: 0.3,
+          ease: 'power2.out',
+          overwrite: 'auto',
+        });
+      });
+
+      card.addEventListener('mouseleave', () => {
+        gsap.to(inner, {
+          rotateY: 0,
+          rotateX: 0,
+          duration: 0.8,
+          ease: 'elastic.out(1, 0.5)',
+          overwrite: 'auto',
+        });
+      });
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       11. PARALLAX DEPTH ON ABOUT IMAGE
+       Subtle background-position shift on scroll for depth.
+    ───────────────────────────────────────────────────────── */
+    gsap.to('.about-image-wrap img', {
+      yPercent: -8,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: '#about',
+        start: 'top bottom',
+        end: 'bottom top',
+        scrub: 1.5,
+      },
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       12. SMOOTH ANCHOR SCROLLING
+       Override default jump with smooth GSAP scroll.
+    ───────────────────────────────────────────────────────── */
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', (e) => {
+        const targetId = anchor.getAttribute('href');
+        const target = document.querySelector(targetId);
+        if (!target) return;
+        e.preventDefault();
+        gsap.to(window, {
+          duration: 1.4,
+          scrollTo: { y: target, offsetY: 72 }, /* 72px = nav height */
+          ease: 'power3.inOut',
+        });
+      });
+    });
+
+    /* Note: gsap.to(window, { scrollTo }) requires ScrollToPlugin.
+       Fallback to native smooth scroll if plugin not available. */
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', (e) => {
+        const targetId = anchor.getAttribute('href');
+        if (!targetId || targetId === '#') return;
+        const target = document.querySelector(targetId);
+        if (!target) return;
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       13. HERO TITLE CHROMATIC ABERRATION PULSE
+       Every few seconds, a subtle chroma shift animates
+       the data-text pseudo-elements for visual richness.
+    ───────────────────────────────────────────────────────── */
+    function pulseChroma() {
+      const chroma = document.querySelectorAll('.chroma-text');
+      chroma.forEach(el => {
+        /* CSS class toggle triggers the animation */
+        el.style.setProperty('--chroma-offset', `${(Math.random() * 4) - 2}px`);
+      });
+    }
+    setInterval(pulseChroma, 4000);
+
+    /* ─────────────────────────────────────────────────────────
+       14. SERVICE CARD STAGGER ON SCROLL
+       Services grid items stagger in with slight delay cascade.
+    ───────────────────────────────────────────────────────── */
+    ScrollTrigger.create({
+      trigger: '.services-grid',
+      start: 'top 80%',
+      once: true,
+      onEnter: () => {
+        gsap.from('.service-card', {
+          opacity: 0,
+          y: 60,
+          stagger: 0.08,
+          duration: 0.9,
+          ease: 'power3.out',
+        });
+      },
+    });
+
+    /* ─────────────────────────────────────────────────────────
+       15. FINAL TOUCH — Refresh ScrollTrigger after all
+       images and fonts are loaded (prevents position errors).
+    ───────────────────────────────────────────────────────── */
+    window.addEventListener('load', () => {
+      ScrollTrigger.refresh();
+    });
+
+  </script>
+</body>
+</html>

@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
 import { applyAuthCookies, resolveUserRole } from '@/lib/api-auth'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
+  const rateLimit = checkRateLimit(req, 'auth:me', RateLimitConfigs.authedRead)
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit)!
   let response = NextResponse.next({ request: req })
   const config = getSupabasePublicConfig()
 

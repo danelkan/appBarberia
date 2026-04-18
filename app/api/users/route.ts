@@ -236,9 +236,13 @@ export async function POST(req: NextRequest) {
   const denied = requirePermission(auth, 'manage_users')
   if (denied) return denied
 
-  const body        = await req.json()
+  const body        = await req.json().catch(() => null)
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
+  }
+
   const name        = String(body.name ?? '').trim()
-  const email       = String(body.email ?? '').trim().toLowerCase()
+  const emailRaw    = String(body.email ?? '').trim().toLowerCase()
   const password    = String(body.password ?? '')
   const role        = (body.role ?? 'barber') as AppRole
   const permissions = Array.isArray(body.permissions) ? body.permissions as Permission[] : []
@@ -247,8 +251,26 @@ export async function POST(req: NextRequest) {
   const appears_in_agenda = is_barber && body.appears_in_agenda !== false
   const availability = (body.availability as WeeklyAvailability | undefined) ?? DEFAULT_AVAILABILITY
 
-  if (!name || !email || !password) {
+  if (!name || !emailRaw || !password) {
     return NextResponse.json({ error: 'Nombre, email y contraseña son requeridos' }, { status: 400 })
+  }
+
+  // Validate email format
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+  if (!EMAIL_RE.test(emailRaw)) {
+    return NextResponse.json({ error: 'El email no tiene un formato válido' }, { status: 400 })
+  }
+  const email = emailRaw
+
+  // Enforce minimum password strength
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'La contraseña debe tener al menos 8 caracteres' }, { status: 400 })
+  }
+
+  // Sanitize name — strip HTML to prevent stored XSS
+  const safeName = name.replace(/<[^>]*>/g, '').slice(0, 100)
+  if (!safeName) {
+    return NextResponse.json({ error: 'El nombre no puede estar vacío' }, { status: 400 })
   }
 
   if (auth.role !== 'superadmin' && role === 'superadmin') {
@@ -270,11 +292,16 @@ export async function POST(req: NextRequest) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: name, name },
+    user_metadata: { full_name: safeName, name: safeName },
   })
 
   if (authError || !authUser.user) {
-    return NextResponse.json({ error: authError?.message || 'Error al crear usuario' }, { status: 500 })
+    // Map known Supabase errors to safe user-facing messages (avoid leaking internals)
+    const msg = authError?.message ?? ''
+    const safeMsg = msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already been registered')
+      ? 'Ya existe un usuario con ese email'
+      : 'Error al crear usuario'
+    return NextResponse.json({ error: safeMsg }, { status: authError?.status === 422 ? 409 : 500 })
   }
 
   const userId = authUser.user.id
@@ -295,7 +322,7 @@ export async function POST(req: NextRequest) {
     let reusedBarber = false
 
     try {
-      const result = await createOrReuseBarberForUser(supabase, { name, email, availability, company_id }, userId)
+      const result = await createOrReuseBarberForUser(supabase, { name: safeName, email, availability, company_id }, userId)
       barber = result.barber
       reusedBarber = result.reused
     } catch (error) {
@@ -325,7 +352,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ user: { id: userId, email, name, role, branch_ids: scopedBranchIds, company_id, is_barber, appears_in_agenda } }, { status: 201 })
+  return NextResponse.json({ user: { id: userId, email, name: safeName, role, branch_ids: scopedBranchIds, company_id, is_barber, appears_in_agenda } }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -345,8 +372,13 @@ export async function PATCH(req: NextRequest) {
   const role        = body.role as AppRole | undefined
   const permissions = Array.isArray(body.permissions) ? body.permissions as Permission[] : undefined
   const active      = typeof body.active === 'boolean' ? body.active : undefined
-  const name        = typeof body.name === 'string' ? body.name.trim() : undefined
-  const password    = typeof body.password === 'string' && body.password.trim() ? body.password.trim() : undefined
+  const nameRaw     = typeof body.name === 'string' ? body.name.trim() : undefined
+  const name        = nameRaw !== undefined ? nameRaw.replace(/<[^>]*>/g, '').slice(0, 100) : undefined
+  const passwordRaw = typeof body.password === 'string' && body.password.trim() ? body.password.trim() : undefined
+  if (passwordRaw !== undefined && passwordRaw.length < 8) {
+    return NextResponse.json({ error: 'La contraseña debe tener al menos 8 caracteres' }, { status: 400 })
+  }
+  const password = passwordRaw
   const branch_ids  = body.branch_ids !== undefined ? sanitizeBranchIds(body.branch_ids) : undefined
   const is_barber   = typeof body.is_barber === 'boolean' ? body.is_barber : undefined
   const appears_in_agenda = typeof body.appears_in_agenda === 'boolean' ? body.appears_in_agenda : undefined

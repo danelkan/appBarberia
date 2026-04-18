@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createSupabaseAdmin, getSupabasePublicConfig } from '@/lib/supabase'
 import { applyAuthCookies, resolveUserRole } from '@/lib/api-auth'
+import { checkRateLimit, RateLimitConfigs, rateLimitResponse } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
+  // Protect against enumeration / session-probing abuse
+  const rateLimit = checkRateLimit(req, 'auth:bootstrap', RateLimitConfigs.authedRead)
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit)!
+
   let response = NextResponse.next({ request: req })
   const config = getSupabasePublicConfig()
 
@@ -41,7 +46,12 @@ export async function GET(req: NextRequest) {
     company_id
       ? admin.from('companies').select('id, name, slug').eq('id', company_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    admin.from('branches').select('id, name, address, company_id').order('name'),
+    // Scope all-branches to the caller's company — superadmin gets all
+    role === 'superadmin'
+      ? admin.from('branches').select('id, name, address, company_id').order('name')
+      : company_id
+        ? admin.from('branches').select('id, name, address, company_id').eq('company_id', company_id).order('name')
+        : Promise.resolve({ data: [] }),
   ])
 
   return applyAuthCookies(

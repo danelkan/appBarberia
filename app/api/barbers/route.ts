@@ -89,8 +89,12 @@ export async function GET(req: NextRequest) {
       .map(branchId => branchesById.get(branchId))
       .filter(Boolean)
 
+    // Never expose barber email to unauthenticated (public booking) callers
+    const { email: _email, ...barberPublic } = barber as typeof barber & { email?: unknown }
+    const barberData = auth ? barber : barberPublic
+
     return {
-      ...barber,
+      ...barberData,
       role: rolesByBarberId.get(barber.id) ?? 'barber',
       branches,
       branch_ids: assignedBranchIds,
