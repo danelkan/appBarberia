@@ -13,10 +13,8 @@ interface BrandWordmarkProps {
   className?: string
 }
 
-/**
- * Ícono de marca de Felito Barber Studio.
- * Usa la marca compacta derivada del logo oficial para tamaños chicos.
- */
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Barbería'
+
 export function BrandLogo({ size = 44, className }: BrandLogoProps) {
   return (
     <div
@@ -24,8 +22,8 @@ export function BrandLogo({ size = 44, className }: BrandLogoProps) {
       style={{ width: size, height: size }}
     >
       <Image
-        src="/felito-mark.svg"
-        alt="Felito Barber Studio"
+        src="/brand-mark.svg"
+        alt={APP_NAME}
         width={size}
         height={size}
         priority
@@ -38,8 +36,8 @@ export function BrandLogo({ size = 44, className }: BrandLogoProps) {
 export function BrandWordmark({ width = 180, height = 70, className }: BrandWordmarkProps) {
   return (
     <Image
-      src="/felito-wordmark.png"
-      alt="Felito Barber Studio"
+      src="/brand-wordmark.png"
+      alt={APP_NAME}
       width={width}
       height={height}
       priority

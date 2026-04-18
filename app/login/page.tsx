@@ -45,7 +45,7 @@ export default function LoginPage() {
         <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <section className="rounded-[36px] border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
             <BrandLogo size={56} className="rounded-3xl" />
-            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Felito Barber Studio</p>
+            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{process.env.NEXT_PUBLIC_APP_NAME ?? 'Barbería'}</p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
               Acceso de staff y administración.
             </h1>

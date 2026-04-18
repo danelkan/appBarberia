@@ -42,7 +42,7 @@ export default function ComprobantePage() {
     if (!payment) return
     const appt = payment.appointment
     const shareData = {
-      title: `Comprobante Felito · ${payment.receipt_number}`,
+      title: `Comprobante · ${payment.receipt_number}`,
       text: `Pago de ${formatPrice(payment.amount)} por ${appt.service.name} — ${appt.client.first_name} ${appt.client.last_name}`,
       url: window.location.href,
     }
@@ -146,7 +146,7 @@ export default function ComprobantePage() {
           <div className="mx-auto mb-4 w-14 h-14">
             <BrandLogo size={56} className="rounded-2xl" />
           </div>
-          <h1 className="font-serif text-2xl text-cream">Felito Barber Studio</h1>
+          <h1 className="font-serif text-2xl text-cream">{process.env.NEXT_PUBLIC_APP_NAME ?? 'Barbería'}</h1>
           {appt.branch && (
             <p className="flex items-center justify-center gap-1 text-xs text-cream/40 mt-1.5 font-medium">
               <MapPin className="w-3 h-3" />

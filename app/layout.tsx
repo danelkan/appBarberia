@@ -23,35 +23,39 @@ export const viewport: Viewport = {
   userScalable: false,
 }
 
+const APP_NAME     = process.env.NEXT_PUBLIC_APP_NAME ?? 'Barbería'
+const APP_URL      = process.env.NEXT_PUBLIC_APP_URL  ?? 'https://mibarberia.com'
+const APP_LOCATION = process.env.APP_LOCATION         ?? 'Montevideo, Uruguay'
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://felitostudios.com'),
+  metadataBase: new URL(APP_URL),
   title: {
-    default: 'Felito Barber Studio',
-    template: '%s · Felito',
+    default: APP_NAME,
+    template: `%s · ${APP_NAME}`,
   },
-  description: 'Felito Barber Studio — Cordón y Punta Carretas, Montevideo. Reservá tu turno online.',
-  keywords: ['barbería montevideo', 'corte pelo montevideo', 'felito barber', 'barbería cordón'],
-  applicationName: 'Felito Barber Studio',
+  description: `${APP_NAME} — ${APP_LOCATION}. Reservá tu turno online.`,
+  keywords: ['barbería', 'corte pelo', 'reserva turno online', APP_LOCATION],
+  applicationName: APP_NAME,
   openGraph: {
-    title: 'Felito Barber Studio',
-    description: 'Reservá tu turno online — Cordón y Punta Carretas.',
+    title: APP_NAME,
+    description: `Reservá tu turno online — ${APP_LOCATION}.`,
     type: 'website',
     locale: 'es_UY',
-    siteName: 'Felito Barber Studio',
+    siteName: APP_NAME,
     images: [
       {
-        url: '/felito-wordmark.png',
+        url: '/brand-wordmark.png',
         width: 860,
         height: 420,
-        alt: 'Felito Barber Studio',
+        alt: APP_NAME,
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Felito Barber Studio',
-    description: 'Reservá tu turno online — Cordón y Punta Carretas.',
-    images: ['/felito-wordmark.png'],
+    title: APP_NAME,
+    description: `Reservá tu turno online — ${APP_LOCATION}.`,
+    images: ['/brand-wordmark.png'],
   },
   icons: {
     icon:     [
@@ -65,7 +69,7 @@ export const metadata: Metadata = {
   manifest: '/site.webmanifest',
   appleWebApp: {
     capable:         true,
-    title:           'Felito Barber',
+    title:           APP_NAME,
     statusBarStyle:  'default',
   },
   robots: { index: true, follow: true },

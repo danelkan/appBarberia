@@ -9,9 +9,12 @@ import { BrandLogo } from '@/components/brand-logo'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+const APP_NAME     = process.env.NEXT_PUBLIC_APP_NAME ?? 'Barbería'
+const APP_LOCATION = process.env.APP_LOCATION         ?? 'Montevideo'
+
 export const metadata: Metadata = {
-  title: 'Felito Barber Studio — Reserva tu turno',
-  description: 'Elegí sucursal y reservá online en Felito Barber Studio, Montevideo.',
+  title: `${APP_NAME} — Reserva tu turno`,
+  description: `Elegí sucursal y reservá online en ${APP_NAME}, ${APP_LOCATION}.`,
 }
 
 interface HomePageProps {
@@ -66,8 +69,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <div className="flex items-center gap-3">
             <BrandLogo size={40} className="rounded-xl" />
             <div>
-              <p className="text-sm font-semibold text-slate-950">Felito Barber Studio</p>
-              <p className="text-xs text-slate-400">Montevideo</p>
+              <p className="text-sm font-semibold text-slate-950">{selectedCompany?.name ?? APP_NAME}</p>
+              <p className="text-xs text-slate-400">{APP_LOCATION}</p>
             </div>
           </div>
         </header>
@@ -102,7 +105,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-950">Felito Barber Studio ({branch.name})</p>
+                    <p className="font-semibold text-slate-950">{selectedCompany?.name ?? APP_NAME} ({branch.name})</p>
                     <p className="mt-0.5 truncate text-sm text-slate-500">
                       {branch.address}
                     </p>
