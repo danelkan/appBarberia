@@ -2,8 +2,26 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { formatSupabaseError, getOptionalSupabasePublicConfig } from '@/lib/supabase'
 
+// Map subdomains to company slugs
+const SUBDOMAIN_MAP: Record<string, string> = {
+  felitobarber: 'felitobarber',
+  elcorteclasico: 'elcorteclasico',
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Subdomain → inject ?company= param for public booking pages
+  const host = request.headers.get('host') ?? ''
+  const subdomain = host.split('.')[0]
+  const companySlug = SUBDOMAIN_MAP[subdomain]
+  const isPublicPage = pathname === '/' || pathname.startsWith('/reservar') || pathname.startsWith('/mis-turnos')
+
+  if (companySlug && isPublicPage && !request.nextUrl.searchParams.has('company')) {
+    const url = request.nextUrl.clone()
+    url.searchParams.set('company', companySlug)
+    return NextResponse.redirect(url)
+  }
 
   const isStaffRoute = pathname.startsWith('/admin') || pathname.startsWith('/staff')
   const isLoginPage  = pathname === '/login'
@@ -71,5 +89,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/staff/:path*', '/staff', '/login'],
+  matcher: ['/', '/reservar/:path*', '/mis-turnos/:path*', '/admin/:path*', '/staff/:path*', '/staff', '/login'],
 }
