@@ -92,6 +92,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     mode: 'idle' as 'idle' | 'pending' | 'horizontal' | 'vertical',
   })
 
+  const [companyIdParam, setCompanyIdParam] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (user?.role !== 'superadmin') { setCompanyIdParam(null); return }
+    const params = new URLSearchParams(window.location.search)
+    setCompanyIdParam(params.get('company_id'))
+  }, [pathname, user?.role])
+
+  const displayBranches = useMemo(() => {
+    if (companyIdParam) return branches.filter(b => (b as Branch & { company_id?: string }).company_id === companyIdParam)
+    return branches
+  }, [branches, companyIdParam])
+
   const can = useMemo(
     () => (permission: Permission) => {
       if (!user) return false
@@ -144,6 +157,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const nextUserValue = nextUser ?? null
         setUser(nextUserValue)
         setBranches(allowedBranches)
+
+        // Superadmin lands on the agency hub, not a specific client's dashboard
+        if (nextUserValue?.role === 'superadmin' && (pathname === '/admin/dashboard' || pathname === '/admin')) {
+          router.replace('/admin/empresas')
+          return
+        }
 
         const storageKey = nextUserValue?.company_id
           ? `${ACTIVE_BRANCH_STORAGE_PREFIX}.${nextUserValue.company_id}.${nextUserValue.id}`
@@ -353,6 +372,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </div>
 
       <div className="border-b border-stone-200 px-4 py-4">
+        {user?.role === 'superadmin' && (
+          <Link
+            href="/admin/empresas"
+            onClick={() => setMobileOpen(false)}
+            className="mb-3 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Mis clientes
+          </Link>
+        )}
         <div className="relative">
           <button
             onClick={() => setBranchOpen(current => !current)}
@@ -386,7 +415,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   Todas las sucursales
                 </button>
               )}
-              {branches.map(branch => (
+              {displayBranches.map(branch => (
                 <button
                   key={branch.id}
                   onClick={() => {

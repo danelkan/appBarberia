@@ -2,7 +2,8 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
-import { Building2, Mail, MapPin, Pencil, Phone, Plus, Power, Trash2, TrendingUp } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Building2, LogIn, Mail, MapPin, Pencil, Phone, Plus, Power, Trash2, TrendingUp } from 'lucide-react'
 import { Button, EmptyState, Input, Modal, PageHeader, Spinner } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useAdmin } from '../layout'
@@ -34,6 +35,7 @@ interface CompanyWithStats extends Company {
 
 export default function EmpresasPage() {
   const { user } = useAdmin()
+  const router = useRouter()
   const [companies, setCompanies] = useState<CompanyWithStats[]>([])
   const [loading, setLoading]     = useState(true)
   const [editModal, setEditModal] = useState(false)
@@ -302,6 +304,16 @@ export default function EmpresasPage() {
                   </p>
                 )}
               </div>
+
+              {isSuperadmin && (
+                <button
+                  onClick={() => router.push(`/admin/agenda?company_id=${company.id}`)}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Entrar al panel
+                </button>
+              )}
             </div>
           ))}
         </div>
