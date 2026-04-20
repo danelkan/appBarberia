@@ -101,9 +101,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [pathname, user?.role])
 
   const displayBranches = useMemo(() => {
-    if (companyIdParam) return branches.filter(b => (b as Branch & { company_id?: string }).company_id === companyIdParam)
+    if (user?.role === 'superadmin') {
+      if (!companyIdParam) return []
+      return branches.filter(b => (b as Branch & { company_id?: string }).company_id === companyIdParam)
+    }
     return branches
-  }, [branches, companyIdParam])
+  }, [branches, companyIdParam, user?.role])
 
   const can = useMemo(
     () => (permission: Permission) => {
