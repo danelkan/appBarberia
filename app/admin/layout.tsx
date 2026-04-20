@@ -161,8 +161,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setUser(nextUserValue)
         setBranches(allowedBranches)
 
-        // Superadmin lands on the agency hub, not a specific client's dashboard
-        if (nextUserValue?.role === 'superadmin' && (pathname === '/admin/dashboard' || pathname === '/admin')) {
+        // Superadmin lands on the agency hub unless already inside a client panel
+        const hasCompanyContext = new URLSearchParams(window.location.search).has('company_id')
+        if (nextUserValue?.role === 'superadmin' && !hasCompanyContext && pathname !== '/admin/empresas') {
           router.replace('/admin/empresas')
           return
         }
