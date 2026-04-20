@@ -23,6 +23,9 @@ export async function GET(req: NextRequest) {
   // For public booking flow (unauthenticated), use the company_id query param.
   const auth = await requireAuth(req).catch(() => null)
   const authCompanyId = auth ? (await resolveCompanyId(auth, supabase)) ?? undefined : undefined
+  // TODO: El path sin branchId ni auth usa resolveSingleCompanyLegacyScope que puede activar
+  // allowLegacyUnscoped=true en instalaciones con un solo tenant. Esto incluye barberos con
+  // company_id=NULL en la consulta pública. Limpiar datos legado con scripts/db-clean-for-delivery.sql.
   const publicCompanyScope = auth
     ? { companyId: null, allowLegacyUnscoped: false }
     : branchId

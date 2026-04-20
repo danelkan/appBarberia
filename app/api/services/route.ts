@@ -25,6 +25,9 @@ export async function GET(req: NextRequest) {
   const authCompanyId = auth
     ? await resolveCompanyId(auth, supabase)
     : null
+  // TODO: El path sin branchIdParam ni auth usa resolveSingleCompanyLegacyScope que puede activar
+  // allowLegacyUnscoped=true en instalaciones con un solo tenant. Esto incluye servicios con
+  // company_id=NULL en la consulta pública. Limpiar datos legado con scripts/db-clean-for-delivery.sql.
   const publicCompanyScope = auth
     ? { companyId: null, allowLegacyUnscoped: false }
     : branchIdParam

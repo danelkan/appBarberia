@@ -1,18 +1,20 @@
 # dependencies
-node_modules
+node_modules/
 .pnp
 .pnp.js
 
 # testing
-coverage
+coverage/
 
 # next.js
 .next/
 out/
-build
+build/
+dist/
 
 # misc
 .DS_Store
+__MACOSX/
 *.pem
 
 # debug
@@ -20,16 +22,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
+# local env files — NEVER commit real secrets
 .env
-.env.local
-.env.production
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+!.env.local.example
 
 # vercel
-.vercel
+.vercel/
 
 # IDE / tool-specific state (brainstorm sessions, temp files)
 .superpowers/

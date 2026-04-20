@@ -1,0 +1,8 @@
+-- OBSOLETE - DO NOT RUN
+--
+-- This file used to force orphan rows in barber_branches for legacy barbers
+-- that were not linked to a real user in user_roles/auth. That was one of the
+-- root causes of "phantom" barbers appearing in Reservas.
+--
+-- Use supabase-migration-v10.sql instead to clean orphan visibility and keep
+-- Reservas aligned with valid users from the Usuarios section.

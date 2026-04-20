@@ -34,6 +34,14 @@ export function getSingleCompanyLegacyScope(
 
   return {
     companyId: singleCompanyId,
+    // TODO: allowLegacyUnscoped=true es una medida de compatibilidad hacia atrás para registros
+    // anteriores al multi-tenant que tienen company_id = NULL en la base de datos.
+    // RIESGO: Si la plataforma tiene más de 1 cliente activo, esta condición nunca se activa
+    // (ver guard `activeCompanyIds.length !== 1` arriba), pero si por error hubiera un solo
+    // cliente activo en producción con datos de otro cliente también activos, podría haber
+    // filtración de datos entre tenants (cross-tenant data leakage).
+    // ACCIÓN: Ejecutar scripts/db-clean-for-delivery.sql para migrar registros con company_id=NULL
+    // y luego eliminar este flag cuando todos los registros históricos estén asociados a una empresa.
     allowLegacyUnscoped: true,
   }
 }

@@ -76,6 +76,11 @@ export async function GET(req: NextRequest) {
   }
 
   // Public: active branches only — no auth required
+  // TODO: resolveSingleCompanyLegacyScope puede retornar allowLegacyUnscoped=true si solo hay
+  // una empresa activa en la base de datos. Esto permite que la consulta incluya sucursales con
+  // company_id=NULL (registros legado). En producción con múltiples clientes esto no ocurre,
+  // pero se recomienda limpiar los registros con company_id=NULL usando scripts/db-clean-for-delivery.sql
+  // para eliminar esta dependencia del modo de compatibilidad.
   const effectiveCompanyId = companyIdParam
     ?? await resolveCompanyIdFromBranch(supabase, null)
   const publicCompanyScope = await resolveSingleCompanyLegacyScope(supabase, effectiveCompanyId)
