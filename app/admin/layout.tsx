@@ -174,7 +174,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const restoredBranch = allowedBranches.find(branch => branch.id === storedBranchId) ?? null
         const nextActiveBranch = nextUser?.role === 'barber'
           ? allowedBranches[0] ?? null
-          : restoredBranch ?? allowedBranches[0] ?? null
+          : restoredBranch ?? null
 
         setActiveBranch(nextActiveBranch)
       } catch {
