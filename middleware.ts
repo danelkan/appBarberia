@@ -12,9 +12,12 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Subdomain → inject ?company= param for public booking pages
+  // Handles both felitobarber.iadai.tech and reservar.felitobarber.iadai.tech
   const host = request.headers.get('host') ?? ''
-  const subdomain = host.split('.')[0]
-  const companySlug = SUBDOMAIN_MAP[subdomain]
+  const hostWithoutBase = host.replace(/\.iadai\.tech(:\d+)?$/, '')
+  const parts = hostWithoutBase.split('.')
+  const companyKey = parts[parts.length - 1]
+  const companySlug = SUBDOMAIN_MAP[companyKey]
   const isPublicPage = pathname === '/' || pathname.startsWith('/reservar') || pathname.startsWith('/mis-turnos')
 
   if (companySlug && isPublicPage && !request.nextUrl.searchParams.has('company')) {
