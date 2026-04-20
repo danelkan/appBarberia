@@ -31,11 +31,13 @@ function validateSupabaseUrl(rawUrl: string, envName: string) {
 }
 
 function validateSupabaseKey(rawKey: string, envName: string) {
-  if (rawKey.trim().split('.').length !== 3) {
-    throw new Error(`${envName} must be a valid JWT key`)
+  const key = rawKey.trim()
+  const isLegacyJwt = key.split('.').length === 3
+  const isNewFormat = key.startsWith('sb_publishable_') || key.startsWith('sb_secret_')
+  if (!isLegacyJwt && !isNewFormat) {
+    throw new Error(`${envName} must be a valid Supabase API key`)
   }
-
-  return rawKey.trim()
+  return key
 }
 
 export function getSupabasePublicConfig(): SupabasePublicConfig {
