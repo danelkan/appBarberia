@@ -4,7 +4,7 @@ import { formatSupabaseError, getOptionalSupabasePublicConfig } from '@/lib/supa
 
 // Map subdomains to company slugs
 const SUBDOMAIN_MAP: Record<string, string> = {
-  felitobarber: 'felito-studios',
+  felitobarber: 'felitobarber',
   elcorteclasico: 'elcorteclasico',
 }
 
