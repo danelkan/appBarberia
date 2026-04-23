@@ -120,8 +120,9 @@ export async function resolveBranchCompanyScope(
  * Resolves the company_id for the current request.
  *
  * Resolution order:
- *   1. auth.company_id — set directly on the user role (fastest, most common)
- *   2. Derive from the user's branches → branch.company_id
+ *   1. Derive from the user's branches → branch.company_id
+ *      (most reliable when user_roles.company_id is stale)
+ *   2. auth.company_id — set directly on the user role
  *   3. Fallback: single-active-company (single-tenant compatibility)
  *
  * Returns null if no company can be determined (e.g. superadmin with no
@@ -131,8 +132,6 @@ export async function resolveCompanyId(
   auth: AuthRoleContext,
   supabase: SupabaseClient
 ): Promise<string | null> {
-  if (auth.company_id) return auth.company_id
-
   if (auth.branch_ids.length > 0) {
     const { data } = await supabase
       .from('branches')
@@ -144,6 +143,8 @@ export async function resolveCompanyId(
 
     if (data?.company_id) return data.company_id as string
   }
+
+  if (auth.company_id) return auth.company_id
 
   // Single-tenant fallback
   const { data: companies } = await supabase

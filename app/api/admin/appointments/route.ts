@@ -195,6 +195,7 @@ export async function POST(req: NextRequest) {
     service,
     branchId: branch_id,
     companyId,
+    client: appointment.client ?? undefined,
   }).catch(console.error)
 
   return NextResponse.json({ appointment }, { status: 201 })
