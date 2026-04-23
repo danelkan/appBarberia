@@ -173,14 +173,41 @@ export default function UsuariosPage() {
 
   async function saveUser() {
     setSaving(true); setError('')
+    const passwordToSet = form.password.trim()
+    if (passwordToSet && passwordToSet.length < 8) {
+      setSaving(false)
+      setError('La contraseña debe tener al menos 8 caracteres')
+      return
+    }
+
+    const userPayload = isCreating ? form : { ...form, password: '' }
     const res = await fetch('/api/users', {
       method: isCreating ? 'POST' : 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify(userPayload),
     })
     const data = await res.json()
+    if (!res.ok) {
+      setSaving(false)
+      setError(data.error ?? 'No se pudo guardar el usuario')
+      return
+    }
+
+    if (!isCreating && passwordToSet && form.user_id) {
+      const passwordRes = await fetch(`/api/admin/users/${form.user_id}/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_password: passwordToSet }),
+      })
+      const passwordData = await passwordRes.json().catch(() => ({}))
+      if (!passwordRes.ok) {
+        setSaving(false)
+        setError(passwordData.error ?? 'El usuario se guardó, pero no se pudo cambiar la contraseña')
+        return
+      }
+    }
+
     setSaving(false)
-    if (!res.ok) { setError(data.error ?? 'No se pudo guardar el usuario'); return }
     setModalOpen(false)
     await loadData()
   }
@@ -350,7 +377,7 @@ export default function UsuariosPage() {
             type="password"
             value={form.password}
             onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-            placeholder={isCreating ? 'Mínimo 6 caracteres' : 'Dejá vacío para mantener la actual'}
+            placeholder={isCreating ? 'Mínimo 8 caracteres' : 'Dejá vacío para mantener la actual'}
           />
 
           {/* Role */}

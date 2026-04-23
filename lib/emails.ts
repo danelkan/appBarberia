@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 import type { Appointment, Barber, Client, Service } from '@/types'
 import { formatDate, formatPrice } from './utils'
-import { sanitize, sanitizePhone, sanitizeTime } from './sanitize'
+import { sanitize, sanitizeTime } from './sanitize'
 import { appConfig } from './config'
 
 // Raw email normalizer for use in Resend `to:` fields — must NOT HTML-escape
@@ -179,52 +179,6 @@ export async function sendConfirmationEmail(
   return result
 }
 
-export async function sendBarberNotification(
-  client: Client,
-  barber: Barber,
-  service: Service,
-  appointment: Appointment
-) {
-  const toEmail = normalizeEmail(barber.email)
-  if (!toEmail) {
-    console.warn('[emails] sendBarberNotification skipped — barber has no email')  // eslint-disable-line no-console
-    return null
-  }
-
-  const safeDate = sanitize(formatDate(appointment.date))
-  const safeTime = sanitizeTime(appointment.start_time.slice(0, 5))
-
-  const result = await getResend().emails.send({
-    from: FROM,
-    to: toEmail,
-    subject: `[Nuevo turno] ${sanitize(client.first_name)} ${sanitize(client.last_name)} · ${safeDate}`,
-    html: emailShell({
-      eyebrow: 'Nuevo turno',
-      title: 'Tenés un nuevo turno',
-      intro: `${sanitize(client.first_name)} reservó un turno para vos.`,
-      content: `
-        ${detailTable([
-          { label: 'Cliente',      value: `${sanitize(client.first_name)} ${sanitize(client.last_name)}` },
-          { label: 'Teléfono',     value: sanitizePhone(client.phone) },
-          { label: 'Servicio',     value: sanitize(service.name) },
-          { label: 'Fecha y hora', value: `${safeDate} · ${safeTime}` },
-        ])}
-        <div style="margin-top:28px;">
-          ${ctaButton('Abrir agenda', `${appConfig.url}/admin/agenda`)}
-        </div>
-      `,
-    }),
-  })
-
-  if (result.error) {
-    console.error('[emails] sendBarberNotification failed', { to: toEmail, error: result.error })  // eslint-disable-line no-console
-  } else {
-    console.log('[emails] sendBarberNotification sent', { to: toEmail, id: result.data?.id })  // eslint-disable-line no-console
-  }
-
-  return result
-}
-
 export async function sendCancellationEmail(
   client: Client,
   barber: Barber,
@@ -285,13 +239,12 @@ export async function sendBookingEmails(
 ) {
   const results = await Promise.allSettled([
     sendConfirmationEmail(client, barber, service, appointment, options),
-    sendBarberNotification(client, barber, service, appointment),
   ])
 
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
       console.error(  // eslint-disable-line no-console
-        index === 0 ? '[emails] Client confirmation rejected' : '[emails] Barber notification rejected',
+        index === 0 ? '[emails] Client confirmation rejected' : '[emails] Booking email rejected',
         result.reason
       )
     }

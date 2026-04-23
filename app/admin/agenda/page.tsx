@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { addDays, format, startOfWeek } from 'date-fns'
+import { addDays, addMonths, format, endOfMonth, startOfMonth, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   ArrowRight,
@@ -26,7 +26,7 @@ import { cn, formatDate, formatPrice, STATUS_CONFIG } from '@/lib/utils'
 import { useAdmin } from '../layout'
 import { PAYMENT_METHOD_LABELS, type Appointment, type Barber, type Client, type PaymentMethod, type Service } from '@/types'
 
-type ViewMode = 'day' | 'week'
+type ViewMode = 'day' | 'week' | 'month'
 
 /**
  * Normalizes a Uruguayan phone number to the international format required by WhatsApp
@@ -157,6 +157,37 @@ function getMobileEventLayouts(appointments: Appointment[], bounds: { start: num
   })
 }
 
+function getDateRangeForView(view: ViewMode, date: Date) {
+  if (view === 'day') {
+    const day = format(date, 'yyyy-MM-dd')
+    return { from: day, to: day }
+  }
+
+  if (view === 'week') {
+    const weekStart = startOfWeek(date, { weekStartsOn: 1 })
+    return {
+      from: format(weekStart, 'yyyy-MM-dd'),
+      to: format(addDays(weekStart, 6), 'yyyy-MM-dd'),
+    }
+  }
+
+  return {
+    from: format(startOfMonth(date), 'yyyy-MM-dd'),
+    to: format(endOfMonth(date), 'yyyy-MM-dd'),
+  }
+}
+
+function getDatesBetween(from: string, to: string) {
+  const dates: string[] = []
+  let cursor = new Date(`${from}T00:00:00`)
+  const end = new Date(`${to}T00:00:00`)
+  while (cursor <= end) {
+    dates.push(format(cursor, 'yyyy-MM-dd'))
+    cursor = addDays(cursor, 1)
+  }
+  return dates
+}
+
 export default function AgendaPage() {
   const { user, activeBranch, branches, can } = useAdmin()
   const router = useRouter()
@@ -169,8 +200,13 @@ export default function AgendaPage() {
       ? new Date(`${dateParam}T00:00:00`)
       : new Date()
   })
+  const [selectedBarberId, setSelectedBarberId] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('barber_id') ?? ''
+  })
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError]   = useState('')
 
   // Detail / payment
   const [selected,     setSelected]     = useState<Appointment | null>(null)
@@ -207,17 +243,20 @@ export default function AgendaPage() {
     swrFetcher,
     { dedupingInterval: 60_000, revalidateOnFocus: false }
   )
-  const barbers: Barber[] = barbersData?.barbers ?? []
-  const services: Service[] = servicesData?.services ?? []
+  const barbers: Barber[] = useMemo(() => barbersData?.barbers ?? [], [barbersData?.barbers])
+  const services: Service[] = useMemo(() => servicesData?.services ?? [], [servicesData?.services])
   const loadingMeta = loadingBarbers || loadingServices
 
   const isBarber = user?.role === 'barber'
 
   const titleDate = useMemo(() => {
     if (view === 'day') return format(currentDate, "EEEE d 'de' MMMM", { locale: es })
-    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
-    const weekEnd   = addDays(weekStart, 6)
-    return `${format(weekStart, 'd MMM', { locale: es })} - ${format(weekEnd, 'd MMM yyyy', { locale: es })}`
+    if (view === 'week') {
+      const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
+      const weekEnd   = addDays(weekStart, 6)
+      return `${format(weekStart, 'd MMM', { locale: es })} - ${format(weekEnd, 'd MMM yyyy', { locale: es })}`
+    }
+    return format(currentDate, 'MMMM yyyy', { locale: es })
   }, [currentDate, view])
 
   const weekDays = useMemo(() => {
@@ -225,18 +264,27 @@ export default function AgendaPage() {
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   }, [currentDate])
 
+  const monthDays = useMemo(() => {
+    const monthStart = startOfMonth(currentDate)
+    const monthEnd = endOfMonth(currentDate)
+    const days: Date[] = []
+    let cursor = monthStart
+    while (cursor <= monthEnd) {
+      days.push(cursor)
+      cursor = addDays(cursor, 1)
+    }
+    return days
+  }, [currentDate])
+
   const fetchAppointments = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const from = view === 'day'
-      ? format(currentDate, 'yyyy-MM-dd')
-      : format(startOfWeek(currentDate, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const to = view === 'day'
-      ? from
-      : format(addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), 6), 'yyyy-MM-dd')
+    setLoadError('')
+    const { from, to } = getDateRangeForView(view, currentDate)
 
     let url = `/api/appointments?from=${from}&to=${to}`
-    if (isBarber && user.barber_id) url += `&barber_id=${user.barber_id}`
+    const effectiveBarberId = isBarber ? user.barber_id : selectedBarberId
+    if (effectiveBarberId) url += `&barber_id=${effectiveBarberId}`
     if (activeBranch) url += `&branch_id=${activeBranch.id}`
 
     try {
@@ -248,17 +296,22 @@ export default function AgendaPage() {
       if (!res.ok) throw new Error('No se pudieron cargar los turnos')
       const data = await res.json()
       setAppointments((data.appointments ?? []).filter((appointment: Appointment) => appointment.status !== 'cancelada'))
-    } catch {
+    } catch (error) {
       setAppointments([])
+      setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar los turnos')
     } finally {
       setLoading(false)
     }
-  }, [activeBranch, currentDate, isBarber, router, user, view])
+  }, [activeBranch, currentDate, isBarber, router, selectedBarberId, user, view])
 
   useEffect(() => { void fetchAppointments() }, [fetchAppointments])
 
   function navigate(direction: 1 | -1) {
-    setCurrentDate(d => addDays(d, view === 'day' ? direction : direction * 7))
+    setCurrentDate(d => {
+      if (view === 'day') return addDays(d, direction)
+      if (view === 'week') return addDays(d, direction * 7)
+      return addMonths(d, direction)
+    })
   }
 
   function handleAgendaTouchEnd(point: { x: number; y: number }) {
@@ -400,9 +453,8 @@ export default function AgendaPage() {
 
   const groupedByDay = useMemo(() => {
     const record: Record<string, Appointment[]> = {}
-    const dates = view === 'day'
-      ? [format(currentDate, 'yyyy-MM-dd')]
-      : weekDays.map(d => format(d, 'yyyy-MM-dd'))
+    const { from, to } = getDateRangeForView(view, currentDate)
+    const dates = getDatesBetween(from, to)
 
     dates.forEach(date => {
       record[date] = appointments
@@ -410,13 +462,23 @@ export default function AgendaPage() {
         .sort((a, b) => a.start_time.localeCompare(b.start_time))
     })
     return record
-  }, [appointments, currentDate, view, weekDays])
+  }, [appointments, currentDate, view])
 
   // Barbers filtered by active branch if applicable
   const filteredBarbers = useMemo(() => {
     if (!activeBranch) return barbers
     return barbers.filter(b => !b.branches || b.branches.some((br: any) => br.id === activeBranch.id) || (b.branch_ids ?? []).includes(activeBranch.id))
   }, [barbers, activeBranch])
+
+  useEffect(() => {
+    if (isBarber) {
+      setSelectedBarberId('')
+      return
+    }
+    if (selectedBarberId && !filteredBarbers.some(barber => barber.id === selectedBarberId)) {
+      setSelectedBarberId('')
+    }
+  }, [filteredBarbers, isBarber, selectedBarberId])
 
   const modalBarbers = useMemo(() => {
     const branchId = instantForm?.branch_id || activeBranch?.id
@@ -440,6 +502,15 @@ export default function AgendaPage() {
       }]
     }
 
+    if (selectedBarberId) {
+      const selectedBarber = filteredBarbers.find(barber => barber.id === selectedBarberId)
+        ?? appointments.find(appointment => appointment.barber_id === selectedBarberId)?.barber
+      return [{
+        id: selectedBarberId,
+        name: selectedBarber?.name ?? 'Barbero',
+      }]
+    }
+
     const resources = new Map<string, string>()
     filteredBarbers.forEach(barber => resources.set(barber.id, barber.name))
     appointments.forEach(appointment => {
@@ -451,7 +522,7 @@ export default function AgendaPage() {
     return Array.from(resources.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [appointments, filteredBarbers, isBarber, user?.barber_id, user?.name])
+  }, [appointments, filteredBarbers, isBarber, selectedBarberId, user?.barber_id, user?.name])
 
   const calendarBounds = useMemo(() => getCalendarBounds(appointments), [appointments])
   const calendarHours = useMemo(() => {
@@ -471,8 +542,21 @@ export default function AgendaPage() {
                 <Plus className="h-4 w-4" />
                 <span className="hidden sm:inline">Cliente</span>
               </Button>
+              {!isBarber && (
+                <select
+                  value={selectedBarberId}
+                  onChange={event => setSelectedBarberId(event.target.value)}
+                  className="h-9 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
+                  aria-label="Filtrar por barbero"
+                >
+                  <option value="">Todos los barberos</option>
+                  {filteredBarbers.map(barber => (
+                    <option key={barber.id} value={barber.id}>{barber.name}</option>
+                  ))}
+                </select>
+              )}
               <div className="flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-                {(['day', 'week'] as ViewMode[]).map(mode => (
+                {(['day', 'week', 'month'] as ViewMode[]).map(mode => (
                   <button
                     key={mode}
                     onClick={() => setView(mode)}
@@ -482,7 +566,7 @@ export default function AgendaPage() {
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
                     }`}
                   >
-                    {mode === 'day' ? 'Día' : 'Semana'}
+                    {mode === 'day' ? 'Día' : mode === 'week' ? 'Semana' : 'Mes'}
                   </button>
                 ))}
               </div>
@@ -507,7 +591,11 @@ export default function AgendaPage() {
         </div>
       </div>
 
-      {loading ? (
+      {loadError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+          {loadError}
+        </div>
+      ) : loading ? (
         <div className="flex justify-center py-20"><Spinner /></div>
       ) : view === 'day' ? (
         <CalendarShell
@@ -519,11 +607,12 @@ export default function AgendaPage() {
             weekDays={weekDays}
             view={view}
             groupedByDay={groupedByDay}
+            monthDays={monthDays}
             showBarber={!isBarber}
             onOpen={setSelected}
             onCreate={openInstantModal}
-            onToggleView={() => setView(current => current === 'day' ? 'week' : 'day')}
-            onSelectDate={setCurrentDate}
+            onToggleView={() => setView(current => current === 'day' ? 'week' : current === 'week' ? 'month' : 'day')}
+            onSelectDate={date => { setCurrentDate(date); setView('day') }}
             onTouchStart={setTouchStart}
             onTouchEnd={handleAgendaTouchEnd}
           />
@@ -548,23 +637,34 @@ export default function AgendaPage() {
             weekDays={weekDays}
             view={view}
             groupedByDay={groupedByDay}
+            monthDays={monthDays}
             showBarber={!isBarber}
             onOpen={setSelected}
             onCreate={openInstantModal}
-            onToggleView={() => setView(current => current === 'day' ? 'week' : 'day')}
-            onSelectDate={setCurrentDate}
+            onToggleView={() => setView(current => current === 'day' ? 'week' : current === 'week' ? 'month' : 'day')}
+            onSelectDate={date => { setCurrentDate(date); if (view === 'month') setView('day') }}
             onTouchStart={setTouchStart}
             onTouchEnd={handleAgendaTouchEnd}
           />
-          <WeekCalendar
-            days={weekDays}
-            groupedByDay={groupedByDay}
-            hours={calendarHours}
-            bounds={calendarBounds}
-            showBarber={!isBarber}
-            onOpen={setSelected}
-            onPay={can('cash.add_movement') ? openPayment : undefined}
-          />
+          {view === 'week' ? (
+            <WeekCalendar
+              days={weekDays}
+              groupedByDay={groupedByDay}
+              hours={calendarHours}
+              bounds={calendarBounds}
+              showBarber={!isBarber}
+              onOpen={setSelected}
+              onPay={can('cash.add_movement') ? openPayment : undefined}
+            />
+          ) : (
+            <MonthCalendar
+              days={monthDays}
+              groupedByDay={groupedByDay}
+              showBarber={!isBarber}
+              onOpen={setSelected}
+              onSelectDate={date => { setCurrentDate(date); setView('day') }}
+            />
+          )}
         </CalendarShell>
       )}
 
@@ -980,6 +1080,7 @@ function CalendarLines({
 function MobileAgenda({
   currentDate,
   weekDays,
+  monthDays,
   view,
   groupedByDay,
   showBarber,
@@ -992,6 +1093,7 @@ function MobileAgenda({
 }: {
   currentDate: Date
   weekDays: Date[]
+  monthDays: Date[]
   view: ViewMode
   groupedByDay: Record<string, Appointment[]>
   showBarber: boolean
@@ -1012,6 +1114,7 @@ function MobileAgenda({
   )
   const eventLayouts = getMobileEventLayouts(dayAppointments, bounds)
   const monthLabel = format(currentDate, "d MMM yyyy", { locale: es })
+  const listDays = view === 'month' ? monthDays : view === 'week' ? weekDays : []
 
   return (
     <div className="relative min-h-[calc(100dvh-64px)] bg-white pb-[calc(env(safe-area-inset-bottom,0px)+116px)] md:hidden" style={{ touchAction: 'pan-y' }}>
@@ -1087,6 +1190,47 @@ function MobileAgenda({
         </div>
       </div>
 
+      {view !== 'day' && (
+        <div className="space-y-3 px-4 py-4">
+          {listDays.map(day => {
+            const key = format(day, 'yyyy-MM-dd')
+            const items = groupedByDay[key] ?? []
+            return (
+              <section key={key} className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => onSelectDate(day)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                >
+                  <div>
+                    <p className="text-sm font-bold capitalize text-stone-950">
+                      {format(day, "EEEE d 'de' MMMM", { locale: es })}
+                    </p>
+                    <p className="text-xs font-medium text-stone-400">
+                      {items.length === 0 ? 'Sin turnos' : `${items.length} turno${items.length === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-stone-400" />
+                </button>
+                {items.length > 0 && (
+                  <div className="space-y-2 border-t border-stone-100 px-3 py-3">
+                    {items.map(appointment => (
+                      <CompactAppointmentButton
+                        key={appointment.id}
+                        appointment={appointment}
+                        showBarber={showBarber}
+                        onOpen={onOpen}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )
+          })}
+        </div>
+      )}
+
+      {view === 'day' && (
       <div className="bg-white">
         <div className="px-3 pb-7 pt-4">
           <div className="relative" style={{ height: timelineHeight }}>
@@ -1119,6 +1263,7 @@ function MobileAgenda({
           </div>
         </div>
       </div>
+      )}
 
       <button
         type="button"
@@ -1174,6 +1319,42 @@ function MobileTimelineEvent({
         {height > 56 && showBarber && appointment.barber?.name && (
           <p className="truncate text-[9px] leading-tight text-stone-400">{appointment.barber.name}</p>
         )}
+      </div>
+    </button>
+  )
+}
+
+function CompactAppointmentButton({
+  appointment,
+  showBarber,
+  onOpen,
+}: {
+  appointment: Appointment
+  showBarber: boolean
+  onOpen: (appointment: Appointment) => void
+}) {
+  const clientName = `${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || 'Cliente'
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(appointment)}
+      className="w-full rounded-xl border border-lime-200 bg-lime-50 px-3 py-2 text-left transition active:scale-[0.99]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-stone-950">{clientName}</p>
+          <p className="mt-0.5 truncate text-xs font-semibold text-lime-800">
+            {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)} · {appointment.service?.name ?? 'Servicio'}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-stone-500">
+            {showBarber && appointment.barber?.name ? `${appointment.barber.name} · ` : ''}
+            {appointment.branch?.name ?? 'Sucursal'}
+          </p>
+        </div>
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold', STATUS_CONFIG[appointment.status].color)}>
+          {STATUS_CONFIG[appointment.status].label}
+        </span>
       </div>
     </button>
   )
@@ -1305,6 +1486,91 @@ function WeekCalendar({
   )
 }
 
+function MonthCalendar({
+  days,
+  groupedByDay,
+  showBarber,
+  onOpen,
+  onSelectDate,
+}: {
+  days: Date[]
+  groupedByDay: Record<string, Appointment[]>
+  showBarber: boolean
+  onOpen: (appointment: Appointment) => void
+  onSelectDate: (date: Date) => void
+}) {
+  const leadingBlanks = (Number(format(days[0] ?? new Date(), 'i')) + 6) % 7
+  const cells: Array<Date | null> = [
+    ...Array.from({ length: leadingBlanks }, () => null),
+    ...days,
+  ]
+
+  return (
+    <div className="hidden overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm md:block">
+      <div className="grid grid-cols-7 border-b border-stone-200 bg-stone-50">
+        {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(label => (
+          <div key={label} className="border-l border-stone-200 px-3 py-3 first:border-l-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">{label}</p>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {cells.map((day, index) => {
+          if (!day) {
+            return <div key={`blank-${index}`} className="min-h-[150px] border-l border-t border-stone-100 bg-stone-50/60 first:border-l-0" />
+          }
+
+          const key = format(day, 'yyyy-MM-dd')
+          const items = groupedByDay[key] ?? []
+          return (
+            <div key={key} className="min-h-[150px] border-l border-t border-stone-100 p-2 first:border-l-0">
+              <button
+                type="button"
+                onClick={() => onSelectDate(day)}
+                className="mb-2 flex w-full items-center justify-between rounded-xl px-2 py-1 text-left transition hover:bg-stone-50"
+              >
+                <span className="text-sm font-bold text-stone-950">{format(day, 'd')}</span>
+                {items.length > 0 && (
+                  <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-600">
+                    {items.length}
+                  </span>
+                )}
+              </button>
+              <div className="space-y-1.5">
+                {items.slice(0, 4).map(appointment => (
+                  <button
+                    key={appointment.id}
+                    type="button"
+                    onClick={() => onOpen(appointment)}
+                    className="w-full rounded-lg border border-lime-200 bg-lime-50 px-2 py-1.5 text-left text-[11px] transition hover:bg-lime-100"
+                  >
+                    <p className="truncate font-bold text-stone-950">
+                      {appointment.start_time.slice(0, 5)} · {appointment.client?.first_name ?? 'Cliente'}
+                    </p>
+                    <p className="truncate text-stone-500">
+                      {showBarber && appointment.barber?.name ? `${appointment.barber.name} · ` : ''}
+                      {appointment.branch?.name ?? appointment.service?.name ?? 'Turno'}
+                    </p>
+                  </button>
+                ))}
+                {items.length > 4 && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectDate(day)}
+                    className="w-full rounded-lg bg-stone-100 px-2 py-1 text-left text-[11px] font-semibold text-stone-600"
+                  >
+                    Ver {items.length - 4} más
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function CalendarEvent({
   appointment,
   bounds,
@@ -1342,6 +1608,7 @@ function CalendarEvent({
       {showBarber && (
         <p className="mt-0.5 truncate text-[11px] text-stone-500">{appointment.barber?.name ?? 'Barbero'}</p>
       )}
+      <p className="mt-0.5 truncate text-[11px] text-stone-400">{appointment.branch?.name ?? 'Sucursal'}</p>
     </button>
   )
 }

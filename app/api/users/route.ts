@@ -384,11 +384,6 @@ export async function PATCH(req: NextRequest) {
   const active      = typeof body.active === 'boolean' ? body.active : undefined
   const nameRaw     = typeof body.name === 'string' ? body.name.trim() : undefined
   const name        = nameRaw !== undefined ? nameRaw.replace(/<[^>]*>/g, '').slice(0, 100) : undefined
-  const passwordRaw = typeof body.password === 'string' && body.password.trim() ? body.password.trim() : undefined
-  if (passwordRaw !== undefined && passwordRaw.length < 8) {
-    return NextResponse.json({ error: 'La contraseña debe tener al menos 8 caracteres' }, { status: 400 })
-  }
-  const password = passwordRaw
   const branch_ids  = body.branch_ids !== undefined ? sanitizeBranchIds(body.branch_ids) : undefined
   const is_barber   = typeof body.is_barber === 'boolean' ? body.is_barber : undefined
   const appears_in_agenda = typeof body.appears_in_agenda === 'boolean' ? body.appears_in_agenda : undefined
@@ -440,11 +435,11 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  // Update auth user name and/or password if changed
-  if (name || password) {
+  // Update auth user name if changed. Password changes are handled by the
+  // dedicated /api/admin/users/[id]/password route with stricter role checks.
+  if (name) {
     const authUpdate: Record<string, unknown> = {}
     if (name)     authUpdate.user_metadata = { full_name: name, name }
-    if (password) authUpdate.password = password
     const { error: updateUserError } = await supabase.auth.admin.updateUserById(user_id, authUpdate)
     if (updateUserError) {
       return NextResponse.json({ error: updateUserError.message }, { status: 500 })
