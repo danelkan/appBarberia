@@ -207,8 +207,10 @@ export function generateTimeSlots(
   const slots: TimeSlot[] = []
   const startMinutes = timeToMinutes(daySchedule.start)
   const endMinutes = timeToMinutes(daySchedule.end)
+  const latestStartMinutes = endMinutes - durationMinutes
+  const stepMinutes = Math.max(1, intervalMinutes)
 
-  for (let currentMinutes = startMinutes; currentMinutes + durationMinutes <= endMinutes; currentMinutes += intervalMinutes) {
+  for (let currentMinutes = startMinutes; currentMinutes <= latestStartMinutes; currentMinutes += stepMinutes) {
     const time = minutesToTime(currentMinutes)
     const availabilityResult = isSlotAvailable({
       date,

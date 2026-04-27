@@ -51,9 +51,7 @@ export async function POST(
     return NextResponse.json({ error: 'Usuario requerido' }, { status: 400 })
   }
 
-  if (targetUserId === auth.session.user.id) {
-    return NextResponse.json({ error: 'No podés cambiar tu propia contraseña desde este panel' }, { status: 400 })
-  }
+  const isSelf = targetUserId === auth.session.user.id
 
   const body = await req.json().catch(() => null) as { new_password?: unknown } | null
   const newPassword = typeof body?.new_password === 'string' ? body.new_password.trim() : ''
@@ -79,10 +77,10 @@ export async function POST(
   if (!targetRole) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
   }
-  if (targetRole.role === 'superadmin') {
+  if (targetRole.role === 'superadmin' && !isSelf) {
     return forbiddenResponse('No podés cambiar la contraseña del superadmin')
   }
-  if (targetRole.role !== 'barber' || !targetRole.barber_id) {
+  if (!isSelf && (targetRole.role !== 'barber' || !targetRole.barber_id)) {
     return forbiddenResponse('Solo se puede cambiar la contraseña de barberos')
   }
 

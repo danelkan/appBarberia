@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     .eq('date', date)
     .neq('status', 'cancelada')
 
-  const slots = generateTimeSlots(date, barber.availability, duration, appointments as any)
+  const slots = generateTimeSlots(date, barber.availability, duration, appointments as any, duration)
 
   const response = NextResponse.json({ slots })
 

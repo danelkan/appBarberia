@@ -31,13 +31,13 @@ import {
 } from '@/types'
 
 const DEFAULT_AVAILABILITY: WeeklyAvailability = {
-  monday:    { enabled: true,  start: '09:00', end: '19:00' },
-  tuesday:   { enabled: true,  start: '09:00', end: '19:00' },
-  wednesday: { enabled: true,  start: '09:00', end: '19:00' },
-  thursday:  { enabled: true,  start: '09:00', end: '19:00' },
-  friday:    { enabled: true,  start: '09:00', end: '19:00' },
-  saturday:  { enabled: true,  start: '09:00', end: '14:00' },
-  sunday:    { enabled: false, start: '09:00', end: '13:00' },
+  monday:    { enabled: true,  start: '10:00', end: '20:00' },
+  tuesday:   { enabled: true,  start: '10:00', end: '20:00' },
+  wednesday: { enabled: true,  start: '10:00', end: '20:00' },
+  thursday:  { enabled: true,  start: '10:00', end: '20:00' },
+  friday:    { enabled: true,  start: '10:00', end: '20:00' },
+  saturday:  { enabled: true,  start: '10:00', end: '20:00' },
+  sunday:    { enabled: false, start: '10:00', end: '20:00' },
 }
 
 interface UserFormState {
@@ -314,15 +314,16 @@ export default function UsuariosPage() {
                   )}
                 </div>
 
-                {user.id !== me?.id && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => openEdit(user)}
-                      className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
-                      title="Editar"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => openEdit(user)}
+                    className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+                    title="Editar"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  {user.id !== me?.id && (
+                    <>
                     <button
                       onClick={() => toggleActive(user)}
                       className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
@@ -339,8 +340,9 @@ export default function UsuariosPage() {
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}

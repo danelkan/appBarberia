@@ -8,13 +8,13 @@ import { useAdmin } from '../layout'
 import type { WeeklyAvailability, DaySchedule, Barber } from '@/types'
 
 const DEFAULT_AVAIL: WeeklyAvailability = {
-  monday:    { enabled: true,  start: '09:00', end: '19:00' },
-  tuesday:   { enabled: true,  start: '09:00', end: '19:00' },
-  wednesday: { enabled: true,  start: '09:00', end: '19:00' },
-  thursday:  { enabled: true,  start: '09:00', end: '19:00' },
-  friday:    { enabled: true,  start: '09:00', end: '19:00' },
-  saturday:  { enabled: true,  start: '09:00', end: '14:00' },
-  sunday:    { enabled: false, start: '09:00', end: '13:00' },
+  monday:    { enabled: true,  start: '10:00', end: '20:00' },
+  tuesday:   { enabled: true,  start: '10:00', end: '20:00' },
+  wednesday: { enabled: true,  start: '10:00', end: '20:00' },
+  thursday:  { enabled: true,  start: '10:00', end: '20:00' },
+  friday:    { enabled: true,  start: '10:00', end: '20:00' },
+  saturday:  { enabled: true,  start: '10:00', end: '20:00' },
+  sunday:    { enabled: false, start: '10:00', end: '20:00' },
 }
 
 export default function HorariosPage() {

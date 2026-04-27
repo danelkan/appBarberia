@@ -3,6 +3,13 @@
 export const dynamic = 'force-dynamic'
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  DndContext,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -59,10 +66,11 @@ function buildWhatsAppUrl(rawPhone: string | null | undefined, message: string):
 const PAYMENT_METHODS: PaymentMethod[] = ['efectivo', 'mercado_pago', 'debito', 'transferencia']
 const HOUR_HEIGHT = 72
 const MOBILE_HOUR_HEIGHT = 64
-const DEFAULT_START_MINUTES = 8 * 60
-const DEFAULT_END_MINUTES = 21 * 60
+const DEFAULT_START_MINUTES = 10 * 60
+const DEFAULT_END_MINUTES = 20 * 60
 const MIN_EVENT_HEIGHT = 42
 const MOBILE_MIN_EVENT_HEIGHT = 36
+const DAY_DROP_INTERVAL_MINUTES = 15
 
 interface CalendarResource {
   id: string
@@ -78,6 +86,13 @@ interface InstantForm {
   branch_id:    string
   date:         string
   start_time:   string
+}
+
+interface EditAppointmentForm {
+  id: string
+  start_time: string
+  service_id: string
+  barber_id: string
 }
 
 function toMinutes(time: string) {
@@ -111,9 +126,29 @@ function getEventStyle(appointment: Appointment, bounds: { start: number; end: n
   return { top, height }
 }
 
+function getAppointmentDuration(appointment: Appointment) {
+  return Math.max(0, toMinutes(appointment.end_time) - toMinutes(appointment.start_time))
+}
+
+function hasAppointmentOverlap(
+  appointments: Appointment[],
+  movingAppointmentId: string,
+  barberId: string | null,
+  startMinutes: number,
+  endMinutes: number
+) {
+  return appointments.some(appointment => {
+    if (appointment.id === movingAppointmentId || appointment.status === 'cancelada') return false
+    if (barberId && appointment.barber_id !== barberId) return false
+    const appointmentStart = toMinutes(appointment.start_time)
+    const appointmentEnd = toMinutes(appointment.end_time)
+    return startMinutes < appointmentEnd && endMinutes > appointmentStart
+  })
+}
+
 function getMobileTimelineBounds(appointments: Appointment[]) {
   if (appointments.length === 0) {
-    return { start: 8 * 60, end: 21 * 60 }
+    return { start: DEFAULT_START_MINUTES, end: DEFAULT_END_MINUTES }
   }
 
   const starts = appointments.map(appointment => toMinutes(appointment.start_time))
@@ -229,6 +264,13 @@ export default function AgendaPage() {
   const [instantForm,   setInstantForm]   = useState<InstantForm | null>(null)
   const [instantSaving, setInstantSaving] = useState(false)
   const [instantError,  setInstantError]  = useState('')
+  const [editModal, setEditModal] = useState(false)
+  const [editAppointment, setEditAppointment] = useState<Appointment | null>(null)
+  const [editForm, setEditForm] = useState<EditAppointmentForm | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null)
+  const [movingAppointmentId, setMovingAppointmentId] = useState<string | null>(null)
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
 
   const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
@@ -415,9 +457,10 @@ export default function AgendaPage() {
     setInstantModal(true)
   }
 
-  async function saveInstantAppointment() {
+  async function saveInstantAppointment(options?: { withoutClient?: boolean }) {
     if (!instantForm) return
-    if (!instantForm.client_name.trim()) { setInstantError('El nombre del cliente es obligatorio'); return }
+    const withoutClient = options?.withoutClient ?? false
+    if (!withoutClient && !instantForm.client_name.trim()) { setInstantError('El nombre del cliente es obligatorio'); return }
     if (!instantForm.service_id)         { setInstantError('Seleccioná un servicio'); return }
     if (!instantForm.barber_id)          { setInstantError('Seleccioná un barbero'); return }
     if (!instantForm.branch_id && !activeBranch?.id) { setInstantError('Seleccioná una sucursal'); return }
@@ -427,9 +470,9 @@ export default function AgendaPage() {
     setInstantSaving(true); setInstantError('')
 
     const payload = {
-      client_name:  instantForm.client_name.trim(),
-      client_phone: instantForm.client_phone.trim() || null,
-      client_email: instantForm.client_email.trim() || null,
+      client_name:  withoutClient ? 'Sin datos' : instantForm.client_name.trim(),
+      client_phone: withoutClient ? null : instantForm.client_phone.trim() || null,
+      client_email: withoutClient ? null : instantForm.client_email.trim() || null,
       service_id:   instantForm.service_id,
       barber_id:    instantForm.barber_id,
       branch_id:    instantForm.branch_id || activeBranch?.id || null,
@@ -448,6 +491,100 @@ export default function AgendaPage() {
     if (!res.ok) { setInstantError(data.error ?? 'No se pudo crear el turno'); return }
 
     setInstantModal(false)
+    await fetchAppointments()
+  }
+
+  async function moveAppointment(appointment: Appointment, startTime: string, barberId: string | null) {
+    const duration = getAppointmentDuration(appointment)
+    const endTime = fromMinutes(toMinutes(startTime) + duration)
+
+    setMovingAppointmentId(appointment.id)
+    setLoadError('')
+    setAppointments(prev => prev.map(item => (
+      item.id === appointment.id
+        ? {
+            ...item,
+            start_time: startTime,
+            end_time: endTime,
+            barber_id: barberId ?? item.barber_id,
+            barber: barberId && item.barber_id !== barberId
+              ? filteredBarbers.find(barber => barber.id === barberId) ?? item.barber
+              : item.barber,
+          }
+        : item
+    )))
+
+    const res = await fetch(`/api/appointments/${appointment.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start_time: startTime,
+        end_time: endTime,
+        barber_id: barberId ?? appointment.barber_id,
+      }),
+    })
+
+    setMovingAppointmentId(null)
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setLoadError(data.error ?? 'No se pudo mover el turno')
+      await fetchAppointments()
+      return
+    }
+
+    await fetchAppointments()
+  }
+
+  async function handleAppointmentDragEnd(event: DragEndEvent) {
+    const appointment = event.active.data.current?.appointment as Appointment | undefined
+    const drop = event.over?.data.current as { time?: string; barberId?: string | null } | undefined
+    setDraggingAppointment(null)
+    if (!appointment || !drop?.time) return
+    await moveAppointment(appointment, drop.time, drop.barberId ?? appointment.barber_id ?? null)
+  }
+
+  function openEditAppointment(appointment: Appointment) {
+    setEditAppointment(appointment)
+    setEditForm({
+      id: appointment.id,
+      start_time: appointment.start_time.slice(0, 5),
+      service_id: appointment.service_id,
+      barber_id: appointment.barber_id,
+    })
+    setEditError('')
+    setEditModal(true)
+  }
+
+  async function saveEditAppointment() {
+    if (!editForm) return
+    if (!editForm.start_time) { setEditError('Ingresá la hora'); return }
+    if (!editForm.service_id) { setEditError('Seleccioná un servicio'); return }
+    if (!editForm.barber_id)  { setEditError('Seleccioná un barbero'); return }
+
+    setEditSaving(true)
+    setEditError('')
+
+    const res = await fetch(`/api/appointments/${editForm.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start_time: editForm.start_time,
+        service_id: editForm.service_id,
+        barber_id: editForm.barber_id,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setEditSaving(false)
+
+    if (!res.ok) {
+      setEditError(data.error ?? 'No se pudo actualizar el turno')
+      return
+    }
+
+    setEditModal(false)
+    setEditAppointment(null)
+    setEditForm(null)
     await fetchAppointments()
   }
 
@@ -610,22 +747,34 @@ export default function AgendaPage() {
             monthDays={monthDays}
             showBarber={!isBarber}
             onOpen={setSelected}
+            onEdit={openEditAppointment}
             onCreate={openInstantModal}
             onToggleView={() => setView(current => current === 'day' ? 'week' : current === 'week' ? 'month' : 'day')}
             onSelectDate={date => { setCurrentDate(date); setView('day') }}
             onTouchStart={setTouchStart}
             onTouchEnd={handleAgendaTouchEnd}
           />
-          <DayCalendar
-            date={format(currentDate, 'yyyy-MM-dd')}
-            appointments={groupedByDay[format(currentDate, 'yyyy-MM-dd')] ?? []}
-            resources={calendarResources}
-            hours={calendarHours}
-            bounds={calendarBounds}
-            showBarber={!isBarber}
-            onOpen={setSelected}
-            onPay={can('cash.add_movement') ? openPayment : undefined}
-          />
+          <DndContext
+            onDragStart={(event: DragStartEvent) => {
+              setDraggingAppointment(event.active.data.current?.appointment as Appointment | null)
+            }}
+            onDragCancel={() => setDraggingAppointment(null)}
+            onDragEnd={event => { void handleAppointmentDragEnd(event) }}
+          >
+            <DayCalendar
+              date={format(currentDate, 'yyyy-MM-dd')}
+              appointments={groupedByDay[format(currentDate, 'yyyy-MM-dd')] ?? []}
+              resources={calendarResources}
+              hours={calendarHours}
+              bounds={calendarBounds}
+              showBarber={!isBarber}
+              draggingAppointment={draggingAppointment}
+              movingAppointmentId={movingAppointmentId}
+              onOpen={setSelected}
+              onEdit={openEditAppointment}
+              onPay={can('cash.add_movement') ? openPayment : undefined}
+            />
+          </DndContext>
         </CalendarShell>
       ) : (
         <CalendarShell
@@ -640,6 +789,7 @@ export default function AgendaPage() {
             monthDays={monthDays}
             showBarber={!isBarber}
             onOpen={setSelected}
+            onEdit={openEditAppointment}
             onCreate={openInstantModal}
             onToggleView={() => setView(current => current === 'day' ? 'week' : current === 'week' ? 'month' : 'day')}
             onSelectDate={date => { setCurrentDate(date); if (view === 'month') setView('day') }}
@@ -654,6 +804,7 @@ export default function AgendaPage() {
               bounds={calendarBounds}
               showBarber={!isBarber}
               onOpen={setSelected}
+              onEdit={openEditAppointment}
               onPay={can('cash.add_movement') ? openPayment : undefined}
             />
           ) : (
@@ -662,6 +813,7 @@ export default function AgendaPage() {
               groupedByDay={groupedByDay}
               showBarber={!isBarber}
               onOpen={setSelected}
+              onEdit={openEditAppointment}
               onSelectDate={date => { setCurrentDate(date); setView('day') }}
             />
           )}
@@ -815,6 +967,87 @@ export default function AgendaPage() {
               </Button>
               <Button className="flex-1" onClick={submitPayment} loading={paying}>
                 Confirmar cobro
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit appointment modal */}
+      <Modal
+        open={editModal}
+        onClose={() => { setEditModal(false); setEditAppointment(null); setEditForm(null) }}
+        title="Editar turno"
+        size="lg"
+      >
+        {editForm && (
+          <div className="space-y-5">
+            {editAppointment && (
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                <p className="text-sm font-bold text-stone-950">
+                  {`${editAppointment.client?.first_name ?? ''} ${editAppointment.client?.last_name ?? ''}`.trim() || 'Cliente'}
+                </p>
+                <p className="mt-1 text-xs font-medium text-stone-500">
+                  {formatDate(editAppointment.date)} · {editAppointment.branch?.name ?? 'Sucursal'}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="label">Hora *</label>
+              <input
+                type="time"
+                value={editForm.start_time}
+                onChange={event => setEditForm(form => form ? { ...form, start_time: event.target.value } : form)}
+                className="input"
+                step="900"
+              />
+            </div>
+
+            <div>
+              <label className="label">Servicio *</label>
+              <select
+                value={editForm.service_id}
+                onChange={event => setEditForm(form => form ? { ...form, service_id: event.target.value } : form)}
+                className="input"
+              >
+                <option value="">Seleccioná servicio</option>
+                {services.filter(service => service.active).map(service => (
+                  <option key={service.id} value={service.id}>
+                    {service.name} · {service.duration_minutes} min
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {!isBarber && (
+              <div>
+                <label className="label">Barbero asignado *</label>
+                <select
+                  value={editForm.barber_id}
+                  onChange={event => setEditForm(form => form ? { ...form, barber_id: event.target.value } : form)}
+                  className="input"
+                >
+                  <option value="">Seleccioná barbero</option>
+                  {modalBarbers.map(barber => (
+                    <option key={barber.id} value={barber.id}>{barber.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {editError && (
+              <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {editError}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => { setEditModal(false); setEditAppointment(null); setEditForm(null) }}>
+                Cancelar
+              </Button>
+              <Button className="flex-1" onClick={saveEditAppointment} loading={editSaving}>
+                Guardar cambios
               </Button>
             </div>
           </div>
@@ -1004,7 +1237,10 @@ export default function AgendaPage() {
               <Button variant="outline" className="flex-1" onClick={() => setInstantModal(false)}>
                 Cancelar
               </Button>
-              <Button className="flex-1" onClick={saveInstantAppointment} loading={instantSaving}>
+              <Button variant="outline" className="flex-1" onClick={() => saveInstantAppointment({ withoutClient: true })} loading={instantSaving}>
+                Continuar sin cliente
+              </Button>
+              <Button className="flex-1" onClick={() => saveInstantAppointment()} loading={instantSaving}>
                 <Zap className="h-4 w-4" />
                 Agendar turno
               </Button>
@@ -1085,6 +1321,7 @@ function MobileAgenda({
   groupedByDay,
   showBarber,
   onOpen,
+  onEdit,
   onCreate,
   onToggleView,
   onSelectDate,
@@ -1098,6 +1335,7 @@ function MobileAgenda({
   groupedByDay: Record<string, Appointment[]>
   showBarber: boolean
   onOpen: (appointment: Appointment) => void
+  onEdit: (appointment: Appointment) => void
   onCreate: () => void
   onToggleView: () => void
   onSelectDate: (date: Date) => void
@@ -1220,6 +1458,7 @@ function MobileAgenda({
                         appointment={appointment}
                         showBarber={showBarber}
                         onOpen={onOpen}
+                        onEdit={onEdit}
                       />
                     ))}
                   </div>
@@ -1253,6 +1492,7 @@ function MobileAgenda({
                   appointment={layout.appointment}
                   showBarber={showBarber}
                   onOpen={onOpen}
+                  onEdit={onEdit}
                   top={layout.top}
                   height={layout.height}
                   lane={layout.lane}
@@ -1281,6 +1521,7 @@ function MobileTimelineEvent({
   appointment,
   showBarber,
   onOpen,
+  onEdit,
   top,
   height,
   lane,
@@ -1289,6 +1530,7 @@ function MobileTimelineEvent({
   appointment: Appointment
   showBarber: boolean
   onOpen: (appointment: Appointment) => void
+  onEdit: (appointment: Appointment) => void
   top: number
   height: number
   lane: number
@@ -1309,7 +1551,21 @@ function MobileTimelineEvent({
       aria-label={`${clientName}, ${appointment.start_time.slice(0, 5)} a ${appointment.end_time.slice(0, 5)}`}
     >
       <div className="flex h-full flex-col justify-center gap-0 py-0.5">
-        <p className="truncate text-[11px] font-semibold leading-tight text-stone-900">{clientName}</p>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={event => { event.stopPropagation(); onEdit(appointment) }}
+          onKeyDown={event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              event.stopPropagation()
+              onEdit(appointment)
+            }
+          }}
+          className="truncate text-left text-[11px] font-semibold leading-tight text-stone-900 underline-offset-2 hover:underline"
+        >
+          {clientName}
+        </span>
         {height > 40 && (
           <p className="truncate text-[9px] leading-tight text-stone-500">
             {appointment.start_time.slice(0, 5)}–{appointment.end_time.slice(0, 5)}
@@ -1328,10 +1584,12 @@ function CompactAppointmentButton({
   appointment,
   showBarber,
   onOpen,
+  onEdit,
 }: {
   appointment: Appointment
   showBarber: boolean
   onOpen: (appointment: Appointment) => void
+  onEdit: (appointment: Appointment) => void
 }) {
   const clientName = `${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || 'Cliente'
 
@@ -1343,7 +1601,21 @@ function CompactAppointmentButton({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-stone-950">{clientName}</p>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={event => { event.stopPropagation(); onEdit(appointment) }}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onEdit(appointment)
+              }
+            }}
+            className="block truncate text-left text-sm font-bold text-stone-950 underline-offset-2 hover:underline"
+          >
+            {clientName}
+          </span>
           <p className="mt-0.5 truncate text-xs font-semibold text-lime-800">
             {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)} · {appointment.service?.name ?? 'Servicio'}
           </p>
@@ -1366,7 +1638,10 @@ function DayCalendar({
   hours,
   bounds,
   showBarber,
+  draggingAppointment,
+  movingAppointmentId,
   onOpen,
+  onEdit,
 }: {
   date: string
   appointments: Appointment[]
@@ -1374,12 +1649,22 @@ function DayCalendar({
   hours: number[]
   bounds: { start: number; end: number }
   showBarber: boolean
+  draggingAppointment: Appointment | null
+  movingAppointmentId: string | null
   onOpen: (appointment: Appointment) => void
+  onEdit: (appointment: Appointment) => void
   onPay?: (appointment: Appointment) => void
 }) {
   const safeResources = resources.length > 0 ? resources : [{ id: 'agenda', name: 'Agenda' }]
   const height = ((bounds.end - bounds.start) / 60) * HOUR_HEIGHT
   const gridTemplateColumns = `72px repeat(${safeResources.length}, minmax(190px, 1fr))`
+  const dropSlots = useMemo(() => {
+    const slots: number[] = []
+    for (let minutes = bounds.start; minutes < bounds.end; minutes += DAY_DROP_INTERVAL_MINUTES) {
+      slots.push(minutes)
+    }
+    return slots
+  }, [bounds])
 
   return (
     <div className="hidden overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm md:block">
@@ -1405,13 +1690,39 @@ function DayCalendar({
               return (
                 <div key={resource.id} className="relative border-l border-stone-100" style={{ height }}>
                   <CalendarLines hours={hours} bounds={bounds} />
+                  {dropSlots.map(minutes => {
+                    const barberId = resource.id === 'agenda' ? draggingAppointment?.barber_id ?? null : resource.id
+                    const duration = draggingAppointment ? getAppointmentDuration(draggingAppointment) : 0
+                    const endMinutes = minutes + duration
+                    const isAvailable = Boolean(
+                      draggingAppointment
+                      && endMinutes <= bounds.end
+                      && !hasAppointmentOverlap(appointments, draggingAppointment.id, barberId, minutes, endMinutes)
+                    )
+
+                    return (
+                      <DayDropSlot
+                        key={`${resource.id}-${minutes}`}
+                        id={`day-slot-${resource.id}-${minutes}`}
+                        time={fromMinutes(minutes)}
+                        barberId={barberId}
+                        top={((minutes - bounds.start) / 60) * HOUR_HEIGHT}
+                        height={(DAY_DROP_INTERVAL_MINUTES / 60) * HOUR_HEIGHT}
+                        disabled={!isAvailable}
+                      />
+                    )
+                  })}
                   {columnAppointments.map(appointment => (
                     <CalendarEvent
                       key={appointment.id}
                       appointment={appointment}
                       bounds={bounds}
                       showBarber={showBarber}
+                      dragging={draggingAppointment?.id === appointment.id}
+                      moving={movingAppointmentId === appointment.id}
                       onOpen={onOpen}
+                      onEdit={onEdit}
+                      draggable
                     />
                   ))}
                 </div>
@@ -1424,6 +1735,39 @@ function DayCalendar({
   )
 }
 
+function DayDropSlot({
+  id,
+  time,
+  barberId,
+  top,
+  height,
+  disabled,
+}: {
+  id: string
+  time: string
+  barberId: string | null
+  top: number
+  height: number
+  disabled: boolean
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id,
+    data: { time, barberId },
+    disabled,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'absolute left-1 right-1 rounded-lg transition',
+        isOver && !disabled ? 'z-10 bg-amber-200/60 ring-2 ring-amber-400' : 'bg-transparent'
+      )}
+      style={{ top, height }}
+    />
+  )
+}
+
 function WeekCalendar({
   days,
   groupedByDay,
@@ -1431,6 +1775,7 @@ function WeekCalendar({
   bounds,
   showBarber,
   onOpen,
+  onEdit,
 }: {
   days: Date[]
   groupedByDay: Record<string, Appointment[]>
@@ -1438,6 +1783,7 @@ function WeekCalendar({
   bounds: { start: number; end: number }
   showBarber: boolean
   onOpen: (appointment: Appointment) => void
+  onEdit: (appointment: Appointment) => void
   onPay?: (appointment: Appointment) => void
 }) {
   const height = ((bounds.end - bounds.start) / 60) * HOUR_HEIGHT
@@ -1474,6 +1820,7 @@ function WeekCalendar({
                       bounds={bounds}
                       showBarber={showBarber}
                       onOpen={onOpen}
+                      onEdit={onEdit}
                     />
                   ))}
                 </div>
@@ -1491,12 +1838,14 @@ function MonthCalendar({
   groupedByDay,
   showBarber,
   onOpen,
+  onEdit,
   onSelectDate,
 }: {
   days: Date[]
   groupedByDay: Record<string, Appointment[]>
   showBarber: boolean
   onOpen: (appointment: Appointment) => void
+  onEdit: (appointment: Appointment) => void
   onSelectDate: (date: Date) => void
 }) {
   const leadingBlanks = (Number(format(days[0] ?? new Date(), 'i')) + 6) % 7
@@ -1544,9 +1893,21 @@ function MonthCalendar({
                     onClick={() => onOpen(appointment)}
                     className="w-full rounded-lg border border-lime-200 bg-lime-50 px-2 py-1.5 text-left text-[11px] transition hover:bg-lime-100"
                   >
-                    <p className="truncate font-bold text-stone-950">
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={event => { event.stopPropagation(); onEdit(appointment) }}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          onEdit(appointment)
+                        }
+                      }}
+                      className="block truncate text-left font-bold text-stone-950 underline-offset-2 hover:underline"
+                    >
                       {appointment.start_time.slice(0, 5)} · {appointment.client?.first_name ?? 'Cliente'}
-                    </p>
+                    </span>
                     <p className="truncate text-stone-500">
                       {showBarber && appointment.barber?.name ? `${appointment.barber.name} · ` : ''}
                       {appointment.branch?.name ?? appointment.service?.name ?? 'Turno'}
@@ -1575,27 +1936,65 @@ function CalendarEvent({
   appointment,
   bounds,
   showBarber,
+  dragging,
+  moving,
   onOpen,
+  onEdit,
+  draggable = false,
 }: {
   appointment: Appointment
   bounds: { start: number; end: number }
   showBarber: boolean
+  dragging?: boolean
+  moving?: boolean
   onOpen: (appointment: Appointment) => void
+  onEdit: (appointment: Appointment) => void
+  draggable?: boolean
 }) {
   const { top, height } = getEventStyle(appointment, bounds)
   const clientName = `${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || 'Cliente'
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `appointment-${appointment.id}`,
+    data: { appointment },
+    disabled: !draggable || moving,
+  })
 
   return (
     <button
+      ref={setNodeRef}
       type="button"
       onClick={() => onOpen(appointment)}
-      className="absolute left-2 right-2 overflow-hidden rounded-xl border border-lime-200 bg-lime-50 px-3 py-2 text-left shadow-sm transition hover:border-lime-300 hover:bg-lime-100 focus:outline-none focus:ring-2 focus:ring-stone-950/20"
-      style={{ top, height }}
+      className={cn(
+        'absolute left-2 right-2 z-20 cursor-grab touch-none overflow-hidden rounded-xl border border-lime-200 bg-lime-50 px-3 py-2 text-left shadow-sm transition hover:border-lime-300 hover:bg-lime-100 focus:outline-none focus:ring-2 focus:ring-stone-950/20 active:cursor-grabbing',
+        (dragging || isDragging) && 'opacity-70 ring-2 ring-amber-300',
+        moving && 'pointer-events-none opacity-60'
+      )}
+      style={{
+        top,
+        height,
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+      }}
       title={`${clientName} · ${appointment.start_time.slice(0, 5)}-${appointment.end_time.slice(0, 5)}`}
+      {...attributes}
+      {...listeners}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-xs font-bold text-stone-950">{clientName}</p>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={event => { event.stopPropagation(); onEdit(appointment) }}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onEdit(appointment)
+              }
+            }}
+            className="block truncate text-left text-xs font-bold text-stone-950 underline-offset-2 hover:underline"
+          >
+            {clientName}
+          </span>
           <p className="mt-0.5 truncate text-[11px] font-semibold text-lime-800">
             {appointment.start_time.slice(0, 5)} - {appointment.end_time.slice(0, 5)}
           </p>
