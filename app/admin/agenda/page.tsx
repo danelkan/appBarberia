@@ -5,8 +5,11 @@ export const dynamic = 'force-dynamic'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   DndContext,
+  PointerSensor,
   useDraggable,
   useDroppable,
+  useSensor,
+  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -23,6 +26,7 @@ import {
   DollarSign,
   Filter,
   MessageCircle,
+  Pencil,
   Plus,
   Receipt,
   XCircle,
@@ -272,6 +276,9 @@ export default function AgendaPage() {
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null)
   const [movingAppointmentId, setMovingAppointmentId] = useState<string | null>(null)
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
 
   const branchQuery = activeBranch ? `?branch_id=${activeBranch.id}` : ''
   const swrFetcher = (url: string) => fetch(url).then(r => r.json())
@@ -541,7 +548,11 @@ export default function AgendaPage() {
     const drop = event.over?.data.current as { time?: string; barberId?: string | null } | undefined
     setDraggingAppointment(null)
     if (!appointment || !drop?.time) return
-    await moveAppointment(appointment, drop.time, drop.barberId ?? appointment.barber_id ?? null)
+    const duration = getAppointmentDuration(appointment)
+    const startMinutes = toMinutes(drop.time)
+    const targetBarberId = drop.barberId ?? appointment.barber_id ?? null
+    if (hasAppointmentOverlap(appointments, appointment.id, targetBarberId, startMinutes, startMinutes + duration)) return
+    await moveAppointment(appointment, drop.time, targetBarberId)
   }
 
   function openEditAppointment(appointment: Appointment) {
@@ -755,6 +766,7 @@ export default function AgendaPage() {
             onTouchEnd={handleAgendaTouchEnd}
           />
           <DndContext
+            sensors={sensors}
             onDragStart={(event: DragStartEvent) => {
               setDraggingAppointment(event.active.data.current?.appointment as Appointment | null)
             }}
@@ -877,7 +889,13 @@ export default function AgendaPage() {
                 </a>
               )}
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2">
+                {selected.status !== 'cancelada' && (
+                  <Button variant="outline" className="flex-1" onClick={() => { setSelected(null); openEditAppointment(selected) }}>
+                    <Pencil className="h-4 w-4" />
+                    Modificar
+                  </Button>
+                )}
                 {!selected.payment && selected.status !== 'cancelada' && can('cash.add_movement') && (
                   <Button className="flex-1" onClick={() => openPayment(selected)}>
                     <DollarSign className="h-4 w-4" />
@@ -1753,7 +1771,6 @@ function DayDropSlot({
   const { isOver, setNodeRef } = useDroppable({
     id,
     data: { time, barberId },
-    disabled,
   })
 
   return (

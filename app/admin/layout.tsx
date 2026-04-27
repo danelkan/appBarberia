@@ -507,7 +507,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   Resumen
                 </Link>
               )}
-              <PushNotificationToggle className="px-2 sm:px-3" />
               <button
                 onClick={() => setMobileOpen(current => !current)}
                 className="rounded-xl border border-stone-200 bg-white p-2 text-stone-700 shadow-sm"
