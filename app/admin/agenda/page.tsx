@@ -890,7 +890,7 @@ export default function AgendaPage() {
               )}
 
               <div className="flex flex-wrap gap-2">
-                {selected.status !== 'cancelada' && (
+                {selected.status !== 'cancelada' && can('edit_appointments') && (
                   <Button variant="outline" className="flex-1" onClick={() => { setSelected(null); openEditAppointment(selected) }}>
                     <Pencil className="h-4 w-4" />
                     Modificar
